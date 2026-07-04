@@ -42,6 +42,7 @@ import { createDomesticCups, createSuperCup } from './cups/domesticCups';
 import { assessFfp, applyPointsPenalties } from './ffp';
 import { checkAchievements } from './achievements';
 import { lastMatchday } from '../engine/schedule';
+import { applyPreseasonOffset } from './gameCalendar';
 import type { Academy, AcademyPlayer, YouthCompetition } from '../types/academy';
 import type { ManagerStint, JobOffer } from '../types/league';
 import type { ContinentalState } from '../types/continental';
@@ -791,6 +792,10 @@ export async function resolveAndRollover(
       newMatches.push(...sc.matches);
     }
   }
+
+  // Shift next season's fixtures back by the pre-season, so it too opens with an
+  // off-season (day 0) before the August opener — matching the new-game calendar.
+  applyPreseasonOffset(newMatches, continentalInstall.states, nextCups);
 
   // --- Individual awards (§ Awards) --------------------------------------
   // Computed from the finished season's matches + this year's international

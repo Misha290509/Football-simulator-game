@@ -1,23 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import {
-  seasonOpenDate, dateForDay, matchDate, matchKind, windowOnDate, isWindowOpen, windowKey, formatShort,
+  seasonOpenDate, dateForDay, matchDate, matchKind, windowOnDate, isWindowOpen, windowKey, formatShort, PRESEASON_DAYS,
 } from '../gameCalendar';
 
 const meta = { domesticCups: { cup_x: {} } } as never;
 
 describe('Game calendar', () => {
-  it('opens the season on a Saturday in mid-August', () => {
+  it('opens the season on a Saturday at the beginning of August', () => {
     const d = seasonOpenDate(2024);
     expect(d.getUTCDay()).toBe(6); // Saturday
     expect(d.getUTCMonth()).toBe(7); // August
-    expect(d.getUTCDate()).toBeGreaterThanOrEqual(12);
-    expect(d.getUTCDate()).toBeLessThanOrEqual(18);
+    expect(d.getUTCDate()).toBeGreaterThanOrEqual(2);
+    expect(d.getUTCDate()).toBeLessThanOrEqual(8);
   });
 
-  it('stretches the day range from August to the end of May', () => {
-    const start = dateForDay(0, 300, 2024);
+  it('starts in the off-season and stretches the season from August to end of May', () => {
+    const preseason = dateForDay(0, 300, 2024);       // day 0 — off-season
+    const opener = dateForDay(PRESEASON_DAYS, 300, 2024); // first round
     const end = dateForDay(300, 300, 2024);
-    expect(start.getUTCMonth()).toBe(7); // August
+    expect([5, 6]).toContain(preseason.getUTCMonth()); // Jun/Jul off-season, no games
+    expect(preseason.getTime()).toBeLessThan(opener.getTime());
+    expect(opener.getUTCMonth()).toBe(7);    // August opener
     expect(end.getUTCFullYear()).toBe(2025);
     expect(end.getUTCMonth()).toBe(4); // May
   });

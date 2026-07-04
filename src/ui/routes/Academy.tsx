@@ -51,6 +51,9 @@ export function Academy() {
   const [scoutId, setScoutId] = useState('');
   const [positions, setPositions] = useState<string[]>([]);
   const [country, setCountry] = useState('ES');
+  // Youth-coach wage negotiation: per-candidate offer + those who've walked off.
+  const [coachOffer, setCoachOffer] = useState<Record<string, number>>({});
+  const [walkedCoaches, setWalkedCoaches] = useState<Set<string>>(new Set());
 
   const academy = meta.academies?.[club.id];
   const academyPlayers = meta.academyPlayers ?? {};
@@ -162,15 +165,34 @@ export function Academy() {
             )}
             {academy.youthCoachIds.length < 5 && (
               <>
-                <h3 className="text-xs uppercase tracking-wide text-slate-500 mt-4 mb-2">Available to hire</h3>
+                <h3 className="text-xs uppercase tracking-wide text-slate-500 mt-4 mb-2">
+                  Available to hire <span className="normal-case text-slate-600">— offer any wage; lowball at your own risk</span>
+                </h3>
                 <div className="grid sm:grid-cols-2 gap-2">
-                  {coachMarket.map((c) => (
-                    <div key={c.id} className="flex items-center justify-between bg-surface-700 rounded px-3 py-2 text-sm">
-                      <div>
-                        <div className="font-medium">{c.name.first} {c.name.last}</div>
-                        <div className="text-xs text-slate-500">rating {c.rating} · {formatWage(c.wage)}</div>
+                  {coachMarket.filter((c) => !academy.youthCoachIds.includes(c.id) && !walkedCoaches.has(c.id)).map((c) => (
+                    <div key={c.id} className="flex items-center justify-between gap-2 bg-surface-700 rounded px-3 py-2 text-sm">
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{c.name.first} {c.name.last}</div>
+                        <div className="text-xs text-slate-500">rating {c.rating} · asks {formatWage(c.wage)}</div>
                       </div>
-                      <button className="btn-primary text-xs" onClick={async () => flash((await hireYouthCoach(c)).message)}>Hire</button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <input
+                          type="number" step={100} aria-label="Wage offer"
+                          className="w-24 bg-surface-800 border border-surface-600 rounded px-2 py-1 text-xs"
+                          value={coachOffer[c.id] ?? c.wage}
+                          onChange={(e) => setCoachOffer({ ...coachOffer, [c.id]: Math.max(0, Number(e.target.value)) })}
+                        />
+                        <button
+                          className="btn-primary text-xs"
+                          onClick={async () => {
+                            const r = await hireYouthCoach(c, coachOffer[c.id] ?? c.wage);
+                            flash(r.message);
+                            if (!r.ok && r.message.includes('walks away')) {
+                              setWalkedCoaches((s) => new Set(s).add(c.id));
+                            }
+                          }}
+                        >Offer</button>
+                      </div>
                     </div>
                   ))}
                 </div>

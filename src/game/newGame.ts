@@ -20,6 +20,7 @@ import { installContinental } from './continental/install';
 import { LEAGUE_STRIDE } from './continental/competition';
 import { createDomesticCups } from './cups/domesticCups';
 import { lastMatchday } from '../engine/schedule';
+import { applyPreseasonOffset } from './gameCalendar';
 import { CURRENT_SCHEMA_VERSION } from '../db/migrations';
 
 export interface NewGameConfig {
@@ -119,6 +120,10 @@ export function createNewGame(config: NewGameConfig): WorldSnapshot {
     world.competitions, world.clubs, seasonId, config.startYear, maxLeagueDay, seed ^ 0x0dcc0114,
   );
   for (const m of cups.matches) matches[m.id] = m;
+
+  // Push every fixture back by the pre-season so day 0 is a genuine off-season
+  // (early July) and the opening round lands on the August opener.
+  applyPreseasonOffset(Object.values(matches), continental.states, cups.states);
 
   const managerClub = world.clubs[config.managerClubId];
   const managerComp = Object.values(world.competitions).find((c) =>

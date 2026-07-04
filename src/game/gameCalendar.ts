@@ -13,27 +13,74 @@
 // ---------------------------------------------------------------------------
 
 import type { SaveGame } from '../types/league';
+import type { Match } from '../types/match';
+import type { ContinentalState } from '../types/continental';
+import type { DomesticCupState } from '../types/cup';
 
-/** Days from the opening weekend to the season's final weekend (~mid-Aug→end-May). */
-export const SEASON_SPAN_DAYS = 287;
+/** Days from the opening weekend to the season's final weekend (~early-Aug→end-May). */
+export const SEASON_SPAN_DAYS = 300;
+
+/**
+ * Sim-day indices reserved as pre-season / off-season before the opening round.
+ * A new season begins at day 0 in the off-season (early July); all fixtures are
+ * shifted forward by this much so the first game lands on the August opener,
+ * giving the manager a pre-season window to set up the squad and do transfers.
+ */
+export const PRESEASON_DAYS = 18;
+
+/** Real calendar days shown for the off-season ramp (≈ early July → opener). */
+const OFFSEASON_CAL_DAYS = 35;
 
 const MS_DAY = 86_400_000;
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-/** The first Saturday on/after 12 August of the season's starting year. */
+/** The first Saturday on/after 2 August of the season's starting year (the
+ *  opening weekend — "beginning of August"). */
 export function seasonOpenDate(startYear: number): Date {
-  const d = new Date(Date.UTC(startYear, 7, 12));
+  const d = new Date(Date.UTC(startYear, 7, 2));
   while (d.getUTCDay() !== 6) d.setUTCDate(d.getUTCDate() + 1);
   return d;
 }
 
-/** Linear day-index → calendar date, stretched so [0, maxDay] → the Aug→May span. */
+/**
+ * Day-index → calendar date. Two linear segments joined at the opener:
+ *   • [0, PRESEASON_DAYS] ramps through the off-season (early July → opener);
+ *   • [PRESEASON_DAYS, maxDay] stretches the season across Aug → end of May.
+ * Fixtures live in the second segment (they're shifted forward by PRESEASON_DAYS
+ * at generation), so day 0 is a genuine off-season with no games.
+ */
 export function dateForDay(dayIndex: number, maxDay: number, startYear: number): Date {
   const open = seasonOpenDate(startYear);
-  const frac = maxDay > 0 ? Math.min(1, Math.max(0, dayIndex / maxDay)) : 0;
+  if (dayIndex <= PRESEASON_DAYS) {
+    const frac = PRESEASON_DAYS > 0 ? Math.min(1, Math.max(0, dayIndex / PRESEASON_DAYS)) : 1;
+    const offStart = open.getTime() - OFFSEASON_CAL_DAYS * MS_DAY;
+    return new Date(offStart + Math.round(frac * OFFSEASON_CAL_DAYS) * MS_DAY);
+  }
+  const span = Math.max(1, maxDay - PRESEASON_DAYS);
+  const frac = Math.min(1, Math.max(0, (dayIndex - PRESEASON_DAYS) / span));
   return new Date(open.getTime() + Math.round(frac * SEASON_SPAN_DAYS) * MS_DAY);
+}
+
+/**
+ * Shift a freshly-generated fixture set (and the competitions' reserved knockout
+ * day-slots) forward by PRESEASON_DAYS, so day 0 is the off-season and the first
+ * round lands on the August opener. Mutates in place. Call once, after all
+ * league / continental / cup fixtures for a season have been assembled.
+ */
+export function applyPreseasonOffset(
+  matches: Match[],
+  continental?: Record<string, ContinentalState>,
+  cups?: Record<string, DomesticCupState>,
+): void {
+  for (const m of matches) m.day += PRESEASON_DAYS;
+  for (const st of Object.values(continental ?? {})) {
+    if (st.koDays) st.koDays = st.koDays.map((d) => d + PRESEASON_DAYS);
+  }
+  for (const st of Object.values(cups ?? {})) {
+    if (st.koDays) st.koDays = st.koDays.map((d) => d + PRESEASON_DAYS);
+  }
 }
 
 export type MatchKind = 'LEAGUE' | 'CL' | 'EL' | 'CONF' | 'CWC' | 'CUP' | 'OTHER';

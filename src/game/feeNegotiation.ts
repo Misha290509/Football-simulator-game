@@ -75,7 +75,9 @@ export function negotiateFee(
   if (eff >= acceptBar) {
     return { outcome: 'ACCEPT', message: `${seller.shortName} accept your offer for ${name}.`, valuation };
   }
-  if (eff >= valuation * 0.78) {
+  // No minimum bid: lowball freely. A merely low offer is met with a counter
+  // (they name their price); only an insultingly low one is rejected outright.
+  if (eff >= valuation * 0.5) {
     return {
       outcome: 'COUNTER',
       message: `${seller.shortName} want more for ${name} — they're holding out for ${round100k(acceptBar).toLocaleString()}.`,
@@ -87,7 +89,7 @@ export function negotiateFee(
     outcome: 'REJECT',
     message: untouchable
       ? `${seller.shortName} insist ${name} is not for sale at anything like that price.`
-      : `${seller.shortName} reject the bid out of hand.`,
+      : `${seller.shortName} break off talks — that bid is nowhere near their valuation.`,
     valuation,
   };
 }

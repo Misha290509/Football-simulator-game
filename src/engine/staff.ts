@@ -82,17 +82,26 @@ function makeStaff(role: StaffRole, anchor: number, clubId: string | null, rng: 
   };
 }
 
+export type StaffTermsOutcome = 'ACCEPT' | 'COUNTER' | 'WALK';
+
 /**
- * Whether a coach accepts proposed terms (wage/years) when hiring or renewing.
- * They want at least their market wage; a longer deal needs a small premium.
- * Returns the counter (their minimum) when they reject.
+ * How a coach responds to proposed terms (wage/years) when hiring or renewing.
+ * There is no minimum you must offer — lowball freely. They accept at or above
+ * their market wage, counter (name their price) on a merely low bid, and walk
+ * away from an insulting one. `ok` is kept for callers that only check acceptance.
  */
-export function evaluateStaffTerms(staff: Staff, wage: number, years: number): { ok: boolean; wants: number; message: string } {
+export function evaluateStaffTerms(
+  staff: Staff, wage: number, years: number,
+): { outcome: StaffTermsOutcome; ok: boolean; wants: number; message: string } {
   const wants = Math.round(staffWage(staff.rating, staff.role) * (1 + Math.max(0, years - 2) * 0.05) / 100) * 100;
   if (wage >= wants) {
-    return { ok: true, wants, message: `${staff.name.last} agrees terms: ${wage.toLocaleString()}/wk for ${years} year${years > 1 ? 's' : ''}.` };
+    return { outcome: 'ACCEPT', ok: true, wants, message: `${staff.name.last} agrees terms: ${wage.toLocaleString()}/wk for ${years} year${years > 1 ? 's' : ''}.` };
   }
-  return { ok: false, wants, message: `${staff.name.last} wants at least ${wants.toLocaleString()}/wk — offer more.` };
+  // An insultingly low bid (below ~55% of what he wants) ends the talks.
+  if (wage < wants * 0.55) {
+    return { outcome: 'WALK', ok: false, wants, message: `${staff.name.last} is insulted by ${wage.toLocaleString()}/wk and breaks off talks.` };
+  }
+  return { outcome: 'COUNTER', ok: false, wants, message: `${staff.name.last} wants at least ${wants.toLocaleString()}/wk — offer more.` };
 }
 
 const avgRating = (staff: Staff[], role: StaffRole): number => {

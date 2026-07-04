@@ -94,13 +94,14 @@ export function facilityLevelFor(reputation: number, transferBudget: number, sta
   return clamp(Math.round(repScore + financeAdj + stadiumAdj), 1, 5) as number;
 }
 
-let _ycSeq = 0;
-/** A hireable pool of youth coaches for the academy staff market. */
+/** A hireable pool of youth coaches for the academy staff market. Ids are
+ *  deterministic per RNG seed so a hired coach stays identifiable (and can be
+ *  filtered out of the candidate list) across re-renders. */
 export function generateYouthCoachPool(count: number, rng: Rng): Staff[] {
-  return Array.from({ length: count }, () => {
+  return Array.from({ length: count }, (_, i) => {
     const rating = clamp(Math.round(rng.normal(58, 16)), 30, 92);
     return {
-      id: `staff_yc_${(_ycSeq++).toString(36)}_${rng.int(0, 1e9).toString(36)}`,
+      id: `staff_yc_${i}_${rng.int(0, 1e9).toString(36)}`,
       name: { first: rng.pick(FIRST_NAMES), last: rng.pick(LAST_NAMES) },
       role: 'YOUTH_COACH' as const,
       rating,
@@ -114,10 +115,10 @@ export function generateYouthCoachPool(count: number, rng: Rng): Staff[] {
 export function makeYouthCoaches(clubId: string, stars: number, rng: Rng): Staff[] {
   const count = clamp(stars - 1, 1, 4);
   const baseline = 30 + stars * 11; // 5★ → ~85, 3★ → ~63, 1★ → ~41
-  return Array.from({ length: count }, () => {
+  return Array.from({ length: count }, (_, i) => {
     const rating = clamp(Math.round(rng.normal(baseline, 7)), 25, 92);
     return {
-      id: `staff_yc_${(_ycSeq++).toString(36)}_${rng.int(0, 1e9).toString(36)}`,
+      id: `staff_yc_${clubId}_${i}_${rng.int(0, 1e9).toString(36)}`,
       name: { first: rng.pick(FIRST_NAMES), last: rng.pick(LAST_NAMES) },
       role: 'YOUTH_COACH' as const,
       rating,

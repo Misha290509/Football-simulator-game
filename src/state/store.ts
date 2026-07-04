@@ -190,7 +190,7 @@ interface GameState {
 
   // Academy investment / mentoring (§ Academy)
   upgradeAcademyFacility: (which: 'training' | 'coaching' | 'medical' | 'recruitment') => Promise<BidResult>;
-  hireYouthCoach: (staff: Staff) => Promise<BidResult>;
+  hireYouthCoach: (staff: Staff, offeredWage?: number) => Promise<BidResult>;
   setMentor: (youngsterId: string, mentorId: string | null) => Promise<void>;
   offerProfessionalTerms: (playerId: string) => Promise<BidResult>;
 
@@ -911,21 +911,31 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { ok: true, message: `${which[0].toUpperCase() + which.slice(1)} upgraded to level ${level + 1}.` };
   },
 
-  hireYouthCoach: async (staff) => {
+  hireYouthCoach: async (staff, offeredWage) => {
     const { meta, clubs } = get();
     if (!meta) return { ok: false, message: 'No active save.' };
     const academy = meta.academies?.[meta.managerClubId];
     const club = clubs[meta.managerClubId];
     if (!academy) return { ok: false, message: 'No academy.' };
     if (academy.youthCoachIds.length >= 5) return { ok: false, message: 'Youth coaching staff is full (max 5).' };
-    const hired: Staff = { ...staff, clubId: club.id };
+    // No minimum: offer any wage. He accepts at/above his asking wage, counters
+    // on a low bid, and walks away from an insulting one.
+    const wants = staff.wage;
+    const wage = offeredWage ?? wants;
+    if (wage < wants * 0.55) {
+      return { ok: false, message: `${staff.name.last} is insulted by ${wage.toLocaleString()}/wk and walks away.` };
+    }
+    if (wage < wants) {
+      return { ok: false, message: `${staff.name.last} wants at least ${wants.toLocaleString()}/wk — offer more.` };
+    }
+    const hired: Staff = { ...staff, wage, clubId: club.id };
     const newClub = { ...club, staff: [...(club.staff ?? []), hired] };
     const newAcademy = { ...academy, youthCoachIds: [...academy.youthCoachIds, hired.id] };
     const newMeta: SaveMeta = { ...meta, academies: { ...meta.academies, [meta.managerClubId]: newAcademy } };
     set({ meta: newMeta, clubs: { ...clubs, [club.id]: newClub } });
     await putClubs(meta.id, [newClub]);
     await persistMeta(newMeta);
-    return { ok: true, message: `Hired youth coach ${staff.name.last} (rating ${staff.rating}).` };
+    return { ok: true, message: `Hired youth coach ${staff.name.last} at ${wage.toLocaleString()}/wk (rating ${staff.rating}).` };
   },
 
   setMentor: async (youngsterId, mentorId) => {
@@ -980,7 +990,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     const club = clubs[meta.managerClubId];
     const year = get().currentSeason()?.year ?? meta.startYear;
     const res = evaluateStaffTerms(staff, terms.wage, terms.years);
-    if (!res.ok) return res.message;
+    if (res.outcome === 'WALK') {
+      // Insulting bid — he breaks off talks and leaves the market.
+      const walkMeta: SaveMeta = { ...meta, staffMarket: (meta.staffMarket ?? []).filter((s) => s.id !== staff.id) };
+      set({ meta: walkMeta });
+      await persistMeta(walkMeta);
+      return res.message;
+    }
+    if (!res.ok) return res.message; // counter — keep negotiating
     const hired: Staff = { ...staff, clubId: club.id, wage: terms.wage, expiresYear: year + terms.years };
     const updated = { ...club, staff: [...(club.staff ?? []), hired] };
     const newMeta: SaveMeta = { ...meta, staffMarket: (meta.staffMarket ?? []).filter((s) => s.id !== staff.id) };
