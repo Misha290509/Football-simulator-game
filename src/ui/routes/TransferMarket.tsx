@@ -52,6 +52,8 @@ export function TransferMarket() {
   const [target, setTarget] = useState<Player | null>(null);
   const [scoutFor, setScoutFor] = useState<Player | null>(null);
   const [loanTarget, setLoanTarget] = useState<Player | null>(null);
+  // Clubs that have broken off talks after an insulting bid (resets on revisit).
+  const [talksEnded, setTalksEnded] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 4500); };
 
@@ -130,7 +132,9 @@ export function TransferMarket() {
               : v.level !== 'OWN' && v.level !== 'ELITE' && (
                 <button className="btn-ghost py-0.5 px-2 text-xs" onClick={() => setScoutFor(p)}>{v.level === 'REPORT' ? 'Re-scout' : 'Scout'}</button>
               )}
-            <button className="btn-primary py-0.5 px-2 text-xs" onClick={() => setTarget(p)}>Bid</button>
+            {talksEnded.has(p.id)
+              ? <span className="text-xs text-rose-400/80 px-2" title="They broke off talks after your last bid — try again another time">talks off</span>
+              : <button className="btn-primary py-0.5 px-2 text-xs" onClick={() => setTarget(p)}>Bid</button>}
             {p.contract.clubId && (v.ovr ?? 0) < 74 && (
               <button className="btn-ghost py-0.5 px-2 text-xs" onClick={() => setLoanTarget(p)}>Loan</button>
             )}
@@ -280,7 +284,8 @@ export function TransferMarket() {
 
       {target && (
         <SigningModal player={target} buyer={managerClub} seller={target.contract.clubId ? clubs[target.contract.clubId] ?? null : null}
-          view={viewOf(target)} year={year} onClose={() => setTarget(null)} flash={flash} />
+          view={viewOf(target)} year={year} onClose={() => setTarget(null)} flash={flash}
+          onBreakOff={() => { setTalksEnded((s) => new Set(s).add(target.id)); setTarget(null); }} />
       )}
 
       {loanTarget && (
@@ -318,9 +323,10 @@ function ScoutModal({ player, scouts, assignments, onClose, onAssign }: {
 }
 
 // --- Two-phase signing -----------------------------------------------------
-function SigningModal({ player, buyer, seller, view, year, onClose, flash }: {
+function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBreakOff }: {
   player: Player; buyer: import('../../types/club').Club; seller: import('../../types/club').Club | null;
   view: MarketView; year: number; onClose: () => void; flash: (m: string) => void;
+  onBreakOff: () => void;
 }) {
   const completeSigning = useGameStore((s) => s.completeSigning);
   const [phase, setPhase] = useState<'FEE' | 'TERMS'>(seller ? 'FEE' : 'TERMS');
@@ -335,6 +341,7 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash }: {
     setMsg(r.message);
     if (r.outcome === 'ACCEPT') { setAgreedFee(offer.fee); setPhase('TERMS'); setMsg(null); }
     else if (r.outcome === 'COUNTER' && r.counterFee) setOffer({ ...offer, fee: r.counterFee });
+    else if (r.outcome === 'REJECT') { flash(r.message); onBreakOff(); } // insulting — talks end
   };
 
   // Phase 2 — personal terms.

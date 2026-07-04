@@ -928,7 +928,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (wage < wants) {
       return { ok: false, message: `${staff.name.last} wants at least ${wants.toLocaleString()}/wk — offer more.` };
     }
-    const hired: Staff = { ...staff, wage, clubId: club.id };
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const hired: Staff = { ...staff, wage, clubId: club.id, expiresYear: year + 2 };
     const newClub = { ...club, staff: [...(club.staff ?? []), hired] };
     const newAcademy = { ...academy, youthCoachIds: [...academy.youthCoachIds, hired.id] };
     const newMeta: SaveMeta = { ...meta, academies: { ...meta.academies, [meta.managerClubId]: newAcademy } };
