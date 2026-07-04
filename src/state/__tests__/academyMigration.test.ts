@@ -5,6 +5,7 @@ import { createNewGame } from '../../game/newGame';
 import { loadDataset } from '../../data/datasetLoader';
 import { ENGLAND_DATASET } from '../../data/england';
 import { db } from '../../db/db';
+import { CURRENT_SCHEMA_VERSION } from '../../db/migrations';
 import type { Player } from '../../types/player';
 
 function managerClubId(): string {
@@ -50,7 +51,7 @@ describe('Save migration integrity (Phase 8)', () => {
     const st = useGameStore.getState();
 
     // Migration ran: schema bumped, academies built for every club.
-    expect(st.meta!.schemaVersion).toBe(6);
+    expect(st.meta!.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(Object.keys(st.meta!.academies ?? {}).length).toBe(Object.keys(st.clubs).length);
     expect(st.meta!.scoutAssignments).toEqual([]);
 
@@ -61,18 +62,19 @@ describe('Save migration integrity (Phase 8)', () => {
     expect(academy.philosophyId).toBeTruthy();
 
     // Existing under-19 squad players were enrolled as dual-registered prospects
-    // without being removed from the first team.
-    const aps = Object.values(st.meta!.academyPlayers ?? {});
+    // without being removed from the first team. (The v7 top-up also adds fresh
+    // academy-only prospects, so restrict the check to the dual-registered set.)
+    const aps = Object.values(st.meta!.academyPlayers ?? {}).filter((ap) => ap.dualRegistered);
+    expect(aps.length).toBeGreaterThan(0);
     for (const ap of aps) {
       const p = st.players[ap.playerId];
       expect(p).toBeTruthy();
-      expect(ap.dualRegistered).toBe(true);
       expect(p.contract.clubId).toBe(ap.clubId);
     }
 
-    // The migration persisted: re-loading is a no-op (already v2).
+    // The migration persisted: re-loading is a no-op (already current).
     const ok2 = await useGameStore.getState().load(id);
     expect(ok2).toBe(true);
-    expect(useGameStore.getState().meta!.schemaVersion).toBe(6);
+    expect(useGameStore.getState().meta!.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
   });
 });

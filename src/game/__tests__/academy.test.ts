@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { loadDataset } from '../../data/datasetLoader';
 import { ENGLAND_DATASET } from '../../data/england';
 import { academyRatingFor, philosophyFor, eliteAcademyFor, ageGroupForAge, facilityLevelFor } from '../../engine/academy';
-import { migrateSave } from '../../db/migrations';
+import { migrateSave, CURRENT_SCHEMA_VERSION } from '../../db/migrations';
 import type { SaveMeta } from '../../db/db';
 import type { Club } from '../../types/club';
 
@@ -77,7 +77,7 @@ describe('Save migration v1 → v2', () => {
   it('backfills academies for every club and bumps the schema version', () => {
     const res = migrateSave(v1Meta(clubs[0].id), world.clubs, world.players);
     expect(res.changed).toBe(true);
-    expect(res.meta.schemaVersion).toBe(6);
+    expect(res.meta.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(Object.keys(res.meta.academies ?? {}).length).toBe(clubs.length);
     for (const a of Object.values(res.meta.academies ?? {})) {
       expect(a.rating).toBeGreaterThanOrEqual(1);
@@ -87,13 +87,14 @@ describe('Save migration v1 → v2', () => {
 
   it('enrolls under-19 players as dual-registered prospects without removing them', () => {
     const res = migrateSave(v1Meta(clubs[0].id), world.clubs, world.players);
-    const aps = Object.values(res.meta.academyPlayers ?? {});
+    // The v7 top-up also seeds fresh (non-dual-registered) prospects; the v2
+    // enrollment is the dual-registered subset — those must stay first-teamers.
+    const aps = Object.values(res.meta.academyPlayers ?? {}).filter((ap) => ap.dualRegistered);
     expect(aps.length).toBeGreaterThan(0);
     for (const ap of aps) {
       const p = res.players[ap.playerId];
       expect(p).toBeTruthy();
       expect(2024 - p.born.year).toBeLessThanOrEqual(18);
-      expect(ap.dualRegistered).toBe(true);
       expect(p.academyClubId).toBe(ap.clubId);
       expect(p.contract.clubId).toBe(ap.clubId); // still registered to the first team
     }

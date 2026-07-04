@@ -15,8 +15,12 @@ import { translateLegacyPosition } from '../types/attributes';
 import { FORMATION_NAMES } from '../engine/lineup';
 import { buildAcademy, ageGroupForAge, ageOfPlayer, computeReadiness, academyPotential, PRODIGY_POTENTIAL, facilityLevelFor } from '../engine/academy';
 import { makeScoutProfile, staffWage, generateStaffPool } from '../engine/staff';
+import {
+  generateAcademyIntake, enrollProspect, ACADEMY_MIN_SQUAD, ACADEMY_MAX_SQUAD,
+} from '../game/academy';
+import { injectSpecialPlayers } from '../game/specialPlayers';
 
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 export interface MigrationResult {
   meta: SaveMeta;
@@ -116,9 +120,63 @@ export function migrateSave(
   if (fromVersion < 4) migrateToV4(meta, clubs);
   if (fromVersion < 5) migrateToV5(clubs, players);
   if (fromVersion < 6) migrateToV6(meta, clubs);
+  if (fromVersion < 7) migrateToV7(meta, clubs, players);
 
   meta.schemaVersion = CURRENT_SCHEMA_VERSION;
   return { meta, clubs, players, changed: true };
+}
+
+/**
+ * v6 → v7: fill out youth academies. Existing saves seeded only a handful of
+ * prospects; top every academy up to a healthy full squad (min 18, max 25),
+ * spread across the U16/U18/U21 bands, and inject any hand-authored cameo
+ * players. Deterministic per save. Idempotent — bounded by the squad minimum.
+ */
+function migrateToV7(meta: SaveMeta, clubs: Record<string, Club>, players: Record<string, Player>): void {
+  const year = currentYear(meta);
+  const ratingCap = meta.ratingCap ?? 90;
+  const academies = meta.academies ?? {};
+  const academyPlayers = meta.academyPlayers ?? {};
+
+  // Count the prospects each academy currently holds (only live players).
+  const countByClub: Record<string, number> = {};
+  for (const ap of Object.values(academyPlayers)) {
+    if (players[ap.playerId]) countByClub[ap.clubId] = (countByClub[ap.clubId] ?? 0) + 1;
+  }
+
+  // First-team averages (for readiness) from the senior squads.
+  const sums: Record<string, { s: number; n: number }> = {};
+  for (const p of Object.values(players)) {
+    const cid = p.contract.clubId;
+    if (!cid || ageOfPlayer(p, year) <= 18) continue;
+    (sums[cid] ??= { s: 0, n: 0 });
+    sums[cid].s += p.overall; sums[cid].n += 1;
+  }
+
+  const rng = new Rng((meta.seed ^ 0x18a0f077) >>> 0);
+  for (const club of Object.values(clubs)) {
+    const academy = academies[club.id];
+    if (!academy) continue;
+    const firstTeamAvg = sums[club.id] ? sums[club.id].s / sums[club.id].n : Math.max(50, club.reputation * 0.85);
+    for (let salt = 0; (countByClub[club.id] ?? 0) < ACADEMY_MIN_SQUAD && salt < 40; salt++) {
+      const have = countByClub[club.id] ?? 0;
+      const take = Math.min(ACADEMY_MAX_SQUAD - have, ACADEMY_MIN_SQUAD - have, 4);
+      if (take <= 0) break;
+      const intake = generateAcademyIntake(club, academy, year - (salt % 3) * 2, rng, ratingCap, take, `m7_${salt}_`);
+      for (const youth of intake) {
+        academyPlayers[youth.id] = enrollProspect(youth, club, year, firstTeamAvg, rng, { prodigy: youth.__prodigy });
+        delete youth.__prodigy;
+        players[youth.id] = youth;
+        countByClub[club.id] = have + 1;
+      }
+    }
+  }
+
+  meta.academies = academies;
+  meta.academyPlayers = academyPlayers;
+
+  // Cameo players (idempotent — skipped if already present).
+  injectSpecialPlayers(clubs, players, academyPlayers, year, ratingCap, meta.seed);
 }
 
 /**

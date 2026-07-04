@@ -5,7 +5,8 @@ import { getActiveDataset, isRealDataset } from '../../data/activeDataset';
 import type { Dataset } from '../../types/dataset';
 import { CrestBadge } from '../components/Rating';
 
-const START_YEAR = 2024;
+const START_YEAR = 2025;
+const SEASON_LABEL = `${START_YEAR}/${((START_YEAR + 1) % 100).toString().padStart(2, '0')}`;
 
 export function NewGame() {
   const navigate = useNavigate();
@@ -114,7 +115,7 @@ export function NewGame() {
           />
         </label>
         <div className="text-xs text-slate-500">
-          Dataset: <strong>{dataset.name}</strong> · Start year {START_YEAR}
+          Dataset: <strong>{dataset.name}</strong> · Season {SEASON_LABEL}
           {isRealDataset(dataset) && <span className="ml-2 text-emerald-400">✓ real players</span>}
         </div>
       </div>

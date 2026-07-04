@@ -14,6 +14,7 @@ import { generateStaffFor } from '../engine/staff';
 import { facilityLevelFor } from '../engine/academy';
 import { setObjective } from './board';
 import { installNewGameAcademies } from './academy';
+import { injectSpecialPlayers } from './specialPlayers';
 import { initialManagerReputation } from './careers';
 import { installContinental } from './continental/install';
 import { LEAGUE_STRIDE } from './continental/competition';
@@ -71,6 +72,12 @@ export function createNewGame(config: NewGameConfig): WorldSnapshot {
     world.clubs, world.players, config.startYear, world.ratingCap, seed,
   );
   for (const youth of academyInstall.newPlayers) world.players[youth.id] = youth;
+
+  // Hand-authored cameo players who join a specific club's academy.
+  injectSpecialPlayers(
+    world.clubs, world.players, academyInstall.academyPlayers,
+    config.startYear, world.ratingCap, seed,
+  );
 
   // Generate the opening season's fixtures for every competition. League rounds
   // are strided so continental midweek fixtures interleave on the odd days.
