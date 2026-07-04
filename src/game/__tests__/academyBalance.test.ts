@@ -43,13 +43,23 @@ describe('Academy balance + determinism (Phase 8)', () => {
   const small = makeClub('Small', 45, 400_000);
 
   it('elite academies demonstrably out-produce small ones in quality over a decade', () => {
-    const e = runAcademy(elite, 123, 12);
-    const s = runAcademy(small, 123, 12);
-    // Elite academies churn out far more first-team-quality talent…
-    expect(e.qualityGraduates).toBeGreaterThan(s.qualityGraduates);
-    // …their graduates are better on average, and they carry a higher star rating.
-    expect(e.avgPeak).toBeGreaterThan(s.avgPeak);
-    expect(e.rating).toBeGreaterThan(s.rating);
+    // Every academy now carries a full squad (18+), so any single season's raw
+    // graduate count is noisy — a small club can get a lucky high-roller. The
+    // robust signals are graduate quality (avg peak, star rating) per seed and
+    // the aggregate volume of first-team-quality talent across many seeds.
+    let eQuality = 0;
+    let sQuality = 0;
+    for (const seed of [123, 777, 61, 9, 42]) {
+      const e = runAcademy(elite, seed, 12);
+      const s = runAcademy(small, seed, 12);
+      eQuality += e.qualityGraduates;
+      sQuality += s.qualityGraduates;
+      // Elite graduates are better on average and the academy holds a higher rating.
+      expect(e.avgPeak).toBeGreaterThan(s.avgPeak);
+      expect(e.rating).toBeGreaterThan(s.rating);
+    }
+    // Across seeds, elite churns out far more first-team-quality talent.
+    expect(eQuality).toBeGreaterThan(sQuality);
   });
 
   it('a fixed seed reproduces the same multi-season output exactly', () => {

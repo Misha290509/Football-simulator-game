@@ -100,12 +100,14 @@ function simulateSide(
     opp.profile.defense * 0.7 + opp.profile.gk * 0.3 + 0.25 * opp.profile.midfield;
 
   const diff = attackQuality - defQuality;
+  // A wider spread on squad strength so the better side dominates the chances —
+  // upsets still happen, but weak teams shouldn't win leagues.
   const shotsLambda =
-    Math.max(2.5, Math.min(20, 9.6 + diff * 0.18)) * side.profile.shotVolumeMod;
+    Math.max(2.0, Math.min(22, 9.6 + diff * 0.30)) * side.profile.shotVolumeMod;
   const numShots = poisson(rng, shotsLambda);
 
   const sideKey: 'home' | 'away' = side.isHome ? 'home' : 'away';
-  const finishMod = 1 + (attackQuality - 65) / 260;
+  const finishMod = 1 + (attackQuality - 65) / 170;
   const gkMod = 1 + (opp.profile.gk - 65) / 150;
 
   for (let i = 0; i < numShots; i++) {

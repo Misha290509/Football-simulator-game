@@ -32,7 +32,7 @@ function AttrGroup({
             <span className="text-slate-400 capitalize">
               {k.replace(/([A-Z])/g, ' $1').trim()}
             </span>
-            <span className={`font-mono ${ratingColor(v)}`}>{v}</span>
+            <span className={`font-mono ${ratingColor(v)}`}>{Math.round(v)}</span>
           </div>
         ))}
       </div>

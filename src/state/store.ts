@@ -120,6 +120,9 @@ interface GameState {
   loaded: boolean;
   saving: boolean;
   simming: boolean;
+  /** Set by the user to interrupt a long "to season end" sim between chunks. */
+  stopRequested: boolean;
+  stopSim: () => void;
   meta: SaveMeta | null;
   /** Interactive live match in progress (transient). */
   liveMatch: LiveMatchState | null;
@@ -161,6 +164,7 @@ interface GameState {
   promoteToFirstTeam: (playerId: string, role?: SquadRole) => Promise<BidResult>;
   dualRegister: (playerId: string, on: boolean) => Promise<BidResult>;
   demoteToAcademy: (playerId: string) => Promise<BidResult>;
+  releaseAcademyPlayer: (playerId: string) => Promise<BidResult>;
   // Youth scouting (§ Academy)
   dispatchScout: (scoutId: string, positions: string[], country: string) => Promise<BidResult>;
   recallScout: (scoutId: string) => Promise<void>;
@@ -251,6 +255,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   loaded: false,
   saving: false,
   simming: false,
+  stopRequested: false,
+  stopSim: () => set({ stopRequested: true }),
   meta: null,
   liveMatch: null,
   clubs: {},
@@ -797,6 +803,29 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { ok: true, message: `${player.name.last} sent down to the academy.` };
   },
 
+  // Release any academy prospect for free: drops the overlay and removes the
+  // player from the world entirely (no compensation, no squad slot involved).
+  releaseAcademyPlayer: async (playerId) => {
+    const { meta, clubs, players } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    const ap = meta.academyPlayers?.[playerId];
+    const player = players[playerId];
+    if (!ap || !player || ap.clubId !== meta.managerClubId) return { ok: false, message: 'Not an academy player of yours.' };
+    const academyPlayers = { ...meta.academyPlayers };
+    delete academyPlayers[playerId];
+    const club = clubs[meta.managerClubId];
+    // In case the youngster was dual-registered, clear him from the squad too.
+    const newClub = { ...club, playerIds: club.playerIds.filter((id) => id !== playerId) };
+    const newPlayers = { ...players };
+    delete newPlayers[playerId];
+    const newMeta: SaveMeta = { ...meta, academyPlayers };
+    set({ players: newPlayers, clubs: { ...clubs, [club.id]: newClub }, meta: newMeta });
+    await deletePlayers([playerId]);
+    await putClubs(meta.id, [newClub]);
+    await persistMeta(newMeta);
+    return { ok: true, message: `${player.name.first} ${player.name.last} released from the academy.` };
+  },
+
   // --- Youth scouting (§ Academy) ---------------------------------------
 
   dispatchScout: async (scoutId, positions, country) => {
@@ -1247,15 +1276,19 @@ export const useGameStore = create<GameState>((set, get) => ({
   // --- Play orchestration ------------------------------------------------
 
   advanceMatchday: async () => {
+    if (get().meta?.sacked) return; // dismissed — take a new job first
     const day = get().meta?.currentDay ?? 0;
     await simTo(get, set, day + 1);
   },
 
   simToNextManagerMatch: async () => {
+    if (get().meta?.sacked) return; // dismissed — take a new job first
+    set({ stopRequested: false });
     // Advance one continental boundary at a time toward the manager's next
     // fixture, recomputing it each step so a freshly-drawn European tie for the
     // manager becomes the new stopping point.
     for (let guard = 0; guard < 2000; guard++) {
+      if (get().stopRequested) { set({ stopRequested: false }); return; }
       while (await progressKnockouts(get, set)) { /* draw ready rounds */ }
       const meta = get().meta;
       if (!meta) return;
@@ -1270,17 +1303,21 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   simToSeasonEnd: async () => {
+    if (get().meta?.sacked) return; // dismissed — must take a new job first
     // A single boundary-aware loop: play to the next continental boundary (or the
     // furthest fixture), draw any round that unlocks, and repeat until the season
-    // is genuinely complete (drawing rounds keeps extending the calendar).
+    // is genuinely complete. Steps in modest chunks so the user can Stop.
+    set({ stopRequested: false });
     for (let guard = 0; guard < 3000; guard++) {
+      if (get().stopRequested) { set({ stopRequested: false }); return; }
       while (await progressKnockouts(get, set)) { /* draw ready rounds */ }
       if (get().seasonComplete()) return;
       const meta = get().meta;
       if (!meta) return;
       const target = get().lastMatchday() + 1;
       const stopAt = nextKnockoutStop(get);
-      const stop = Math.min(target, stopAt);
+      // Cap each chunk (~4 match-weeks) so a Stop takes effect quickly.
+      const stop = Math.min(target, stopAt, meta.currentDay + 12);
       if (stop > meta.currentDay) await playDays(get, set, meta.currentDay, stop);
       else if (!(await progressKnockouts(get, set))) return; // nothing left to advance
     }

@@ -41,6 +41,7 @@ export function Academy() {
   const hireYouthCoach = useGameStore((s) => s.hireYouthCoach);
   const setMentor = useGameStore((s) => s.setMentor);
   const offerProfessionalTerms = useGameStore((s) => s.offerProfessionalTerms);
+  const releaseAcademyPlayer = useGameStore((s) => s.releaseAcademyPlayer);
   const season = useGameStore((s) => s.currentSeason());
   const year = season?.year ?? meta.startYear;
   const [tab, setTab] = useState<'overview' | 'squads' | 'scouting' | 'competitions' | 'history'>('overview');
@@ -243,6 +244,15 @@ export function Academy() {
                                     onClick={async () => flash((await offerProfessionalTerms(player.id)).message)}
                                   >Pro terms</button>
                                 )}
+                                <button
+                                  className="btn-ghost text-xs py-0.5 px-2 text-rose-300"
+                                  title="Release this prospect for free"
+                                  onClick={async () => {
+                                    if (window.confirm(`Release ${player.name.first} ${player.name.last} from the academy? This cannot be undone.`)) {
+                                      flash((await releaseAcademyPlayer(player.id)).message);
+                                    }
+                                  }}
+                                >Release</button>
                               </div>
                             </td>
                             <td onClick={(e) => e.stopPropagation()}>

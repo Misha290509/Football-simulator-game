@@ -133,8 +133,8 @@ function Comparison({ a, b, va, vb, clubs, year }: {
           <table className="w-full text-sm">
             <tbody>
               {group.map((key) => {
-                const av = (a.attributes[gk] as Record<string, number>)[key];
-                const bv = (b.attributes[gk] as Record<string, number>)[key];
+                const av = Math.round((a.attributes[gk] as Record<string, number>)[key]);
+                const bv = Math.round((b.attributes[gk] as Record<string, number>)[key]);
                 return <NumRow key={key} label={prettify(key)} a={av} b={bv} />;
               })}
             </tbody>

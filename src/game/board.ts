@@ -45,10 +45,12 @@ export interface ObjectiveOutcome {
 
 export function evaluateObjective(finalPosition: number, board: BoardState): ObjectiveOutcome {
   const diff = board.targetPosition - finalPosition; // positive = better than asked
-  if (diff >= 4) return { confidenceDelta: +28, verdict: 'exceeded', summary: 'Expectations smashed.' };
-  if (diff >= 0) return { confidenceDelta: +12, verdict: 'met', summary: 'Objective met.' };
-  if (diff >= -3) return { confidenceDelta: -18, verdict: 'missed', summary: 'Fell short of the target.' };
-  return { confidenceDelta: -40, verdict: 'failed', summary: 'Well below expectations.' };
+  if (diff >= 4) return { confidenceDelta: +30, verdict: 'exceeded', summary: 'Expectations smashed.' };
+  if (diff >= 0) return { confidenceDelta: +16, verdict: 'met', summary: 'Objective met.' };
+  if (diff >= -3) return { confidenceDelta: -10, verdict: 'missed', summary: 'Fell short of the target.' };
+  return { confidenceDelta: -22, verdict: 'failed', summary: 'Well below expectations.' };
 }
 
-export const SACK_THRESHOLD = 15;
+// The board is patient: confidence starts at 60, penalties are gentle and the
+// bar is low, so it takes several poor seasons in a row to be dismissed.
+export const SACK_THRESHOLD = 8;

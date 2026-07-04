@@ -414,10 +414,24 @@ export async function resolveAndRollover(
       if (baseRaw.academyClubId) academyCarry[baseRaw.id] = baseRaw;
       continue; // skip free agents/retirees
     }
-    // Expired loans return to the parent club.
+    // Expired loans return to the parent club. If the player's parent contract
+    // lapsed while he was away, extend it a year so he actually rejoins the
+    // squad instead of being released as a free agent the same rollover.
     let base = baseRaw;
     if (base.loan && base.loan.untilYear <= nextYear) {
-      base = { ...base, contract: { ...base.contract, clubId: base.loan.parentClubId }, loan: null, squadRole: 'ROTATION' };
+      const parentId = base.loan.parentClubId;
+      const expiresYear = base.contract.expiresYear <= nextYear ? nextYear + 1 : base.contract.expiresYear;
+      base = {
+        ...base,
+        contract: { ...base.contract, clubId: parentId, expiresYear },
+        loan: null,
+        squadRole: 'ROTATION',
+      };
+      if (parentId === meta.managerClubId) {
+        news.push(mkNews(meta.currentDay, 'TRANSFER',
+          `${base.name.first} ${base.name.last} returns from loan`,
+          `The ${base.position} is back at ${clubs[parentId]?.shortName ?? 'the club'} after his loan spell ended.`));
+      }
     }
     const cId = base.contract.clubId as string;
     // Attach this season's stats to history before aging.

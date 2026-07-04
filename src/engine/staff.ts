@@ -38,7 +38,7 @@ function staffId(): string {
   return `staff_${(_staffSeq++).toString(36)}_${Date.now().toString(36)}`;
 }
 
-const ROLE_BASELINE: StaffRole[] = ['ASSISTANT', 'COACH', 'COACH', 'SCOUT', 'SCOUT', 'PHYSIO'];
+const ROLE_BASELINE: StaffRole[] = ['ASSISTANT', 'COACH', 'COACH', 'SCOUT', 'SCOUT', 'SCOUT', 'SCOUT', 'YOUTH_COACH', 'PHYSIO'];
 
 /** Generate a club's starting staff, quality anchored to reputation. */
 export function generateStaffFor(clubId: string, reputation: number, rng: Rng): Staff[] {

@@ -19,6 +19,11 @@ import { developPlayer } from '../engine/development';
 import { generatePlayer } from '../engine/generator';
 import { marketWage } from '../engine/finances';
 
+// Every academy carries a healthy squad so the youth pipeline never runs dry:
+// at least 18 prospects, capped at 25 to keep the roster manageable.
+export const ACADEMY_MIN_SQUAD = 18;
+export const ACADEMY_MAX_SQUAD = 25;
+
 export interface AcademyInstallResult {
   academies: Record<string, Academy>;
   academyPlayers: Record<string, AcademyPlayer>;
@@ -94,9 +99,22 @@ export function installNewGameAcademies(
 
     // Seed a starting roster sized by academy rating (parallel roster). A spread
     // of intake years gives ages across U16/U18/U21.
+    const before = newPlayers.length;
     const batches = academy.rating >= 4 ? 3 : academy.rating >= 2 ? 2 : 1;
     for (let b = 0; b < batches; b++) {
       const intake = generateAcademyIntake(club, academy, year - b * 2, rng, ratingCap);
+      for (const youth of intake) {
+        academyPlayers[youth.id] = enrollProspect(youth, club, year, firstTeamAvg, rng, { prodigy: youth.__prodigy });
+        delete youth.__prodigy;
+        newPlayers.push(youth);
+      }
+    }
+    // Top the academy up to a full squad (18–25), spread across the age bands.
+    for (let salt = 0; newPlayers.length - before < ACADEMY_MIN_SQUAD && salt < 40; salt++) {
+      const room = ACADEMY_MAX_SQUAD - (newPlayers.length - before);
+      const take = Math.min(room, ACADEMY_MIN_SQUAD - (newPlayers.length - before), 4);
+      if (take <= 0) break;
+      const intake = generateAcademyIntake(club, academy, year - (salt % 3) * 2, rng, ratingCap, take, `t${salt}_`);
       for (const youth of intake) {
         academyPlayers[youth.id] = enrollProspect(youth, club, year, firstTeamAvg, rng, { prodigy: youth.__prodigy });
         delete youth.__prodigy;
@@ -124,11 +142,15 @@ export function generateAcademyIntake(
   year: number,
   rng: Rng,
   ratingCap: number,
+  /** Force an exact intake size (used to top a roster up to a healthy minimum). */
+  forceCount?: number,
+  /** Salt to keep ids unique when generating extra top-up batches. */
+  idSalt = '',
 ): YouthGen[] {
   const stars = academy.rating;
-  // Quantity scales with the star rating.
-  let count = stars >= 5 ? rng.int(3, 5) : stars >= 4 ? rng.int(2, 4)
-    : stars >= 3 ? rng.int(1, 3) : stars >= 2 ? rng.int(1, 2) : rng.chance(0.6) ? 1 : 0;
+  // Quantity scales with the star rating (unless a top-up size is forced).
+  let count = forceCount ?? (stars >= 5 ? rng.int(3, 5) : stars >= 4 ? rng.int(2, 4)
+    : stars >= 3 ? rng.int(1, 3) : stars >= 2 ? rng.int(1, 2) : rng.chance(0.6) ? 1 : 0);
   if (count === 0) return [];
 
   const out: YouthGen[] = [];
@@ -151,7 +173,7 @@ export function generateAcademyIntake(
     applyPhilosophy(youth, academy.philosophyId, ratingCap);
     // Deterministic id (the generator's default id uses Date.now): same seed →
     // same world, which the acceptance criteria require.
-    youth.id = `pa_${club.id}_${year}_${i}`;
+    youth.id = `pa_${club.id}_${year}_${idSalt}${i}`;
     youth.potential = Math.max(youth.overall + 3, potential);
     youth.developmentLog = [{ year, ovr: youth.overall, pot: youth.potential }];
     youth.contract.wage = Math.round((youth.overall * 60) / 5) * 5;
@@ -391,6 +413,44 @@ export function processAcademyRollover(
       if (hypeProdigy) {
         news.push(acNews(day, `WONDERKID: ${hypeProdigy.name.first} ${hypeProdigy.name.last} joins the academy`,
           `The press are calling the ${hypeProdigy.position} a generational talent. Handle with care — hype is not a guarantee.`));
+      }
+    }
+  }
+
+  // Keep every academy stocked: after graduations/releases/losses, top clubs
+  // that have fallen below the healthy minimum back up (spread across the age
+  // bands so it isn't all U16s). Never exceeds the cap.
+  const countByClub: Record<string, number> = {};
+  for (const s of stayers) countByClub[s.clubId] = (countByClub[s.clubId] ?? 0) + 1;
+  for (const club of Object.values(clubs)) {
+    const academy = academies[club.id];
+    if (!academy) continue;
+    const firstTeamAvg = firstTeamAvgByClub[club.id] ?? Math.max(50, club.reputation * 0.85);
+    for (let salt = 0; (countByClub[club.id] ?? 0) < ACADEMY_MIN_SQUAD && salt < 40; salt++) {
+      const have = countByClub[club.id] ?? 0;
+      const take = Math.min(ACADEMY_MAX_SQUAD - have, ACADEMY_MIN_SQUAD - have, 4);
+      if (take <= 0) break;
+      const intake = generateAcademyIntake(club, academy, nextYear, rng, ratingCap, take, `r${nextYear}_${salt}_`);
+      for (const youth of intake as (Player & { __prodigy?: boolean })[]) {
+        youth.contract.clubId = null;
+        youth.academyClubId = club.id;
+        delete (youth as { __prodigy?: boolean }).__prodigy;
+        const age = nextYear - youth.born.year;
+        const prof = clamp(youth.hidden?.professionalism ?? 50);
+        const amb = clamp(youth.hidden?.ambition ?? 50);
+        const det = clamp(youth.hidden?.consistency ?? 50);
+        stayers.push({
+          player: youth,
+          clubId: club.id,
+          ap: {
+            playerId: youth.id, clubId: club.id, ageGroup: ageGroupForAge(age), playedUp: false, heldBack: false,
+            ageGroupPerformance: 50, readiness: computeReadiness(youth.overall, youth.potential, 50, firstTeamAvg),
+            contractStatus: age >= 17 ? 'scholar' : 'schoolboy', dualRegistered: false,
+            personality: { determination: det, professionalism: prof, ambition: amb },
+            flameOutRisk: clamp(0.5 - (prof + det + amb) / 600, 0, 0.5) as number, isProdigy: false,
+          },
+        });
+        countByClub[club.id] = have + 1;
       }
     }
   }
