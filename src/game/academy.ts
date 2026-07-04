@@ -29,6 +29,18 @@ export const ACADEMY_MAX_PER_GROUP = 25;
 const BAND_YEAR_OFFSET: Record<AgeGroup, number> = { U16: 0, U18: 2, U21: 4 };
 const AGE_BANDS: AgeGroup[] = ['U16', 'U18', 'U21'];
 
+/**
+ * Ceiling for a squad-filler prospect: modest, mostly 50s–low-60s, occasionally
+ * a useful low-70s player, hard-capped at 80. These pad a band out to a full
+ * squad without diluting how rare genuine talent is — no gems here.
+ */
+function depthPotential(rng: Rng): number {
+  let p = 54 + rng.normal(0, 6);
+  if (rng.chance(0.12)) p += rng.int(3, 8); // a solid squad player
+  if (rng.chance(0.02)) p += rng.int(5, 12); // rare late bloomer, still capped
+  return clamp(Math.round(p), 45, 80) as number;
+}
+
 export interface AcademyInstallResult {
   academies: Record<string, Academy>;
   academyPlayers: Record<string, AcademyPlayer>;
@@ -139,6 +151,9 @@ export function generateAcademyIntake(
   forceCount?: number,
   /** Salt to keep ids unique when generating extra top-up batches. */
   idSalt = '',
+  /** Depth mode: squad-filler prospects with modest ceilings (no gems). Used
+   *  when padding a roster out to a full band, so genuine talent stays rare. */
+  depth = false,
 ): YouthGen[] {
   const stars = academy.rating;
   // Quantity scales with the star rating (unless a top-up size is forced).
@@ -148,8 +163,10 @@ export function generateAcademyIntake(
 
   const out: YouthGen[] = [];
   for (let i = 0; i < count; i++) {
-    // Realistic ceiling: usually mid-70s to low-80s; 85+ rare, 90+ generational.
-    const potential = academyPotential(stars, academy.reputation, rng);
+    // Genuine prospects get the realistic skewed ceiling (85+ rare, 90+
+    // generational); depth-fillers get a capped, low ceiling so the crop of
+    // real talent stays scarce even in a full 18-per-band squad.
+    const potential = depth ? depthPotential(rng) : academyPotential(stars, academy.reputation, rng);
     // Current ability is far below — they're projects. Generate within the world
     // cap, then set the (uncapped) potential for display.
     const target = clamp(Math.min(potential, ratingCap) - rng.int(16, 30), 28, Math.min(potential, ratingCap) - 5);
@@ -211,8 +228,10 @@ export function fillAcademyBands(
       const take = Math.min(ACADEMY_MAX_PER_GROUP - have[band], ACADEMY_MIN_PER_GROUP - have[band], 5);
       if (take <= 0) break;
       // A 15–16-year-old generated at (year − offset) lands in the target band.
+      // These are depth-fillers (modest ceilings) — genuine gems come only from
+      // the organic star-rated intake, keeping high potential rare.
       const intake = generateAcademyIntake(
-        club, academy, year - BAND_YEAR_OFFSET[band], rng, ratingCap, take, `${idSalt}${band}_${salt}_`,
+        club, academy, year - BAND_YEAR_OFFSET[band], rng, ratingCap, take, `${idSalt}${band}_${salt}_`, true,
       );
       for (const youth of intake) {
         academyPlayers[youth.id] = enrollProspect(youth, club, year, firstTeamAvg, rng, { prodigy: youth.__prodigy });
