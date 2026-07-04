@@ -13,7 +13,7 @@ import { generateSchedule } from '../engine/schedule';
 import { generateStaffFor } from '../engine/staff';
 import { facilityLevelFor } from '../engine/academy';
 import { setObjective } from './board';
-import { installNewGameAcademies } from './academy';
+import { installNewGameAcademies, fillAcademyBands } from './academy';
 import { injectSpecialPlayers } from './specialPlayers';
 import { initialManagerReputation } from './careers';
 import { installContinental } from './continental/install';
@@ -78,6 +78,16 @@ export function createNewGame(config: NewGameConfig): WorldSnapshot {
     world.clubs, world.players, academyInstall.academyPlayers,
     config.startYear, world.ratingCap, seed,
   );
+
+  // Fill the manager's own academy to a full team in each age band (U16/U18/U21).
+  const mgrClub = world.clubs[config.managerClubId];
+  const mgrAcademy = mgrClub ? academyInstall.academies[config.managerClubId] : undefined;
+  if (mgrClub && mgrAcademy) {
+    fillAcademyBands(
+      mgrClub, mgrAcademy, world.players, academyInstall.academyPlayers,
+      config.startYear, world.ratingCap, new Rng((seed ^ 0xba0df11) >>> 0),
+    );
+  }
 
   // Generate the opening season's fixtures for every competition. League rounds
   // are strided so continental midweek fixtures interleave on the odd days.

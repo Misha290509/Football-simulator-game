@@ -8,7 +8,7 @@
 import type { Club } from '../types/club';
 import type { Player } from '../types/player';
 import type { NewsItem } from '../types/league';
-import type { Academy, AcademyPlayer } from '../types/academy';
+import type { Academy, AcademyPlayer, AgeGroup } from '../types/academy';
 import { Rng, clamp } from '../engine/rng';
 import {
   buildAcademy, ageGroupForAge, ageOfPlayer, computeReadiness,
@@ -19,10 +19,15 @@ import { developPlayer } from '../engine/development';
 import { generatePlayer } from '../engine/generator';
 import { marketWage } from '../engine/finances';
 
-// Every academy carries a healthy squad so the youth pipeline never runs dry:
-// at least 18 prospects, capped at 25 to keep the roster manageable.
-export const ACADEMY_MIN_SQUAD = 18;
-export const ACADEMY_MAX_SQUAD = 25;
+// A fully-stocked academy carries a complete team in every age band: at least
+// 18 prospects each in U16, U18 and U21, and never more than 25 per band. This
+// is applied to the manager's own club (the only academy shown in full detail).
+export const ACADEMY_MIN_PER_GROUP = 18;
+export const ACADEMY_MAX_PER_GROUP = 25;
+
+/** Intake-year offset that lands a generated 15–16-year-old in each age band. */
+const BAND_YEAR_OFFSET: Record<AgeGroup, number> = { U16: 0, U18: 2, U21: 4 };
+const AGE_BANDS: AgeGroup[] = ['U16', 'U18', 'U21'];
 
 export interface AcademyInstallResult {
   academies: Record<string, Academy>;
@@ -98,23 +103,11 @@ export function installNewGameAcademies(
       : Math.max(50, club.reputation * 0.85);
 
     // Seed a starting roster sized by academy rating (parallel roster). A spread
-    // of intake years gives ages across U16/U18/U21.
-    const before = newPlayers.length;
+    // of intake years gives ages across U16/U18/U21. (The manager's own club is
+    // filled to full age-band squads separately — see fillAcademyBands.)
     const batches = academy.rating >= 4 ? 3 : academy.rating >= 2 ? 2 : 1;
     for (let b = 0; b < batches; b++) {
       const intake = generateAcademyIntake(club, academy, year - b * 2, rng, ratingCap);
-      for (const youth of intake) {
-        academyPlayers[youth.id] = enrollProspect(youth, club, year, firstTeamAvg, rng, { prodigy: youth.__prodigy });
-        delete youth.__prodigy;
-        newPlayers.push(youth);
-      }
-    }
-    // Top the academy up to a full squad (18–25), spread across the age bands.
-    for (let salt = 0; newPlayers.length - before < ACADEMY_MIN_SQUAD && salt < 40; salt++) {
-      const room = ACADEMY_MAX_SQUAD - (newPlayers.length - before);
-      const take = Math.min(room, ACADEMY_MIN_SQUAD - (newPlayers.length - before), 4);
-      if (take <= 0) break;
-      const intake = generateAcademyIntake(club, academy, year - (salt % 3) * 2, rng, ratingCap, take, `t${salt}_`);
       for (const youth of intake) {
         academyPlayers[youth.id] = enrollProspect(youth, club, year, firstTeamAvg, rng, { prodigy: youth.__prodigy });
         delete youth.__prodigy;
@@ -182,6 +175,55 @@ export function generateAcademyIntake(
     out.push(youth);
   }
   return out;
+}
+
+/**
+ * Top one club's academy up so each age band (U16/U18/U21) holds at least
+ * ACADEMY_MIN_PER_GROUP prospects, never exceeding ACADEMY_MAX_PER_GROUP.
+ * Mutates `players` and `academyPlayers`; returns the ids of players added.
+ * Deterministic given `rng`. Used for the manager's own club, where the full
+ * academy is on display.
+ */
+export function fillAcademyBands(
+  club: Club,
+  academy: Academy,
+  players: Record<string, Player>,
+  academyPlayers: Record<string, AcademyPlayer>,
+  year: number,
+  ratingCap: number,
+  rng: Rng,
+  idSalt = '',
+): string[] {
+  const squad = Object.values(players).filter((p) => p.contract.clubId === club.id);
+  const firstTeamAvg = squad.length
+    ? squad.reduce((s, p) => s + p.overall, 0) / squad.length
+    : Math.max(50, club.reputation * 0.85);
+
+  // Count the prospects each band currently holds for this club.
+  const have: Record<AgeGroup, number> = { U16: 0, U18: 0, U21: 0 };
+  for (const ap of Object.values(academyPlayers)) {
+    if (ap.clubId === club.id && players[ap.playerId]) have[ap.ageGroup]++;
+  }
+
+  const added: string[] = [];
+  for (const band of AGE_BANDS) {
+    for (let salt = 0; have[band] < ACADEMY_MIN_PER_GROUP && salt < 40; salt++) {
+      const take = Math.min(ACADEMY_MAX_PER_GROUP - have[band], ACADEMY_MIN_PER_GROUP - have[band], 5);
+      if (take <= 0) break;
+      // A 15–16-year-old generated at (year − offset) lands in the target band.
+      const intake = generateAcademyIntake(
+        club, academy, year - BAND_YEAR_OFFSET[band], rng, ratingCap, take, `${idSalt}${band}_${salt}_`,
+      );
+      for (const youth of intake) {
+        academyPlayers[youth.id] = enrollProspect(youth, club, year, firstTeamAvg, rng, { prodigy: youth.__prodigy });
+        delete youth.__prodigy;
+        players[youth.id] = youth;
+        have[band]++;
+        added.push(youth.id);
+      }
+    }
+  }
+  return added;
 }
 
 /**
@@ -417,44 +459,6 @@ export function processAcademyRollover(
     }
   }
 
-  // Keep every academy stocked: after graduations/releases/losses, top clubs
-  // that have fallen below the healthy minimum back up (spread across the age
-  // bands so it isn't all U16s). Never exceeds the cap.
-  const countByClub: Record<string, number> = {};
-  for (const s of stayers) countByClub[s.clubId] = (countByClub[s.clubId] ?? 0) + 1;
-  for (const club of Object.values(clubs)) {
-    const academy = academies[club.id];
-    if (!academy) continue;
-    const firstTeamAvg = firstTeamAvgByClub[club.id] ?? Math.max(50, club.reputation * 0.85);
-    for (let salt = 0; (countByClub[club.id] ?? 0) < ACADEMY_MIN_SQUAD && salt < 40; salt++) {
-      const have = countByClub[club.id] ?? 0;
-      const take = Math.min(ACADEMY_MAX_SQUAD - have, ACADEMY_MIN_SQUAD - have, 4);
-      if (take <= 0) break;
-      const intake = generateAcademyIntake(club, academy, nextYear, rng, ratingCap, take, `r${nextYear}_${salt}_`);
-      for (const youth of intake as (Player & { __prodigy?: boolean })[]) {
-        youth.contract.clubId = null;
-        youth.academyClubId = club.id;
-        delete (youth as { __prodigy?: boolean }).__prodigy;
-        const age = nextYear - youth.born.year;
-        const prof = clamp(youth.hidden?.professionalism ?? 50);
-        const amb = clamp(youth.hidden?.ambition ?? 50);
-        const det = clamp(youth.hidden?.consistency ?? 50);
-        stayers.push({
-          player: youth,
-          clubId: club.id,
-          ap: {
-            playerId: youth.id, clubId: club.id, ageGroup: ageGroupForAge(age), playedUp: false, heldBack: false,
-            ageGroupPerformance: 50, readiness: computeReadiness(youth.overall, youth.potential, 50, firstTeamAvg),
-            contractStatus: age >= 17 ? 'scholar' : 'schoolboy', dualRegistered: false,
-            personality: { determination: det, professionalism: prof, ambition: amb },
-            flameOutRisk: clamp(0.5 - (prof + det + amb) / 600, 0, 0.5) as number, isProdigy: false,
-          },
-        });
-        countByClub[club.id] = have + 1;
-      }
-    }
-  }
-
   // Pass 2: recompute age group, performance (vs cohort) and readiness.
   const cohorts = new Map<string, number[]>();
   for (const s of stayers) {
@@ -495,6 +499,17 @@ export function processAcademyRollover(
 
     carriedPlayers[s.player.id] = s.player;
     overlay[s.player.id] = updatedAp;
+  }
+
+  // Keep the manager's own academy fully stocked: after graduations, poaching
+  // and losses, refill each age band (U16/U18/U21) back to at least
+  // ACADEMY_MIN_PER_GROUP (capped at the max). Other clubs keep lighter rosters.
+  {
+    const mgrClub = clubs[managerClubId];
+    const mgrAcademy = mgrClub ? academies[managerClubId] : undefined;
+    if (mgrClub && mgrAcademy) {
+      fillAcademyBands(mgrClub, mgrAcademy, carriedPlayers, overlay, nextYear, ratingCap, rng, `r${nextYear}_`);
+    }
   }
 
   // Reputation flywheel (Idea 5): academies that produce first-team graduates

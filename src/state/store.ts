@@ -25,7 +25,7 @@ import {
 } from '../db/db';
 import { migrateSave } from '../db/migrations';
 import { ageGroupForAge, computeReadiness, ageOfPlayer, ACADEMY_UPGRADE_COST } from '../engine/academy';
-import { recordGraduateInAcademy } from '../game/academy';
+import { recordGraduateInAcademy, fillAcademyBands } from '../game/academy';
 import { resolveScoutAssignments, SCOUT_TRIP_DAYS, MAX_SCOUT_POSITIONS } from '../engine/youthScouting';
 import {
   createLiveMatch, kickOff, tickLiveMatch, startSecondHalf, applyManagerChange, applyTeamTalk, liveOutcome, tickShootout,
@@ -1710,11 +1710,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       title: `New job: ${newClub.name}`,
       body: `You take charge of ${newClub.name}. A fresh challenge awaits.`, read: false,
     };
+    // Fill the new club's academy to a full team in each age band (U16/U18/U21),
+    // so the manager inherits a complete youth setup at their new club.
+    const players = { ...get().players };
+    const academyPlayers = { ...(meta.academyPlayers ?? {}) };
+    const academy = meta.academies?.[newClub.id];
+    let addedIds: string[] = [];
+    if (academy) {
+      addedIds = fillAcademyBands(
+        newClub, academy, players, academyPlayers,
+        year, meta.ratingCap ?? 90, new Rng((meta.seed ^ hashSeed(`job_${newClub.id}`)) >>> 0),
+      );
+    }
     const newMeta: SaveMeta = {
       ...meta, managerClubId: newClub.id, managerStints: stints, board, sacked: false,
-      jobOffers: [], news: [...meta.news, news],
+      jobOffers: [], news: [...meta.news, news], academyPlayers,
     };
-    set({ meta: newMeta });
+    set({ meta: newMeta, players });
+    if (addedIds.length) await putPlayers(meta.id, addedIds.map((id) => players[id]));
     await persistMeta(newMeta);
     return { ok: true, message: `You are the new manager of ${newClub.name}.` };
   },

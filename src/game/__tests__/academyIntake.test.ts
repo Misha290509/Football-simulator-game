@@ -88,10 +88,15 @@ describe('Academy rollover cycle', () => {
     const intakeIds = Object.keys(res.carriedPlayers);
     expect(intakeIds.length).toBeGreaterThan(0);
     for (const id of intakeIds) {
-      expect(res.overlay[id].ageGroup).toBe('U16');
       expect(res.carriedPlayers[id].academyClubId).toBe(club.id);
       expect(res.carriedPlayers[id].contract.clubId).toBeNull();
     }
+    // The manager's club is filled to a full team in every age band (min 18).
+    const byBand = { U16: 0, U18: 0, U21: 0 } as Record<string, number>;
+    for (const id of intakeIds) byBand[res.overlay[id].ageGroup]++;
+    expect(byBand.U16).toBeGreaterThanOrEqual(18);
+    expect(byBand.U18).toBeGreaterThanOrEqual(18);
+    expect(byBand.U21).toBeGreaterThanOrEqual(18);
   });
 
   it('is deterministic across the rollover', () => {
