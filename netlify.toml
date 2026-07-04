@@ -1,0 +1,15 @@
+# Netlify deploy configuration (§11-M7). Builds the Vite app and publishes the
+# compiled output in dist/. The SPA redirect makes client-side routes (e.g.
+# /squad, /standings) resolve to index.html instead of 404ing on refresh.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

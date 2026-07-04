@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="36" fill="#0b0f14"/>
+  <circle cx="96" cy="96" r="58" fill="none" stroke="#3ba776" stroke-width="10"/>
+  <path d="M96 58 l24 17 -9 28 h-30 l-9 -28 z" fill="#3ba776"/>
+  <text x="96" y="170" font-family="sans-serif" font-size="28" fill="#4cc78f" text-anchor="middle" font-weight="bold">GM</text>
+</svg>
