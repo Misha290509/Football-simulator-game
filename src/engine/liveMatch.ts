@@ -243,7 +243,9 @@ function applyDueAiSubs(state: LiveMatchState, s: LiveSideState): void {
     if (!s.onPitch.includes(sub.offId)) continue;
     const benchEntry = s.bench.find((b) => b.playerId === sub.onId);
     if (!benchEntry) continue;
-    s.onPitch = s.onPitch.filter((id) => id !== sub.offId).concat(sub.onId);
+    // Replace in place so the on-pitch list stays in formation-slot order (the
+    // pitch view maps slot-by-slot, and the incoming player takes the same slot).
+    s.onPitch = s.onPitch.map((id) => (id === sub.offId ? sub.onId : id));
     s.scorers = s.scorers.filter((x) => x.playerId !== sub.offId).concat({ playerId: sub.onId, weight: benchEntry.scorerWeight });
     s.creators = s.creators.filter((x) => x.playerId !== sub.offId).concat({ playerId: sub.onId, weight: benchEntry.creatorWeight });
     s.bench = s.bench.filter((b) => b.playerId !== sub.onId);

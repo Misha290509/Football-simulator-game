@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { useMemo } from 'react';
-import { FORMATIONS, formationRows, assignXI } from '../../engine/lineup';
+import { FORMATIONS, formationRows } from '../../engine/lineup';
 import type { LiveMatchState, LiveSideState } from '../../engine/liveMatch';
 import type { Player } from '../../types/player';
 import type { Club } from '../../types/club';
@@ -43,23 +43,27 @@ function sideDots(
   mirror: boolean,
 ): SideDot[] {
   const formation = side.formation ?? '4-3-3';
+  const slots = FORMATIONS[formation] ?? FORMATIONS['4-3-3'];
   const coords = slotCoords(formation);
-  const onPitch = side.onPitch.map((id) => players[id]).filter((p): p is Player => !!p);
-  const xi = assignXI(onPitch, formation, { autoMode: true });
   const dots: SideDot[] = [];
-  xi.forEach((slot, i) => {
-    if (!slot || !coords[i]) return;
+  // The on-pitch list is kept in formation-slot order by the live engine, so we
+  // map it position-for-position — a substitution swaps the player in that exact
+  // slot rather than reshuffling the whole XI.
+  side.onPitch.forEach((pid, i) => {
+    const p = players[pid];
     const c = coords[i];
-    const st = stats[slot.player.id];
+    if (!p || !c) return;
+    const slot = slots[i] ?? 'CM';
+    const st = stats[pid];
     dots.push({
-      id: slot.player.id,
+      id: pid,
       x: mirror ? W - c.x : c.x,
       y: mirror ? H - c.y : c.y,
-      label: slot.player.name.last.length > 11 ? `${slot.player.name.last.slice(0, 10)}…` : slot.player.name.last,
+      label: p.name.last.length > 11 ? `${p.name.last.slice(0, 10)}…` : p.name.last,
       rating: st?.rating,
       yellow: st?.yellow,
       red: st?.red,
-      gk: slot.slot === 'GK',
+      gk: slot === 'GK',
     });
   });
   return dots;

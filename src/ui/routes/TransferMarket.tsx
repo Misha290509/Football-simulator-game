@@ -24,6 +24,7 @@ export function TransferMarket() {
   const loanIn = useGameStore((s) => s.loanIn);
   const acceptOffer = useGameStore((s) => s.acceptOffer);
   const rejectOffer = useGameStore((s) => s.rejectOffer);
+  const counterOffer = useGameStore((s) => s.counterOffer);
   const transferWindow = useGameStore((s) => s.transferWindow);
   const season = useGameStore((s) => s.currentSeason());
   const year = season?.year ?? meta.startYear;
@@ -41,6 +42,8 @@ export function TransferMarket() {
   const [foot, setFoot] = useState('ALL');
   const [avail, setAvail] = useState('ALL'); // ALL | LISTED | EXPIRING | FREE
   const [knownOnly, setKnownOnly] = useState(false);
+  const [counterFor, setCounterFor] = useState<string | null>(null);
+  const [counterVal, setCounterVal] = useState(0);
 
   const resetFilters = () => {
     setSearch(''); setPosFilter('ALL'); setLeagueFilter('ALL'); setMinAge(15); setMaxAge(40);
@@ -174,16 +177,29 @@ export function TransferMarket() {
               const p = players[o.playerId]; const from = clubs[o.fromClubId];
               if (!p) return null;
               return (
-                <div key={o.id} className="flex items-center justify-between bg-surface-700 rounded px-3 py-2 text-sm">
-                  <div>
-                    <span className="font-medium">{fullName(p)}</span><span className="text-slate-500"> — {from?.shortName} </span>
-                    {o.type === 'BUY' ? <span className="text-emerald-400">bid {formatMoney(o.fee)}</span>
-                      : <span className="text-sky-400">loan until {o.loanUntilYear}</span>}
+                <div key={o.id} className="bg-surface-700 rounded px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <span className="font-medium">{fullName(p)}</span><span className="text-slate-500"> — {from?.shortName} </span>
+                      {o.type === 'BUY' ? <span className="text-emerald-400">bid {formatMoney(o.fee)}</span>
+                        : <span className="text-sky-400">loan until {o.loanUntilYear}</span>}
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="btn-primary text-xs py-1" onClick={() => acceptOffer(o.id)}>Accept</button>
+                      {o.type === 'BUY' && (
+                        <button className="btn-ghost text-xs py-1" onClick={() => { setCounterFor(counterFor === o.id ? null : o.id); setCounterVal(Math.round(o.fee * 1.15)); }}>Negotiate</button>
+                      )}
+                      <button className="btn-ghost text-xs py-1" onClick={() => rejectOffer(o.id)}>Reject</button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button className="btn-primary text-xs py-1" onClick={() => acceptOffer(o.id)}>Accept</button>
-                    <button className="btn-ghost text-xs py-1" onClick={() => rejectOffer(o.id)}>Reject</button>
-                  </div>
+                  {counterFor === o.id && (
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-surface-600">
+                      <span className="text-xs text-slate-400">Ask for</span>
+                      <input type="number" step={100000} className="bg-surface-800 border border-surface-600 rounded px-2 py-1 w-32 text-sm" value={counterVal} onChange={(e) => setCounterVal(Math.max(0, Number(e.target.value)))} />
+                      <button className="btn-primary text-xs py-1" onClick={async () => { const r = await counterOffer(o.id, counterVal); flash(r); setCounterFor(null); }}>Send counter</button>
+                      <span className="text-xs text-slate-500">they bid {formatMoney(o.fee)}</span>
+                    </div>
+                  )}
                 </div>
               );
             })}

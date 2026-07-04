@@ -152,6 +152,8 @@ interface GameState {
   triggerLoanOption: (playerId: string) => Promise<BidResult>;
   acceptOffer: (offerId: string) => Promise<void>;
   rejectOffer: (offerId: string) => Promise<void>;
+  /** Counter an incoming transfer bid with a higher fee; the AI accepts, improves or walks. */
+  counterOffer: (offerId: string, counterFee: number) => Promise<string>;
 
   // Academy (§ Academy)
   setPlayUp: (playerId: string, on: boolean) => Promise<void>;
@@ -644,6 +646,43 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newMeta: SaveMeta = { ...meta, pendingOffers: (meta.pendingOffers ?? []).filter((o) => o.id !== offerId) };
     set({ meta: newMeta });
     await persistMeta(newMeta);
+  },
+
+  counterOffer: async (offerId, counterFee) => {
+    const { meta, clubs, players } = get();
+    if (!meta) return 'No active save.';
+    const offers = meta.pendingOffers ?? [];
+    const offer = offers.find((o) => o.id === offerId);
+    if (!offer) return 'That offer has expired.';
+    if (offer.type !== 'BUY') return 'Only transfer bids can be negotiated, not loans.';
+    if (counterFee <= offer.fee) return 'Ask for more than they already offered.';
+    const player = players[offer.playerId];
+    const buyer = clubs[offer.fromClubId];
+    const name = buyer?.shortName ?? 'The club';
+    // How high they'll actually go: driven by their bid and the player's value.
+    const ceiling = Math.round(Math.max(offer.fee * 1.4, (player?.value ?? offer.fee) * 1.2));
+
+    if (counterFee <= ceiling) {
+      // They meet your valuation — complete the sale at the countered fee.
+      const updated = offers.map((o) => (o.id === offerId ? { ...o, fee: counterFee } : o));
+      set({ meta: { ...meta, pendingOffers: updated } });
+      await get().acceptOffer(offerId);
+      return `${name} agree to your ${counterFee.toLocaleString()} valuation — deal done.`;
+    }
+    if (counterFee > ceiling * 1.3) {
+      // Too greedy — they walk away entirely.
+      const news = { id: `news_counterwalk_${offerId}`, day: meta.currentDay, category: 'TRANSFER' as const, title: `${name} end their interest`, body: `${name} balk at your ${counterFee.toLocaleString()} demand and pull out of the deal.`, read: false };
+      const newMeta: SaveMeta = { ...meta, pendingOffers: offers.filter((o) => o.id !== offerId), news: [...meta.news, news] };
+      set({ meta: newMeta });
+      await persistMeta(newMeta);
+      return `${name} refuse and walk away from the deal.`;
+    }
+    // In between — they won't match you, but improve their bid to their ceiling.
+    const updated = offers.map((o) => (o.id === offerId ? { ...o, fee: ceiling } : o));
+    const newMeta: SaveMeta = { ...meta, pendingOffers: updated };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return `${name} won't go that high, but improve their bid to ${ceiling.toLocaleString()}.`;
   },
 
   // --- Academy (§ Academy) ----------------------------------------------

@@ -121,8 +121,10 @@ export function processMatchday(
       const lost = !won && !draw;
       const age = toYear - p.born.year;
 
-      p.fitness = clamp(p.fitness - rng.int(4, 9) - Math.max(0, age - 30));
-      p.fatigueLoad = clamp(p.fatigueLoad + rng.int(6, 11));
+      // Goalkeepers barely cover ground, so a match costs them far less.
+      const isGk = p.position === 'GK';
+      p.fitness = clamp(p.fitness - (isGk ? rng.int(1, 3) : rng.int(4, 9)) - Math.max(0, age - 30));
+      p.fatigueLoad = clamp(p.fatigueLoad + (isGk ? rng.int(2, 4) : rng.int(6, 11)));
       // Travel fatigue: continental away trips (long midweek journeys) take an
       // extra toll, rewarding squad rotation in Europe.
       const continental = m.competitionId.startsWith('UEFA_') || m.competitionId.startsWith('FIFA_');
