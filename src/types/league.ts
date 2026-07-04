@@ -347,6 +347,12 @@ export interface SaveGame {
   staffRefreshes?: { windowKey: string; used: number };
   /** Deals agreed while the window was shut — paid now, the player joins on open. */
   pendingArrivals?: PendingArrival[];
+  /** Clubs that broke off transfer talks after an insulting bid, keyed by
+   *  playerId → the window (or shut-window day) the snub happened in. They
+   *  refuse to negotiate again until the window moves on. Cleared at rollover. */
+  brokenTalks?: Record<string, { key: string | null; day: number }>;
+  /** Youth-coach candidates who walked out of wage talks (id → day walked). */
+  walkedStaff?: Record<string, number>;
   /** Chosen challenge/difficulty for this save. */
   difficulty?: Difficulty;
 

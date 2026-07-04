@@ -25,6 +25,7 @@ export function TransferMarket() {
   const acceptOffer = useGameStore((s) => s.acceptOffer);
   const rejectOffer = useGameStore((s) => s.rejectOffer);
   const counterOffer = useGameStore((s) => s.counterOffer);
+  const breakOffTalks = useGameStore((s) => s.breakOffTalks);
   const transferWindow = useGameStore((s) => s.transferWindow);
   const season = useGameStore((s) => s.currentSeason());
   const year = season?.year ?? meta.startYear;
@@ -52,13 +53,20 @@ export function TransferMarket() {
   const [target, setTarget] = useState<Player | null>(null);
   const [scoutFor, setScoutFor] = useState<Player | null>(null);
   const [loanTarget, setLoanTarget] = useState<Player | null>(null);
-  // Clubs that have broken off talks after an insulting bid (resets on revisit).
-  const [talksEnded, setTalksEnded] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 4500); };
 
   const offers = meta.pendingOffers ?? [];
   const eliteIds = useMemo(() => eliteKnownIds(players, 50), [players]);
+
+  // Clubs that broke off talks after an insulting bid refuse to negotiate again
+  // until the window moves on (or ~a month passes when it was already shut).
+  const winNow = transferWindow();
+  const talksOff = (pid: string): boolean => {
+    const b = meta.brokenTalks?.[pid];
+    if (!b) return false;
+    return b.key !== null ? winNow.key === b.key : meta.currentDay - b.day < 25;
+  };
   const reports = meta.scoutReports ?? {};
   const assignments = meta.playerScoutAssignments ?? [];
   const assignedPlayerIds = useMemo(() => new Set(assignments.map((a) => a.playerId)), [assignments]);
@@ -132,8 +140,8 @@ export function TransferMarket() {
               : v.level !== 'OWN' && v.level !== 'ELITE' && (
                 <button className="btn-ghost py-0.5 px-2 text-xs" onClick={() => setScoutFor(p)}>{v.level === 'REPORT' ? 'Re-scout' : 'Scout'}</button>
               )}
-            {talksEnded.has(p.id)
-              ? <span className="text-xs text-rose-400/80 px-2" title="They broke off talks after your last bid — try again another time">talks off</span>
+            {talksOff(p.id)
+              ? <span className="text-xs text-rose-400/80 px-2" title="They broke off talks after your last bid — wait for the next window">talks off</span>
               : <button className="btn-primary py-0.5 px-2 text-xs" onClick={() => setTarget(p)}>Bid</button>}
             {p.contract.clubId && (v.ovr ?? 0) < 74 && (
               <button className="btn-ghost py-0.5 px-2 text-xs" onClick={() => setLoanTarget(p)}>Loan</button>
@@ -144,7 +152,7 @@ export function TransferMarket() {
     },
   ];
 
-  const win = transferWindow();
+  const win = winNow;
   const pending = meta.pendingArrivals ?? [];
 
   return (
@@ -285,7 +293,7 @@ export function TransferMarket() {
       {target && (
         <SigningModal player={target} buyer={managerClub} seller={target.contract.clubId ? clubs[target.contract.clubId] ?? null : null}
           view={viewOf(target)} year={year} onClose={() => setTarget(null)} flash={flash}
-          onBreakOff={() => { setTalksEnded((s) => new Set(s).add(target.id)); setTarget(null); }} />
+          onBreakOff={() => { void breakOffTalks(target.id); setTarget(null); }} />
       )}
 
       {loanTarget && (

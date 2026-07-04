@@ -157,6 +157,8 @@ interface GameState {
   rejectOffer: (offerId: string) => Promise<void>;
   /** Counter an incoming transfer bid with a higher fee; the AI accepts, improves or walks. */
   counterOffer: (offerId: string, counterFee: number) => Promise<string>;
+  /** Record that a club broke off talks over an insulting bid (persists in the save). */
+  breakOffTalks: (playerId: string) => Promise<void>;
 
   // Academy (§ Academy)
   setPlayUp: (playerId: string, on: boolean) => Promise<void>;
@@ -691,6 +693,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     return `${name} won't go that high, but improve their bid to ${ceiling.toLocaleString()}.`;
   },
 
+  breakOffTalks: async (playerId) => {
+    const { meta } = get();
+    if (!meta) return;
+    const key = get().transferWindow().key;
+    const newMeta: SaveMeta = {
+      ...meta,
+      brokenTalks: { ...(meta.brokenTalks ?? {}), [playerId]: { key, day: meta.currentDay } },
+    };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
   // --- Academy (§ Academy) ----------------------------------------------
 
   setPlayUp: async (playerId, on) => {
@@ -820,7 +834,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     delete newPlayers[playerId];
     const newMeta: SaveMeta = { ...meta, academyPlayers };
     set({ players: newPlayers, clubs: { ...clubs, [club.id]: newClub }, meta: newMeta });
-    await deletePlayers([playerId]);
+    await deletePlayers(meta.id, [playerId]);
     await putClubs(meta.id, [newClub]);
     await persistMeta(newMeta);
     return { ok: true, message: `${player.name.first} ${player.name.last} released from the academy.` };
@@ -923,6 +937,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const wants = staff.wage;
     const wage = offeredWage ?? wants;
     if (wage < wants * 0.55) {
+      // He's gone for good — remember it in the save so he stays gone.
+      const walkMeta: SaveMeta = { ...meta, walkedStaff: { ...(meta.walkedStaff ?? {}), [staff.id]: meta.currentDay } };
+      set({ meta: walkMeta });
+      await persistMeta(walkMeta);
       return { ok: false, message: `${staff.name.last} is insulted by ${wage.toLocaleString()}/wk and walks away.` };
     }
     if (wage < wants) {
@@ -1367,6 +1385,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         history: [...(meta.history ?? []), ...(result.historyEntry ? [result.historyEntry] : [])],
         hallOfFame: [...(meta.hallOfFame ?? []), ...(result.hallOfFameAdds ?? [])],
         pendingOffers: [],
+        brokenTalks: {},
+        walkedStaff: {},
         academies: result.academies ?? meta.academies,
         academyPlayers: result.academyPlayers ?? meta.academyPlayers,
         youthCompetitions: result.youthCompetitions ?? meta.youthCompetitions,
@@ -1413,7 +1433,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       await putMatches(meta.id, result.extraMatches ?? []);
       await putMatches(meta.id, result.newMatches);
       await putPlayers(meta.id, Object.values(result.players));
-      await deletePlayers(result.retiredIds);
+      await deletePlayers(meta.id, result.retiredIds);
       await putClubs(meta.id, Object.values(result.clubs));
       await persistMeta(newMeta);
 

@@ -51,9 +51,10 @@ export function Academy() {
   const [scoutId, setScoutId] = useState('');
   const [positions, setPositions] = useState<string[]>([]);
   const [country, setCountry] = useState('ES');
-  // Youth-coach wage negotiation: per-candidate offer + those who've walked off.
+  // Youth-coach wage negotiation: per-candidate offers. Walk-aways persist in
+  // the save (meta.walkedStaff), so an insulted coach stays gone.
   const [coachOffer, setCoachOffer] = useState<Record<string, number>>({});
-  const [walkedCoaches, setWalkedCoaches] = useState<Set<string>>(new Set());
+  const walkedStaff = meta.walkedStaff ?? {};
 
   const academy = meta.academies?.[club.id];
   const academyPlayers = meta.academyPlayers ?? {};
@@ -169,7 +170,7 @@ export function Academy() {
                   Available to hire <span className="normal-case text-slate-600">— offer any wage; lowball at your own risk</span>
                 </h3>
                 <div className="grid sm:grid-cols-2 gap-2">
-                  {coachMarket.filter((c) => !academy.youthCoachIds.includes(c.id) && !walkedCoaches.has(c.id)).map((c) => (
+                  {coachMarket.filter((c) => !academy.youthCoachIds.includes(c.id) && walkedStaff[c.id] === undefined).map((c) => (
                     <div key={c.id} className="flex items-center justify-between gap-2 bg-surface-700 rounded px-3 py-2 text-sm">
                       <div className="min-w-0">
                         <div className="font-medium truncate">{c.name.first} {c.name.last}</div>
@@ -184,13 +185,7 @@ export function Academy() {
                         />
                         <button
                           className="btn-primary text-xs"
-                          onClick={async () => {
-                            const r = await hireYouthCoach(c, coachOffer[c.id] ?? c.wage);
-                            flash(r.message);
-                            if (!r.ok && r.message.includes('walks away')) {
-                              setWalkedCoaches((s) => new Set(s).add(c.id));
-                            }
-                          }}
+                          onClick={async () => flash((await hireYouthCoach(c, coachOffer[c.id] ?? c.wage)).message)}
                         >Offer</button>
                       </div>
                     </div>

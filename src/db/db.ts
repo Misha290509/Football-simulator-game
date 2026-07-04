@@ -18,9 +18,9 @@ export interface SaveMeta extends SaveGame {}
 
 export class GMDatabase extends Dexie {
   saves!: Table<SaveMeta, string>;
-  clubs!: Table<ClubRow, string>;
-  players!: Table<PlayerRow, string>;
-  matches!: Table<MatchRow, string>;
+  clubsV2!: Table<ClubRow, [string, string]>;
+  playersV2!: Table<PlayerRow, [string, string]>;
+  matchesV2!: Table<MatchRow, [string, string]>;
 
   constructor() {
     super('football-gm');
@@ -30,6 +30,26 @@ export class GMDatabase extends Dexie {
       players: 'id, saveId, [saveId+position]',
       matches: 'id, saveId, [saveId+seasonId], [saveId+seasonId+day]',
     });
+    // v3/v4: rows used to be keyed by bare `id`, but most ids are deterministic
+    // and identical across saves (real players, academy youth, fixtures, clubs),
+    // so a second save silently overwrote the first save's rows. Re-key every
+    // world table on [saveId+id] so saves can never collide, copying existing
+    // data across (Dexie cannot change a primary key in place).
+    this.version(3).stores({
+      clubsV2: '[saveId+id], saveId, countryId',
+      playersV2: '[saveId+id], saveId',
+      matchesV2: '[saveId+id], saveId, [saveId+seasonId], [saveId+seasonId+day]',
+    }).upgrade(async (tx) => {
+      const [clubRows, playerRows, matchRows] = await Promise.all([
+        tx.table('clubs').toArray(), tx.table('players').toArray(), tx.table('matches').toArray(),
+      ]);
+      await Promise.all([
+        tx.table('clubsV2').bulkPut(clubRows),
+        tx.table('playersV2').bulkPut(playerRows),
+        tx.table('matchesV2').bulkPut(matchRows),
+      ]);
+    });
+    this.version(4).stores({ clubs: null, players: null, matches: null });
   }
 }
 
@@ -50,11 +70,11 @@ function currentSeasonId(meta: SaveMeta): string | null {
 /** Persist a brand-new save and its full world atomically. */
 export async function createSave(snapshot: WorldSnapshot): Promise<void> {
   const { meta, clubs, players, matches } = snapshot;
-  await db.transaction('rw', db.saves, db.clubs, db.players, db.matches, async () => {
+  await db.transaction('rw', db.saves, db.clubsV2, db.playersV2, db.matchesV2, async () => {
     await db.saves.put(meta);
-    await db.clubs.bulkPut(Object.values(clubs).map((c) => ({ ...c, saveId: meta.id })));
-    await db.players.bulkPut(Object.values(players).map((p) => ({ ...p, saveId: meta.id })));
-    await db.matches.bulkPut(Object.values(matches).map((m) => ({ ...m, saveId: meta.id })));
+    await db.clubsV2.bulkPut(Object.values(clubs).map((c) => ({ ...c, saveId: meta.id })));
+    await db.playersV2.bulkPut(Object.values(players).map((p) => ({ ...p, saveId: meta.id })));
+    await db.matchesV2.bulkPut(Object.values(matches).map((m) => ({ ...m, saveId: meta.id })));
   });
 }
 
@@ -68,10 +88,10 @@ export async function loadSave(saveId: string): Promise<WorldSnapshot | null> {
   if (!meta) return null;
   const seasonId = currentSeasonId(meta);
   const [clubRows, playerRows, matchRows] = await Promise.all([
-    db.clubs.where('saveId').equals(saveId).toArray(),
-    db.players.where('saveId').equals(saveId).toArray(),
+    db.clubsV2.where('saveId').equals(saveId).toArray(),
+    db.playersV2.where('saveId').equals(saveId).toArray(),
     seasonId
-      ? db.matches.where('[saveId+seasonId]').equals([saveId, seasonId]).toArray()
+      ? db.matchesV2.where('[saveId+seasonId]').equals([saveId, seasonId]).toArray()
       : Promise.resolve([] as MatchRow[]),
   ]);
   const clubs: Record<string, Club> = {};
@@ -84,11 +104,11 @@ export async function loadSave(saveId: string): Promise<WorldSnapshot | null> {
 }
 
 export async function deleteSave(saveId: string): Promise<void> {
-  await db.transaction('rw', db.saves, db.clubs, db.players, db.matches, async () => {
+  await db.transaction('rw', db.saves, db.clubsV2, db.playersV2, db.matchesV2, async () => {
     await db.saves.delete(saveId);
-    await db.clubs.where('saveId').equals(saveId).delete();
-    await db.players.where('saveId').equals(saveId).delete();
-    await db.matches.where('saveId').equals(saveId).delete();
+    await db.clubsV2.where('saveId').equals(saveId).delete();
+    await db.playersV2.where('saveId').equals(saveId).delete();
+    await db.matchesV2.where('saveId').equals(saveId).delete();
   });
 }
 
@@ -100,22 +120,22 @@ export async function persistMeta(meta: SaveMeta): Promise<void> {
 
 export async function putMatches(saveId: string, matches: Match[]): Promise<void> {
   if (matches.length === 0) return;
-  await db.matches.bulkPut(matches.map((m) => ({ ...m, saveId })));
+  await db.matchesV2.bulkPut(matches.map((m) => ({ ...m, saveId })));
 }
 
 export async function putClubs(saveId: string, clubs: Club[]): Promise<void> {
   if (clubs.length === 0) return;
-  await db.clubs.bulkPut(clubs.map((c) => ({ ...c, saveId })));
+  await db.clubsV2.bulkPut(clubs.map((c) => ({ ...c, saveId })));
 }
 
 export async function putPlayers(saveId: string, players: Player[]): Promise<void> {
   if (players.length === 0) return;
-  await db.players.bulkPut(players.map((p) => ({ ...p, saveId })));
+  await db.playersV2.bulkPut(players.map((p) => ({ ...p, saveId })));
 }
 
-export async function deletePlayers(ids: string[]): Promise<void> {
+export async function deletePlayers(saveId: string, ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  await db.players.bulkDelete(ids);
+  await db.playersV2.bulkDelete(ids.map((id) => [saveId, id] as [string, string]));
 }
 
 /** Full upsert (used by import / God Mode). */
@@ -139,9 +159,9 @@ export async function exportSave(saveId: string): Promise<string | null> {
   const meta = await db.saves.get(saveId);
   if (!meta) return null;
   const [clubRows, playerRows, matchRows] = await Promise.all([
-    db.clubs.where('saveId').equals(saveId).toArray(),
-    db.players.where('saveId').equals(saveId).toArray(),
-    db.matches.where('saveId').equals(saveId).toArray(),
+    db.clubsV2.where('saveId').equals(saveId).toArray(),
+    db.playersV2.where('saveId').equals(saveId).toArray(),
+    db.matchesV2.where('saveId').equals(saveId).toArray(),
   ]);
   const strip = <T extends { saveId: string }>(rows: T[]) =>
     rows.map(({ saveId: _s, ...rest }) => rest);
@@ -168,11 +188,11 @@ export async function importSave(json: string): Promise<string> {
     : data.meta;
   const saveId = meta.id;
 
-  await db.transaction('rw', db.saves, db.clubs, db.players, db.matches, async () => {
+  await db.transaction('rw', db.saves, db.clubsV2, db.playersV2, db.matchesV2, async () => {
     await db.saves.put(meta);
-    await db.clubs.bulkPut(data.clubs.map((c) => ({ ...c, saveId })));
-    await db.players.bulkPut(data.players.map((p) => ({ ...p, saveId })));
-    await db.matches.bulkPut(data.matches.map((m) => ({ ...m, saveId })));
+    await db.clubsV2.bulkPut(data.clubs.map((c) => ({ ...c, saveId })));
+    await db.playersV2.bulkPut(data.players.map((p) => ({ ...p, saveId })));
+    await db.matchesV2.bulkPut(data.matches.map((m) => ({ ...m, saveId })));
   });
   return saveId;
 }

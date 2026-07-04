@@ -30,11 +30,11 @@ async function seedV1Save(): Promise<string> {
     .filter((p) => !p.academyClubId || p.contract.clubId) // drop parallel-roster academy players
     .map((p) => { const c = structuredClone(p) as Player; delete c.academyClubId; return c; });
 
-  await db.transaction('rw', db.saves, db.clubs, db.players, db.matches, async () => {
+  await db.transaction('rw', db.saves, db.clubsV2, db.playersV2, db.matchesV2, async () => {
     await db.saves.put(meta);
-    await db.clubs.bulkPut(Object.values(snap.clubs).map((c) => ({ ...c, saveId: meta.id })));
-    await db.players.bulkPut(players.map((p) => ({ ...p, saveId: meta.id })));
-    await db.matches.bulkPut(Object.values(snap.matches).map((m) => ({ ...m, saveId: meta.id })));
+    await db.clubsV2.bulkPut(Object.values(snap.clubs).map((c) => ({ ...c, saveId: meta.id })));
+    await db.playersV2.bulkPut(players.map((p) => ({ ...p, saveId: meta.id })));
+    await db.matchesV2.bulkPut(Object.values(snap.matches).map((m) => ({ ...m, saveId: meta.id })));
   });
   return meta.id;
 }
