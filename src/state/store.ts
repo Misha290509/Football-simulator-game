@@ -32,7 +32,7 @@ import {
   type LiveMatchState, type Side as LiveSide,
 } from '../engine/liveMatch';
 import { evaluateInteraction, egoOf, type TalkTone, type InteractKind } from '../engine/morale';
-import { switchClub } from '../game/careers';
+import { switchClub, fallbackJobOffers } from '../game/careers';
 import { setObjective } from '../game/board';
 import { evaluateBoardRequest, generatePressQuestion, evaluatePressAnswer, type BoardRequestKind } from '../game/boardroom';
 import { areRivals, derbyResultBonus } from '../game/rivalries';
@@ -181,6 +181,8 @@ interface GameState {
   // Manager career (§ Manager career)
   acceptJobOffer: (offerId: string) => Promise<BidResult>;
   declineJobOffer: (offerId: string) => Promise<void>;
+  /** Sacked managers must always have somewhere to go — top the offer list back up if it ran dry. */
+  ensureJobOffers: () => Promise<void>;
 
   // Boardroom & media (§ Boardroom)
   requestFromBoard: (kind: BoardRequestKind) => Promise<BidResult>;
@@ -1404,6 +1406,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         pendingOffers: [],
         brokenTalks: {},
         walkedStaff: {},
+        declinedJobClubIds: [],
         academies: result.academies ?? meta.academies,
         academyPlayers: result.academyPlayers ?? meta.academyPlayers,
         youthCompetitions: result.youthCompetitions ?? meta.youthCompetitions,
@@ -1779,7 +1782,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     const newMeta: SaveMeta = {
       ...meta, managerClubId: newClub.id, managerStints: stints, board, sacked: false,
-      jobOffers: [], news: [...meta.news, news], academyPlayers,
+      jobOffers: [], declinedJobClubIds: [], news: [...meta.news, news], academyPlayers,
     };
     set({ meta: newMeta, players });
     if (addedIds.length) await putPlayers(meta.id, addedIds.map((id) => players[id]));
@@ -1788,9 +1791,37 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   declineJobOffer: async (offerId) => {
-    const { meta } = get();
+    const { meta, clubs } = get();
     if (!meta) return;
-    const newMeta: SaveMeta = { ...meta, jobOffers: (meta.jobOffers ?? []).filter((o) => o.id !== offerId) };
+    let jobOffers = (meta.jobOffers ?? []).filter((o) => o.id !== offerId);
+    const turnedDown = (meta.jobOffers ?? []).find((o) => o.id === offerId)?.clubId;
+    const declinedIds = [...(meta.declinedJobClubIds ?? []), ...(turnedDown ? [turnedDown] : [])];
+    // A sacked manager can't play until he takes a job, so the offer list must
+    // never run dry: declining the last offer brings fresh (lower-band)
+    // approaches in, skipping every club he already turned down.
+    if (meta.sacked && jobOffers.length === 0) {
+      const declined = new Set(declinedIds);
+      const rng = new Rng((meta.seed ^ hashSeed(`jobs_${meta.currentDay}_${declined.size}`)) >>> 0);
+      jobOffers = fallbackJobOffers(
+        meta.managerReputation ?? 50, meta.managerClubId, clubs, meta.competitions, rng, meta.currentDay, declined,
+      );
+    }
+    const newMeta: SaveMeta = { ...meta, jobOffers, declinedJobClubIds: declinedIds };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  ensureJobOffers: async () => {
+    const { meta, clubs } = get();
+    if (!meta || !meta.sacked || (meta.jobOffers ?? []).length > 0) return;
+    // Heals saves that got stuck between jobs with an empty offer list.
+    const rng = new Rng((meta.seed ^ hashSeed(`jobs_heal_${meta.currentDay}`)) >>> 0);
+    const jobOffers = fallbackJobOffers(
+      meta.managerReputation ?? 50, meta.managerClubId, clubs, meta.competitions, rng, meta.currentDay,
+      new Set(meta.declinedJobClubIds ?? []),
+    );
+    if (jobOffers.length === 0) return; // nowhere to go (shouldn't happen)
+    const newMeta: SaveMeta = { ...meta, jobOffers };
     set({ meta: newMeta });
     await persistMeta(newMeta);
   },

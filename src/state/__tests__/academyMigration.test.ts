@@ -44,7 +44,9 @@ describe('Save migration integrity (Phase 8)', () => {
     useGameStore.setState({ loaded: false, meta: null, clubs: {}, players: {}, matches: {} });
   });
 
-  it('loads a pre-academy v1 save and migrates it cleanly', async () => {
+  // Generous timeout: this seeds a full world, persists it, migrates v1→current
+  // (academy backfill + per-band fill) and reloads — heavy but legitimate work.
+  it('loads a pre-academy v1 save and migrates it cleanly', { timeout: 30000 }, async () => {
     const id = await seedV1Save();
     const ok = await useGameStore.getState().load(id);
     expect(ok).toBe(true);

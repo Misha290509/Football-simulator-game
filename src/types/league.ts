@@ -353,6 +353,9 @@ export interface SaveGame {
   brokenTalks?: Record<string, { key: string | null; day: number }>;
   /** Youth-coach candidates who walked out of wage talks (id → day walked). */
   walkedStaff?: Record<string, number>;
+  /** Clubs whose job offers the manager turned down (so fresh approaches come
+   *  from elsewhere). Cleared when a job is taken or the season rolls over. */
+  declinedJobClubIds?: string[];
   /** Chosen challenge/difficulty for this save. */
   difficulty?: Difficulty;
 

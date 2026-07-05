@@ -111,6 +111,44 @@ export function generateJobOffers(
   });
 }
 
+/**
+ * Emergency approaches for a sacked manager whose offer list has run dry —
+ * declining every offer must never dead-end the career (play stays blocked
+ * until a new job is taken). Widens the search until employers appear: clubs
+ * at or below the manager's level first, then anyone. `exclude` skips clubs
+ * just declined so fresh names appear. Deterministic given the RNG.
+ */
+export function fallbackJobOffers(
+  managerReputation: number,
+  managerClubId: string,
+  clubs: Record<string, Club>,
+  competitions: Record<string, Competition>,
+  rng: Rng,
+  day: number,
+  exclude: Set<string> = new Set(),
+): JobOffer[] {
+  const leagueOf: Record<string, string> = {};
+  for (const comp of Object.values(competitions)) {
+    for (const id of comp.clubIds) leagueOf[id] ??= comp.name;
+  }
+  let candidates = Object.values(clubs).filter(
+    (c) => c.id !== managerClubId && !exclude.has(c.id) && c.reputation <= managerReputation + 2,
+  );
+  if (candidates.length === 0) {
+    candidates = Object.values(clubs).filter((c) => c.id !== managerClubId && !exclude.has(c.id));
+  }
+  candidates.sort((a, b) => b.reputation - a.reputation);
+  return candidates.slice(0, 3).map((c) => ({
+    id: `job_${day}_${_offerSeq++}`,
+    clubId: c.id,
+    clubName: c.name,
+    clubReputation: c.reputation,
+    leagueName: leagueOf[c.id] ?? '',
+    reason: `${c.shortName} ${REASONS_REBUILD[rng.int(0, REASONS_REBUILD.length - 1)]}.`,
+    day,
+  }));
+}
+
 /** Close the manager's current (open) stint and open a new one at `club`. */
 export function switchClub(
   stints: ManagerStint[],

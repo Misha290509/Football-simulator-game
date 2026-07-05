@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGameStore } from '../../state/store';
 import { BOARD_REQUEST_LABEL, type BoardRequestKind } from '../../game/boardroom';
 import { styleTags } from '../../game/aiManagers';
@@ -9,9 +9,14 @@ export function Manager() {
   const club = useGameStore((s) => s.managerClub());
   const acceptJobOffer = useGameStore((s) => s.acceptJobOffer);
   const declineJobOffer = useGameStore((s) => s.declineJobOffer);
+  const ensureJobOffers = useGameStore((s) => s.ensureJobOffers);
   const requestFromBoard = useGameStore((s) => s.requestFromBoard);
   const [toast, setToast] = useState<string | null>(null);
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 4000); };
+
+  // A dismissed manager must never face an empty offer list (play is blocked
+  // until he takes a job) — heal any save that got stuck that way.
+  useEffect(() => { void ensureJobOffers(); }, [ensureJobOffers, meta.sacked, meta.jobOffers?.length]);
 
   const rep = meta.managerReputation ?? 50;
   const stints = meta.managerStints ?? [];
