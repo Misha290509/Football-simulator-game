@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { useGameStore } from './state/store';
+import { useGameStore, lastSaveId } from './state/store';
 import { Layout } from './ui/Layout';
 import { MainMenu } from './ui/routes/MainMenu';
 
@@ -30,8 +30,31 @@ const Sandbox = lazy(() => import('./ui/routes/Sandbox').then((m) => ({ default:
 
 function Protected({ children }: { children: React.ReactNode }) {
   const loaded = useGameStore((s) => s.loaded);
+  const load = useGameStore((s) => s.load);
   const location = useLocation();
-  if (!loaded) return <Navigate to="/" replace state={{ from: location }} />;
+  // A hard refresh (or a bookmarked deep link) clears the in-memory store, but
+  // the career is still on disk — resume the last-played save instead of
+  // bouncing the player to the main menu.
+  const [resume, setResume] = useState<'trying' | 'failed'>(() =>
+    !loaded && lastSaveId() ? 'trying' : 'failed');
+
+  useEffect(() => {
+    if (loaded || resume !== 'trying') return;
+    const id = lastSaveId();
+    if (!id) { setResume('failed'); return; }
+    void load(id).then((ok) => { if (!ok) setResume('failed'); });
+  }, [loaded, resume, load]);
+
+  if (!loaded) {
+    if (resume === 'trying') {
+      return (
+        <div className="min-h-full flex items-center justify-center text-slate-400">
+          Resuming your career…
+        </div>
+      );
+    }
+    return <Navigate to="/" replace state={{ from: location }} />;
+  }
   return (
     <Layout>
       <Suspense fallback={<div className="p-6 text-slate-500">Loading…</div>}>{children}</Suspense>

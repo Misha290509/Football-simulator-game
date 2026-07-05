@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
+import { matchDate, formatShort } from '../../game/gameCalendar';
 
 /** Granular fast-forward controls (§3, §10). Auto-stops at the season end.
  *  Keyboard: "n" advances a matchday when not typing in a field. */
@@ -16,6 +17,7 @@ export function PlayMenu() {
   const complete = useGameStore((s) => s.seasonComplete());
   const nextMatch = useGameStore((s) => s.managerNextMatch());
   const seasonMatches = useGameStore((s) => s.currentSeasonMatches());
+  const season = useGameStore((s) => s.currentSeason());
   const stopSim = useGameStore((s) => s.stopSim);
   const sacked = useGameStore((s) => !!s.meta?.sacked);
 
@@ -26,6 +28,14 @@ export function PlayMenu() {
   );
   const totalMatches = mine.length;
   const playedMatches = mine.filter((m) => m.played).length;
+
+  // Pre-season: nothing has been played yet and the opener is still ahead —
+  // the controls advance days (transfers, training), not matchdays.
+  const preseason = !complete && playedMatches === 0 && !!nextMatch && meta.currentDay < nextMatch.day;
+  const fixtureMaxDay = seasonMatches.reduce((mx, m) => Math.max(mx, m.neutral ? 0 : m.day), 0);
+  const openerDate = preseason && nextMatch
+    ? formatShort(matchDate(nextMatch, fixtureMaxDay, season?.year ?? meta.startYear, meta))
+    : null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -39,7 +49,9 @@ export function PlayMenu() {
 
   const dayLabel = complete
     ? 'Season complete'
-    : `Match ${Math.min(playedMatches + 1, totalMatches)} / ${totalMatches}`;
+    : preseason
+      ? `Pre-season · opener ${openerDate}`
+      : `Match ${Math.min(playedMatches + 1, totalMatches)} / ${totalMatches}`;
 
   // Dismissed: block play until the manager takes a new job.
   if (sacked) {
@@ -62,16 +74,20 @@ export function PlayMenu() {
         <button className="btn-ghost text-rose-300" onClick={() => stopSim()}>■ Stop</button>
       ) : (
         <>
-          <button className="btn-ghost" onClick={() => advance()}>
-            Advance Matchday
-          </button>
           <button
             className="btn-ghost"
+            onClick={() => advance()}
+            title={preseason ? 'Move one day through the off-season' : undefined}
+          >
+            {preseason ? 'Advance Day' : 'Advance Matchday'}
+          </button>
+          <button
+            className={preseason ? 'btn-primary' : 'btn-ghost'}
             disabled={!nextMatch}
             onClick={() => toNext()}
-            title="Fast-forward to your next fixture"
+            title={preseason ? 'Jump ahead to the opening fixture' : 'Fast-forward to your next fixture'}
           >
-            To Next Match
+            {preseason ? 'Skip to opening day ▸' : 'To Next Match'}
           </button>
           <button
             className="btn-primary"

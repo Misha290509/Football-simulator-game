@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useRef } from 'react';
-import { useGameStore } from '../../state/store';
+import { useGameStore, lastSaveId } from '../../state/store';
 import { exportSave, importSave } from '../../db/db';
 
 export function MainMenu() {
@@ -47,8 +47,18 @@ export function MainMenu() {
           </p>
         </div>
 
+        {(() => {
+          // Continue = the last-played save if it still exists, else the newest.
+          const cont = savesList.find((s) => s.id === lastSaveId()) ?? savesList[0];
+          return cont ? (
+            <button className="btn-primary w-full py-3 text-base" onClick={() => openSave(cont.id)}>
+              ▶ Continue — {cont.name}
+            </button>
+          ) : null;
+        })()}
+
         <div className="flex gap-2">
-          <button className="btn-primary flex-1 py-3 text-base" onClick={() => navigate('/new')}>
+          <button className={`${savesList.length ? 'btn-ghost' : 'btn-primary'} flex-1 py-3 text-base`} onClick={() => navigate('/new')}>
             + New Game
           </button>
           <button className="btn-ghost py-3" onClick={() => fileInput.current?.click()}>

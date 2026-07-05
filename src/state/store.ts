@@ -253,6 +253,20 @@ interface GameState {
   seasonComplete: () => boolean;
 }
 
+// Remember the most recently played career so a page refresh (or a deep link)
+// can resume it instead of dumping the player on the main menu. localStorage is
+// unavailable in tests/private windows, so all access is fail-soft.
+const LAST_SAVE_KEY = 'fgm:lastSaveId';
+function rememberLastSave(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(LAST_SAVE_KEY, id);
+    else localStorage.removeItem(LAST_SAVE_KEY);
+  } catch { /* no storage available */ }
+}
+export function lastSaveId(): string | null {
+  try { return localStorage.getItem(LAST_SAVE_KEY); } catch { return null; }
+}
+
 export const useGameStore = create<GameState>((set, get) => ({
   loaded: false,
   saving: false,
@@ -278,6 +292,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       players: snapshot.players,
       matches: snapshot.matches,
     });
+    rememberLastSave(snapshot.meta.id);
     await get().refreshSavesList();
     return snapshot.meta.id;
   },
@@ -299,12 +314,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       players: migrated.players,
       matches: snap.matches,
     });
+    rememberLastSave(saveId);
     return true;
   },
 
   remove: async (saveId) => {
     await deleteSave(saveId);
     if (get().meta?.id === saveId) get().closeSave();
+    if (lastSaveId() === saveId) rememberLastSave(null);
     await get().refreshSavesList();
   },
 
