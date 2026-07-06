@@ -43,12 +43,13 @@ export function TransferMarket() {
   const [foot, setFoot] = useState('ALL');
   const [avail, setAvail] = useState('ALL'); // ALL | LISTED | EXPIRING | FREE
   const [knownOnly, setKnownOnly] = useState(false);
+  const [hideExpiring, setHideExpiring] = useState(false);
   const [counterFor, setCounterFor] = useState<string | null>(null);
   const [counterVal, setCounterVal] = useState(0);
 
   const resetFilters = () => {
     setSearch(''); setPosFilter('ALL'); setLeagueFilter('ALL'); setMinAge(15); setMaxAge(40);
-    setMinVal(0); setMaxVal(0); setMinOvr(0); setMinPot(0); setMaxWage(0); setFoot('ALL'); setAvail('ALL'); setKnownOnly(false);
+    setMinVal(0); setMaxVal(0); setMinOvr(0); setMinPot(0); setMaxWage(0); setFoot('ALL'); setAvail('ALL'); setKnownOnly(false); setHideExpiring(false);
   };
   const [target, setTarget] = useState<Player | null>(null);
   const [scoutFor, setScoutFor] = useState<Player | null>(null);
@@ -103,6 +104,7 @@ export function TransferMarket() {
       if (avail === 'FREE' && p.contract.clubId) continue;
       if (avail === 'LISTED' && !p.transferListed && !p.loanListed) continue;
       if (avail === 'EXPIRING' && !(p.contract.clubId && p.contract.expiresYear - year <= 1)) continue;
+      if (hideExpiring && p.contract.clubId && p.contract.expiresYear - year <= 0) continue;
       const v = viewOf(p);
       if (minOvr > 0 && v.ovr < minOvr) continue;
       if (minPot > 0 && v.pot < minPot) continue;
@@ -114,7 +116,7 @@ export function TransferMarket() {
     // Sort by shown (estimated) value, high to low.
     out.sort((a, b) => b.v.value - a.v.value);
     return out.slice(0, 250);
-  }, [players, meta.managerClubId, posFilter, minAge, maxAge, leagueFilter, search, knownOnly, minVal, maxVal, minOvr, minPot, maxWage, foot, avail, year, reports, eliteIds, leagueByClub, clubs, scoutRating]);
+  }, [players, meta.managerClubId, posFilter, minAge, maxAge, leagueFilter, search, knownOnly, hideExpiring, minVal, maxVal, minOvr, minPot, maxWage, foot, avail, year, reports, eliteIds, leagueByClub, clubs, scoutRating]);
 
   const RatingCell = ({ v }: { v: MarketView }) => {
     if (v.exact) return <Rating value={v.ovr} />;
@@ -277,6 +279,7 @@ export function TransferMarket() {
           <input type="number" placeholder="/wk" className="bg-surface-700 border border-surface-600 rounded px-2 py-1 w-24" value={maxWage || ''} onChange={(e) => setMaxWage(Number(e.target.value) || 0)} />
         </label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={knownOnly} onChange={(e) => setKnownOnly(e.target.checked)} /><span className="text-slate-400">Firm reads only</span></label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={hideExpiring} onChange={(e) => setHideExpiring(e.target.checked)} /><span className="text-slate-400">Hide expiring this season</span></label>
         <button className="btn-ghost text-xs py-1 px-2" onClick={resetFilters}>Reset</button>
         <span className="text-slate-500 ml-auto">{rows.length} shown</span>
       </div>
