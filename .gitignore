@@ -9,3 +9,7 @@ coverage
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+
+# Scratch hand-off files for the /ship agent pipeline (planner/coder/tester/
+# reviewer) — regenerated on every run, not meant to be version-controlled.
+.pipeline/
