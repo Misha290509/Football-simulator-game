@@ -56,7 +56,7 @@ export function PlayMenu() {
   // Dismissed: block play until the manager takes a new job.
   if (sacked) {
     return (
-      <div className="flex items-center gap-2" role="toolbar" aria-label="Play controls">
+      <div className="flex items-center gap-2 w-max" role="toolbar" aria-label="Play controls">
         <span className="text-xs text-rose-300 mr-2 whitespace-nowrap">Dismissed — take a new job</span>
         <button className="btn-primary" onClick={() => navigate('/manager')}>View job offers ▸</button>
       </div>
@@ -64,7 +64,7 @@ export function PlayMenu() {
   }
 
   return (
-    <div className="flex items-center gap-2" role="toolbar" aria-label="Play controls">
+    <div className="flex items-center gap-2 w-max" role="toolbar" aria-label="Play controls">
       <span className="text-xs text-slate-500 mr-2 whitespace-nowrap">{dayLabel}</span>
       {complete ? (
         <button className="btn-primary" disabled={simming} onClick={() => startNext()}>

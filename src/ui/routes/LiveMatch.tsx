@@ -79,11 +79,11 @@ export function LiveMatch() {
             <CrestBadge abbrev={home?.abbrev ?? '?'} color={home?.primaryColor ?? '#666'} />
             <span className="font-semibold truncate">{home?.shortName}</span>
           </div>
-          <div className="text-center px-4">
+          <div className="text-center px-2 sm:px-4 shrink-0">
             {home && away && areRivals(home.name, away.name) && (
               <div className="text-[10px] font-bold uppercase tracking-widest text-rose-400 mb-0.5">Derby</div>
             )}
-            <div className="text-4xl font-bold tabular-nums">{live.home.goals} – {live.away.goals}</div>
+            <div className="text-3xl sm:text-4xl font-bold tabular-nums whitespace-nowrap">{live.home.goals} – {live.away.goals}</div>
             <div className="text-xs text-accent-400 font-mono mt-1">{clockLabel}</div>
           </div>
           <div className="flex items-center gap-3 flex-1 justify-end">
