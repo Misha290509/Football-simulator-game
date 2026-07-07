@@ -19,7 +19,7 @@ export function History() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-white">History</h1>
+      <h1 className="page-title">History</h1>
 
       <div className="flex gap-2">
         <button className={tab === 'honours' ? 'btn-primary' : 'btn-ghost'} onClick={() => setTab('honours')}>Honours</button>

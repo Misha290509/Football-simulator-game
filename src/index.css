@@ -1,3 +1,8 @@
+/* Broadcast display face for headings, scorelines and big numbers. */
+@import '@fontsource/oswald/latin-500.css';
+@import '@fontsource/oswald/latin-600.css';
+@import '@fontsource/oswald/latin-700.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -21,6 +26,13 @@ body {
   margin: 0;
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Stadium-at-night backdrop: a faint floodlight glow high on the page and a
+     pitch-green wash low, over near-black navy. Fixed so scrolling feels deep. */
+  background-color: #05080d;
+  background-image:
+    radial-gradient(1100px 500px at 50% -10%, rgba(31, 179, 91, 0.09), transparent 65%),
+    radial-gradient(900px 600px at 85% 110%, rgba(31, 179, 91, 0.05), transparent 60%);
+  background-attachment: fixed;
   /* Never let the whole page scroll sideways or rubber-band on touch. */
   overflow-x: hidden;
   overscroll-behavior: none;
@@ -55,7 +67,7 @@ body {
 
 /* Accessibility: clear keyboard focus ring (§11-M7). */
 :focus-visible {
-  outline: 2px solid #4cc78f;
+  outline: 2px solid #34d977;
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -65,28 +77,47 @@ body {
     @apply w-full text-sm border-collapse;
   }
   .data-table th {
-    @apply text-left px-2 py-1.5 font-semibold text-slate-400 select-none whitespace-nowrap
-      border-b border-surface-600 bg-surface-800;
+    @apply text-left px-2 py-2 select-none whitespace-nowrap
+      font-display font-semibold uppercase tracking-wider text-[11px] text-slate-500
+      border-b-2 border-surface-600 bg-surface-800;
   }
   .data-table th.sortable {
-    @apply cursor-pointer hover:text-slate-200;
+    @apply cursor-pointer hover:text-accent-400;
   }
   .data-table td {
-    @apply px-2 py-1.5 border-b border-surface-700 whitespace-nowrap;
+    @apply px-2 py-1.5 border-b border-surface-700/70 whitespace-nowrap;
+  }
+  .data-table tbody tr:nth-child(even) td {
+    @apply bg-white/[0.02];
   }
   .data-table tr:hover td {
-    @apply bg-surface-700/40;
+    @apply bg-accent/[0.06];
   }
   .card {
-    @apply bg-surface-800 border border-surface-600 rounded-lg;
+    @apply rounded-xl border border-surface-600/60
+      bg-gradient-to-b from-surface-800 to-[#0a0f17]
+      shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_8px_24px_rgba(0,0,0,0.35)];
   }
   .btn {
-    @apply px-3 py-1.5 rounded-md text-sm font-medium transition-colors;
+    @apply px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-150
+      active:scale-[0.97];
   }
   .btn-primary {
-    @apply btn bg-accent hover:bg-accent-600 text-white;
+    @apply btn text-white
+      bg-gradient-to-b from-accent-400 to-accent-600
+      shadow-[0_1px_0_rgba(255,255,255,0.25)_inset,0_2px_8px_rgba(31,179,91,0.35)]
+      hover:from-accent hover:to-accent-600 hover:shadow-glow;
   }
   .btn-ghost {
-    @apply btn bg-surface-700 hover:bg-surface-600 text-slate-200;
+    @apply btn bg-surface-700/80 text-slate-200 border border-surface-600/60
+      hover:bg-surface-600 hover:border-surface-500;
+  }
+  /* Section headings inside cards — small broadcast-style caps. */
+  .section-title {
+    @apply font-display font-semibold uppercase tracking-wider text-[11px] text-slate-500;
+  }
+  /* Big page headings. */
+  .page-title {
+    @apply font-display font-semibold uppercase tracking-wide text-2xl text-white;
   }
 }

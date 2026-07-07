@@ -61,7 +61,7 @@ export function NewGame() {
   return (
     <div className="min-h-full max-w-3xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">New Game</h1>
+        <h1 className="page-title">New Game</h1>
         <button className="btn-ghost" onClick={() => navigate('/')}>Cancel</button>
       </div>
 

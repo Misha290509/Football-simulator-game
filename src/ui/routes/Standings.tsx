@@ -26,7 +26,7 @@ export function Standings() {
     const qual = comp.conferences.playoffQualifiersPerConference;
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold text-white">Standings</h1>
+        <h1 className="page-title">Standings</h1>
         <div className="flex gap-2">
           {competitions.map((c) => (
             <button key={c.id} className={compId === c.id ? 'btn-primary' : 'btn-ghost'} onClick={() => setCompId(c.id)}>
@@ -84,7 +84,7 @@ export function Standings() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-white">Standings</h1>
+      <h1 className="page-title">Standings</h1>
 
       <div className="flex gap-2">
         {competitions.map((c) => (

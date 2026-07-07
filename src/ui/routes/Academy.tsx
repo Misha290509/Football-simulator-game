@@ -95,7 +95,7 @@ export function Academy() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Academy</h1>
+        <h1 className="page-title">Academy</h1>
         <div className="flex gap-1">
           {(['overview', 'squads', 'scouting', 'competitions', 'history'] as const).map((t) => (
             <button key={t} className={tab === t ? 'btn-primary capitalize' : 'btn-ghost capitalize'} onClick={() => setTab(t)}>{t}</button>

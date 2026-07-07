@@ -52,7 +52,7 @@ export function Club() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Club &amp; Backroom</h1>
+      <h1 className="page-title">Club &amp; Backroom</h1>
 
       {/* Infrastructure & Financial Fair Play */}
       <div className="card p-4">

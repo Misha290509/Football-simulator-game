@@ -84,7 +84,7 @@ export function Squad() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Squad</h1>
+        <h1 className="page-title">Squad</h1>
         <div className="flex items-center gap-3">
           <div className="flex gap-1">
             {(['table', 'depth'] as const).map((v) => (

@@ -20,7 +20,7 @@ export function Continental() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-white">Cups &amp; Continental</h1>
+      <h1 className="page-title">Cups &amp; Continental</h1>
 
       <CupsPanel matches={matches} clubs={clubs} managerClubId={meta.managerClubId} />
 

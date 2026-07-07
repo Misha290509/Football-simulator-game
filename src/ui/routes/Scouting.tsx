@@ -19,7 +19,7 @@ export function Scouting() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-white">Scouting</h1>
+      <h1 className="page-title">Scouting</h1>
       <p className="text-sm text-slate-500">
         Assign targets from the Transfer Market or a player's profile. Knowledge
         grows as your scouts watch them, tightening the rating ranges. Better

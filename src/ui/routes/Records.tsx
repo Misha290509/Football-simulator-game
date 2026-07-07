@@ -31,7 +31,7 @@ export function Records() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-white">Records &amp; History</h1>
+      <h1 className="page-title">Records &amp; History</h1>
       <div className="flex gap-2">
         {(['leaders', 'awards', 'honours', 'achievements'] as const).map((t) => (
           <button key={t} className={tab === t ? 'btn-primary py-1 px-3 capitalize' : 'btn-ghost py-1 px-3 capitalize'} onClick={() => setTab(t)}>{t}</button>

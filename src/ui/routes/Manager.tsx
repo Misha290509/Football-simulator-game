@@ -30,7 +30,7 @@ export function Manager() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Manager</h1>
+      <h1 className="page-title">Manager</h1>
 
       {meta.sacked && (
         <div className="card p-4 border border-rose-500/40 bg-rose-500/10">

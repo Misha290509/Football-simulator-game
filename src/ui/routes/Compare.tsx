@@ -38,7 +38,7 @@ export function Compare() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Compare players</h1>
+        <h1 className="page-title">Compare players</h1>
         <button className="btn-ghost" onClick={() => navigate(-1)}>← Back</button>
       </div>
       <p className="text-xs text-slate-500">Search for any player in the world. Full attributes show for your own players, the global elite, and anyone you've scouted; others show what your scouts have filed.</p>

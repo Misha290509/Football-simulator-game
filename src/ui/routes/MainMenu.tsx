@@ -38,12 +38,22 @@ export function MainMenu() {
   };
 
   return (
-    <div className="min-h-full flex items-center justify-center p-6">
-      <div className="w-full max-w-lg space-y-6">
+    <div className="min-h-full flex items-center justify-center p-6 relative overflow-hidden">
+      {/* Faint pitch markings behind the title — pure decoration. */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.05]" aria-hidden>
+        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white" />
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[38rem] h-[38rem] rounded-full border-2 border-white" />
+      </div>
+      <div className="w-full max-w-lg space-y-6 relative">
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-white">Football GM</h1>
-          <p className="text-slate-400 mt-1">
-            A single-player football management simulator
+          <div className="font-display font-semibold uppercase tracking-widest text-[11px] text-accent-400 mb-2">
+            Season 2025/26
+          </div>
+          <h1 className="font-display font-bold uppercase tracking-wide text-5xl sm:text-6xl text-white leading-none">
+            Football <span className="text-accent-400">GM</span>
+          </h1>
+          <p className="text-slate-400 mt-3">
+            Take a club. Build a dynasty.
           </p>
         </div>
 
@@ -116,8 +126,8 @@ export function MainMenu() {
         </div>
 
         <p className="text-xs text-slate-600 text-center">
-          Ships with generated player data. Supply a licensed dataset to play
-          with real players. (M0 + M1)
+          Runs entirely in your browser — saves stay on this device. Add to
+          your home screen to play it like an app.
         </p>
       </div>
     </div>

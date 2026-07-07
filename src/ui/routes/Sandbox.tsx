@@ -41,7 +41,7 @@ export function Sandbox() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-bold text-white">God Mode</h1>
+        <h1 className="page-title">God Mode</h1>
         {enabled && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/40">
             ON

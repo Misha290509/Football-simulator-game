@@ -5,22 +5,32 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Data-dense dark dashboard palette
+        // "Stadium at night" palette — deep navy blacks with an electric
+        // pitch-green accent and a gold reserved for elite ratings/trophies.
         surface: {
-          900: '#0b0f14',
-          800: '#11161d',
-          700: '#1a212b',
-          600: '#232c38',
-          500: '#2f3a48',
+          900: '#05080d',
+          800: '#0b111a',
+          700: '#151e2b',
+          600: '#26364b',
+          500: '#33455e',
         },
         accent: {
-          DEFAULT: '#3ba776',
-          400: '#4cc78f',
-          600: '#2f8a61',
+          DEFAULT: '#1fb35b',
+          400: '#34d977',
+          600: '#178a47',
+        },
+        gold: {
+          DEFAULT: '#f0c948',
+          600: '#c9a227',
         },
       },
       fontFamily: {
+        // Condensed broadcast type for headings, scorelines and big numbers.
+        display: ['Oswald', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      },
+      boxShadow: {
+        glow: '0 0 24px rgba(31, 179, 91, 0.25)',
       },
     },
   },

@@ -176,7 +176,7 @@ export function PlayerProfile() {
       <div className="card p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">{fullName(player)}</h1>
+            <h1 className="page-title">{fullName(player)}</h1>
             <div className="text-sm text-slate-400 mt-1">
               {player.position} · {ageOf(player, currentYear)} years · {player.nationality} ·{' '}
               {player.preferredFoot}-footed · {player.height_cm}cm

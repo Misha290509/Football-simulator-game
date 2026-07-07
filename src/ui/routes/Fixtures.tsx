@@ -85,7 +85,7 @@ export function Fixtures() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Fixtures &amp; Results</h1>
+      <h1 className="page-title">Fixtures &amp; Results</h1>
 
       <div className="card p-4">
         <h2 className="text-sm font-semibold text-slate-400 mb-3">

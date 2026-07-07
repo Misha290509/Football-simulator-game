@@ -160,7 +160,7 @@ export function TransferMarket() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Transfer Market</h1>
+        <h1 className="page-title">Transfer Market</h1>
         {meta.ffp?.embargo ? <span className="text-xs text-rose-400">⛔ Transfer embargo</span>
           : win.open ? <span className="text-xs text-emerald-400">{win.kind === 'WINTER' ? 'January' : 'Summer'} window open</span>
           : <span className="text-xs text-amber-400">Window shut · deals register in {win.nextLabel}</span>}

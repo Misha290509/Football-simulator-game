@@ -4,25 +4,46 @@ import { useGameStore } from '../state/store';
 import { CrestBadge } from './components/Rating';
 import { PlayMenu } from './components/PlayMenu';
 
-const NAV = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/squad', label: 'Squad' },
-  { to: '/tactics', label: 'Tactics' },
-  { to: '/transfers', label: 'Transfers' },
-  { to: '/compare', label: 'Compare' },
-  { to: '/scouting', label: 'Scouting' },
-  { to: '/academy', label: 'Academy' },
-  { to: '/manager', label: 'Manager' },
-  { to: '/nations', label: 'Nations' },
-  { to: '/continental', label: 'Cups & Europe' },
-  { to: '/club', label: 'Club' },
-  { to: '/finances', label: 'Finances' },
-  { to: '/standings', label: 'Standings' },
-  { to: '/fixtures', label: 'Fixtures' },
-  { to: '/history', label: 'History' },
-  { to: '/records', label: 'Records' },
-  { to: '/inbox', label: 'Inbox' },
-  { to: '/sandbox', label: 'God Mode' },
+// Grouped nav: daily club business first, then the market, then the wider
+// world, then the manager's own office. God Mode lives apart, by the exit.
+const NAV_GROUPS: { title: string; items: { to: string; label: string }[] }[] = [
+  {
+    title: 'Club',
+    items: [
+      { to: '/dashboard', label: 'Dashboard' },
+      { to: '/squad', label: 'Squad' },
+      { to: '/tactics', label: 'Tactics' },
+      { to: '/academy', label: 'Academy' },
+      { to: '/club', label: 'Club & Staff' },
+      { to: '/finances', label: 'Finances' },
+    ],
+  },
+  {
+    title: 'Market',
+    items: [
+      { to: '/transfers', label: 'Transfers' },
+      { to: '/scouting', label: 'Scouting' },
+      { to: '/compare', label: 'Compare' },
+    ],
+  },
+  {
+    title: 'World',
+    items: [
+      { to: '/standings', label: 'Standings' },
+      { to: '/fixtures', label: 'Fixtures' },
+      { to: '/continental', label: 'Cups & Europe' },
+      { to: '/nations', label: 'Nations' },
+      { to: '/records', label: 'Records' },
+      { to: '/history', label: 'History' },
+    ],
+  },
+  {
+    title: 'Office',
+    items: [
+      { to: '/manager', label: 'Manager' },
+      { to: '/inbox', label: 'Inbox' },
+    ],
+  },
 ];
 
 function NavItem({ to, label, guard }: { to: string; label: string; guard?: (e: React.MouseEvent) => void }) {
@@ -31,10 +52,10 @@ function NavItem({ to, label, guard }: { to: string; label: string; guard?: (e: 
       to={to}
       onClick={guard}
       className={({ isActive }) =>
-        `block px-3 py-2.5 rounded-md text-sm font-medium ${
+        `relative block pl-4 pr-3 py-2 rounded-md text-sm font-medium transition-colors ${
           isActive
-            ? 'bg-accent text-white'
-            : 'text-slate-300 hover:bg-surface-700'
+            ? 'bg-accent/15 text-accent-400 before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-full before:bg-accent-400'
+            : 'text-slate-300 hover:bg-surface-700 hover:text-white'
         }`
       }
     >
@@ -75,18 +96,20 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="flex h-full">
       {/* Backdrop behind the mobile drawer. */}
       {navOpen && (
-        <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setNavOpen(false)} aria-hidden />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-30 md:hidden" onClick={() => setNavOpen(false)} aria-hidden />
       )}
 
       <aside
-        className={`w-64 md:w-56 shrink-0 bg-surface-800 border-r border-surface-600 flex flex-col
+        className={`w-64 md:w-56 shrink-0 bg-surface-800/95 border-r border-surface-600/60 flex flex-col
           fixed md:static inset-y-0 left-0 z-40 transition-transform duration-200 ease-out
           safe-l ${navOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
       >
-        <div className="px-4 py-4 border-b border-surface-600 flex items-center justify-between safe-t">
+        <div className="px-4 py-4 border-b border-surface-600/60 flex items-center justify-between safe-t">
           <div>
-            <div className="text-lg font-bold text-white">Football GM</div>
-            <div className="text-xs text-slate-500">Sporting Director</div>
+            <div className="font-display font-semibold uppercase tracking-wide text-lg text-white leading-tight">
+              Football <span className="text-accent-400">GM</span>
+            </div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-500">Sporting Director</div>
           </div>
           <button
             className="md:hidden text-slate-400 hover:text-white text-xl leading-none px-2"
@@ -98,22 +121,47 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
 
         {club && (
-          <div className="px-4 py-3 border-b border-surface-600 flex items-center gap-2">
-            <CrestBadge abbrev={club.abbrev} color={club.primaryColor} />
+          <div
+            className="px-4 py-3 border-b border-surface-600/60 flex items-center gap-2.5"
+            style={{
+              backgroundImage: `linear-gradient(115deg, ${club.primaryColor}33, ${club.primaryColor}0d 55%, transparent)`,
+            }}
+          >
+            <CrestBadge abbrev={club.abbrev} color={club.primaryColor} size={34} />
             <div className="min-w-0">
-              <div className="text-sm font-semibold truncate">{club.shortName}</div>
-              <div className="text-xs text-slate-500">{season?.label}</div>
+              <div className="text-sm font-semibold truncate text-white">{club.shortName}</div>
+              <div className="text-[11px] text-slate-400">{season?.label}</div>
             </div>
           </div>
         )}
 
-        <nav className="p-2 space-y-1 flex-1 overflow-y-auto">
-          {NAV.map((n) => (
-            <NavItem key={n.to} {...n} guard={guardLive} />
+        <nav className="p-2 flex-1 overflow-y-auto">
+          {NAV_GROUPS.map((g) => (
+            <div key={g.title} className="mb-3">
+              <div className="section-title px-3 pt-1 pb-1.5">{g.title}</div>
+              <div className="space-y-0.5">
+                {g.items.map((n) => (
+                  <NavItem key={n.to} {...n} guard={guardLive} />
+                ))}
+              </div>
+            </div>
           ))}
+          <div className="mt-2 pt-2 border-t border-surface-600/40">
+            <NavLink
+              to="/sandbox"
+              onClick={guardLive}
+              className={({ isActive }) =>
+                `block px-3 py-2 rounded-md text-xs font-medium tracking-wide ${
+                  isActive ? 'bg-amber-500/15 text-amber-300' : 'text-slate-500 hover:text-amber-300/90 hover:bg-surface-700'
+                }`
+              }
+            >
+              ⚡ God Mode <span className="text-slate-600">· cheats</span>
+            </NavLink>
+          </div>
         </nav>
 
-        <div className="p-2 border-t border-surface-600 safe-b">
+        <div className="p-2 border-t border-surface-600/60 safe-b">
           <button
             className="btn-ghost w-full"
             onClick={() => {
@@ -129,7 +177,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 shrink-0 border-b border-surface-600 bg-surface-800 flex items-center gap-2 px-3 sm:px-6 safe-t safe-r">
+        <header className="h-14 shrink-0 border-b border-surface-600/60 bg-surface-800/80 backdrop-blur flex items-center gap-2 px-3 sm:px-6 safe-t safe-r">
           <button
             className="md:hidden shrink-0 text-slate-300 hover:text-white text-2xl leading-none px-1 -ml-1"
             onClick={() => setNavOpen(true)}
@@ -141,7 +189,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <span className="md:hidden font-semibold text-sm truncate">{club.shortName}</span>
           )}
           {onLive ? (
-            <span className="ml-auto text-xs text-emerald-300 whitespace-nowrap">● Match day</span>
+            <span className="ml-auto text-xs text-emerald-300 whitespace-nowrap">● Match day — manage the game below</span>
           ) : (
             <div className="ml-auto min-w-0 overflow-x-auto scrollbar-thin">
               <PlayMenu />

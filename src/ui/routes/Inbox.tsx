@@ -16,7 +16,7 @@ export function Inbox() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-white">Inbox</h1>
+      <h1 className="page-title">Inbox</h1>
       {news.length === 0 ? (
         <p className="text-slate-500 text-sm">No messages yet.</p>
       ) : (

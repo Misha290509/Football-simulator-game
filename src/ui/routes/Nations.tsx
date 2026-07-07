@@ -30,7 +30,7 @@ export function Nations() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">National Teams</h1>
+        <h1 className="page-title">National Teams</h1>
         {meta.worldChampion && (
           <span className="text-sm text-amber-400">🏆 World champions: {meta.worldChampion.nation} ({meta.worldChampion.year})</span>
         )}

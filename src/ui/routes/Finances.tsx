@@ -27,7 +27,7 @@ export function Finances() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Finances</h1>
+      <h1 className="page-title">Finances</h1>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {stat('Bank balance', formatMoney(f.balance))}

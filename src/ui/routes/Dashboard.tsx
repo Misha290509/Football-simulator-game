@@ -44,8 +44,8 @@ export function Dashboard() {
 
   const stat = (label: string, value: string) => (
     <div className="card p-4">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="text-xl font-semibold mt-1">{value}</div>
+      <div className="section-title">{label}</div>
+      <div className="font-display font-semibold text-2xl text-white mt-1 tabular-nums">{value}</div>
     </div>
   );
 
@@ -132,12 +132,19 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <CrestBadge abbrev={club.abbrev} color={club.primaryColor} size={44} />
+      <div
+        className="card p-4 sm:p-5 flex items-center justify-between gap-3 flex-wrap overflow-hidden relative"
+        style={{
+          backgroundImage: `linear-gradient(115deg, ${club.primaryColor}40, ${club.primaryColor}14 45%, transparent 75%)`,
+        }}
+      >
+        <div className="flex items-center gap-3 sm:gap-4">
+          <CrestBadge abbrev={club.abbrev} color={club.primaryColor} size={52} />
           <div>
-            <h1 className="text-2xl font-bold text-white">{club.name}</h1>
-            <div className="text-sm text-slate-400">
+            <h1 className="font-display font-semibold uppercase tracking-wide text-2xl sm:text-3xl text-white leading-none">
+              {club.name}
+            </h1>
+            <div className="text-sm text-slate-400 mt-1.5">
               {comp.name} · {season?.label} · {club.stadium.name}
             </div>
           </div>
@@ -147,8 +154,8 @@ export function Dashboard() {
           const win = transferWindow();
           return (
             <div className="text-right">
-              <div className="text-xs uppercase tracking-wide text-slate-500">Today</div>
-              <div className="text-lg font-semibold text-white">📅 {formatFull(today)}</div>
+              <div className="section-title">Today</div>
+              <div className="font-display font-semibold text-xl text-white">{formatFull(today)}</div>
               <div className="text-xs mt-0.5">
                 {win.open
                   ? <span className="text-emerald-400">{win.kind === 'WINTER' ? 'January' : 'Summer'} transfer window open</span>

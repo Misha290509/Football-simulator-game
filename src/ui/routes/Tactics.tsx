@@ -154,7 +154,7 @@ export function Tactics() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-white">Tactics &amp; Formation</h1>
+      <h1 className="page-title">Tactics &amp; Formation</h1>
 
       {/* Controls */}
       <div className="card p-4 flex flex-wrap items-end gap-4">
