@@ -65,7 +65,9 @@ export function PlayMenu() {
 
   return (
     <div className="flex items-center gap-2 w-max" role="toolbar" aria-label="Play controls">
-      <span className="text-xs text-slate-500 mr-2 whitespace-nowrap">{dayLabel}</span>
+      <span className="notch font-display uppercase tracking-wider text-[11px] text-accent bg-accent/10 border border-accent/25 px-2.5 py-1 mr-1 whitespace-nowrap">
+        {dayLabel}
+      </span>
       {complete ? (
         <button className="btn-primary" disabled={simming} onClick={() => startNext()}>
           {simming ? 'Processing…' : 'Start Next Season ▸'}

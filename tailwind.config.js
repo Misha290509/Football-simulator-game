@@ -5,19 +5,25 @@ export default {
   theme: {
     extend: {
       colors: {
-        // "Stadium at night" palette — deep navy blacks with an electric
-        // pitch-green accent and a gold reserved for elite ratings/trophies.
+        // "Neon matchnight" palette — violet-black surfaces, an electric volt
+        // accent (the modern football-game signature), magenta for energy and
+        // gold reserved for elite ratings/trophies.
         surface: {
-          900: '#05080d',
-          800: '#0b111a',
-          700: '#151e2b',
-          600: '#26364b',
-          500: '#33455e',
+          900: '#08060f',
+          800: '#100c1c',
+          700: '#1a1530',
+          600: '#2e2650',
+          500: '#3d3366',
         },
         accent: {
-          DEFAULT: '#1fb35b',
-          400: '#34d977',
-          600: '#178a47',
+          DEFAULT: '#a3e635',
+          400: '#bef264',
+          600: '#65a30d',
+        },
+        volt: '#d4f04a',
+        neon: {
+          violet: '#8b5cf6',
+          magenta: '#d946ef',
         },
         gold: {
           DEFAULT: '#f0c948',
@@ -30,7 +36,7 @@ export default {
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       boxShadow: {
-        glow: '0 0 24px rgba(31, 179, 91, 0.25)',
+        glow: '0 0 24px rgba(163, 230, 53, 0.3)',
       },
     },
   },
