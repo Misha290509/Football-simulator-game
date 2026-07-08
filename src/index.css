@@ -73,6 +73,29 @@ body {
   border-radius: 4px;
 }
 
+/* Live-match drama: goal banner, score pop and the nervy late-game border. */
+@keyframes goal-pop {
+  0% { transform: scale(0.6) translateY(14px); opacity: 0; }
+  15% { transform: scale(1.06) translateY(0); opacity: 1; }
+  25% { transform: scale(1); }
+  85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.goal-banner { animation: goal-pop 3s ease-out forwards; }
+
+@keyframes score-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+.score-pop { animation: score-pop 0.6s ease-out; }
+
+@keyframes nervy {
+  0%, 100% { border-color: rgba(240, 201, 72, 0.25); }
+  50% { border-color: rgba(240, 201, 72, 0.8); }
+}
+.nervy-pulse { animation: nervy 1.5s ease-in-out infinite; }
+
 /* Game-HUD corner notch — cuts opposite corners off buttons and chips. */
 .notch {
   clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);

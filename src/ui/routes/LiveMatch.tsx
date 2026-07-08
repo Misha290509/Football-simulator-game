@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 import { CrestBadge } from '../components/Rating';
@@ -51,6 +51,43 @@ export function LiveMatch() {
     if (feedRef.current) feedRef.current.scrollTop = 0;
   }, [live?.events.length]);
 
+  // Goal moment: flash a broadcast banner when a new goal lands. The ref seeds
+  // itself on mount so re-entering a match in progress doesn't replay old goals.
+  const [goalFlash, setGoalFlash] = useState<{ side: Side; playerId?: string; minute: number } | null>(null);
+  const goalCount = live ? live.events.reduce((n, e) => n + (e.type === 'GOAL' ? 1 : 0), 0) : 0;
+  const seenGoals = useRef<number | null>(null);
+  useEffect(() => {
+    if (seenGoals.current === null) { seenGoals.current = goalCount; return; }
+    if (goalCount > seenGoals.current && live) {
+      const g = [...live.events].reverse().find((e) => e.type === 'GOAL');
+      if (g) setGoalFlash({ side: g.side, playerId: g.playerId, minute: g.minute });
+      const t = setTimeout(() => setGoalFlash(null), 3000);
+      seenGoals.current = goalCount;
+      return () => clearTimeout(t);
+    }
+    seenGoals.current = goalCount;
+  }, [goalCount, live]);
+
+  // Score-context tags for goal commentary ("levels it", "doubles the lead"),
+  // computed from the running score — display-only, no RNG involved.
+  const goalTags = useMemo(() => {
+    const tags: Record<number, string> = {};
+    if (!live) return tags;
+    let h = 0, a = 0;
+    live.events.forEach((e, idx) => {
+      if (e.type !== 'GOAL') return;
+      if (e.side === 'home') h++; else a++;
+      const lead = e.side === 'home' ? h - a : a - h;
+      const tag =
+        lead === 0 ? 'levels it' :
+        lead === 1 ? (h + a === 1 ? 'breaks the deadlock' : 'puts them in front') :
+        lead === 2 ? 'doubles the advantage' :
+        lead >= 3 ? 'surely settles it' : 'pulls one back';
+      tags[idx] = `${tag} — ${h}–${a}`;
+    });
+    return tags;
+  }, [live]);
+
   if (!live) {
     return (
       <div className="space-y-4">
@@ -73,7 +110,23 @@ export function LiveMatch() {
   return (
     <div className="space-y-4">
       {/* Scoreboard */}
-      <div className="card p-5">
+      {(() => {
+        const late = live.phase === 'SECOND_HALF' && live.minute >= 85;
+        const nervy = late && Math.abs(live.home.goals - live.away.goals) <= 1;
+        const added = live.phase === 'FIRST_HALF' && live.minute >= 45 ? live.added1
+          : live.phase === 'SECOND_HALF' && live.minute >= 90 ? live.added2 : 0;
+        return (
+      <div className={`card p-5 relative overflow-hidden ${nervy ? 'nervy-pulse' : ''}`}>
+        {goalFlash && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-surface-900/70">
+            <div className="goal-banner notch bg-gradient-to-r from-[#d4f04a] to-accent px-6 py-2.5 text-[#101503]">
+              <span className="font-display font-bold uppercase tracking-widest text-2xl">Goal!</span>
+              <span className="ml-3 font-semibold">
+                {name(goalFlash.playerId)} · {clubs[live[goalFlash.side].clubId]?.shortName} {goalFlash.minute}&apos;
+              </span>
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 flex-1">
             <CrestBadge abbrev={home?.abbrev ?? '?'} color={home?.primaryColor ?? '#666'} />
@@ -83,8 +136,14 @@ export function LiveMatch() {
             {home && away && areRivals(home.name, away.name) && (
               <div className="text-[10px] font-bold uppercase tracking-widest text-rose-400 mb-0.5">Derby</div>
             )}
-            <div className="text-3xl sm:text-4xl font-bold tabular-nums whitespace-nowrap">{live.home.goals} – {live.away.goals}</div>
-            <div className="text-xs text-accent-400 font-mono mt-1">{clockLabel}</div>
+            <div key={goalCount} className="score-pop font-display text-3xl sm:text-4xl font-bold tabular-nums whitespace-nowrap">
+              {live.home.goals} – {live.away.goals}
+            </div>
+            <div className="text-xs text-accent-400 font-mono mt-1">
+              {clockLabel}
+              {added > 0 && <span className="ml-1 text-gold font-semibold">+{added}</span>}
+              {nervy && <span className="ml-2 text-[10px] uppercase tracking-widest text-gold">nervy finish</span>}
+            </div>
           </div>
           <div className="flex items-center gap-3 flex-1 justify-end">
             <span className="font-semibold truncate text-right">{away?.shortName}</span>
@@ -93,13 +152,26 @@ export function LiveMatch() {
         </div>
         {/* Momentum bar */}
         <div className="mt-4">
-          <div className="flex justify-between text-[10px] uppercase tracking-wide text-slate-500 mb-1"><span>Momentum</span><span>xG {live.home.xg.toFixed(1)} – {live.away.xg.toFixed(1)}</span></div>
-          <div className="h-2 rounded bg-surface-700 overflow-hidden flex">
-            <div className="h-2 bg-sky-500 transition-all duration-500" style={{ width: `${homePct}%` }} />
-            <div className="h-2 bg-rose-500 transition-all duration-500" style={{ width: `${100 - homePct}%` }} />
+          <div className="flex justify-between text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+            <span className="font-semibold text-slate-400">{home?.abbrev}</span>
+            <span>Momentum · xG {live.home.xg.toFixed(1)} – {live.away.xg.toFixed(1)}</span>
+            <span className="font-semibold text-slate-400">{away?.abbrev}</span>
+          </div>
+          <div className="relative h-2 rounded bg-surface-700 overflow-hidden flex">
+            <div
+              className="h-2 bg-sky-500 transition-all duration-500"
+              style={{ width: `${homePct}%`, boxShadow: homePct > 62 ? '0 0 10px rgba(14,165,233,0.8)' : 'none' }}
+            />
+            <div
+              className="h-2 bg-rose-500 transition-all duration-500"
+              style={{ width: `${100 - homePct}%`, boxShadow: homePct < 38 ? '0 0 10px rgba(244,63,94,0.8)' : 'none' }}
+            />
+            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/50" />
           </div>
         </div>
       </div>
+        );
+      })()}
 
       {/* Penalty shootout */}
       {live.phase === 'SHOOTOUT' && live.shootout && (
@@ -181,8 +253,8 @@ export function LiveMatch() {
           <div className="card p-4">
             <h2 className="text-sm font-semibold text-slate-400 mb-3">Commentary</h2>
             <div ref={feedRef} className="space-y-1.5 max-h-[20rem] overflow-y-auto pr-1">
-              {[...live.events].reverse().map((e, i) => (
-                <CommentaryLine key={live.events.length - i} e={e} name={name} homeShort={home?.shortName} awayShort={away?.shortName} />
+              {live.events.map((e, idx) => ({ e, idx })).reverse().map(({ e, idx }) => (
+                <CommentaryLine key={idx} e={e} name={name} homeShort={home?.shortName} awayShort={away?.shortName} suffix={goalTags[idx]} />
               ))}
             </div>
           </div>
@@ -243,15 +315,15 @@ export function LiveMatch() {
   );
 }
 
-function CommentaryLine({ e, name, homeShort, awayShort }: { e: MatchEvent; name: (id?: string) => string; homeShort?: string; awayShort?: string }) {
+function CommentaryLine({ e, name, homeShort, awayShort, suffix }: { e: MatchEvent; name: (id?: string) => string; homeShort?: string; awayShort?: string; suffix?: string }) {
   const teamShort = e.side === 'home' ? homeShort : awayShort;
   let text = e.description;
   let icon = '';
   let cls = 'text-slate-300';
   switch (e.type) {
     case 'GOAL':
-      icon = '⚽'; cls = 'text-emerald-300 font-semibold';
-      text = `GOAL! ${name(e.playerId)} ${e.description}${e.assistPlayerId ? ` (assist: ${name(e.assistPlayerId)})` : ''}`;
+      icon = '⚽'; cls = 'text-accent font-semibold';
+      text = `GOAL! ${name(e.playerId)} ${e.description}${suffix ? ` He ${suffix}.` : ''}${e.assistPlayerId ? ` (assist: ${name(e.assistPlayerId)})` : ''}`;
       break;
     case 'SAVE': case 'BIG_CHANCE': case 'SHOT':
       text = `${name(e.playerId)} ${e.description}`; cls = 'text-slate-300';
