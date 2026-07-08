@@ -37,6 +37,9 @@ import { setObjective } from '../game/board';
 import { evaluateBoardRequest, generatePressQuestion, evaluatePressAnswer, type BoardRequestKind } from '../game/boardroom';
 import { areRivals, derbyResultBonus } from '../game/rivalries';
 import { generateNarratives } from '../game/narratives';
+import { storylinesOf, advanceWonderkid, advanceNemesis, advanceSagas, advanceObjectiveMemory } from '../game/storylines';
+import { aiManagerOf } from '../game/aiManagers';
+import { computeStandings } from '../engine/standings';
 import { buildNationSquads, nationStrength } from '../engine/nationalTeam';
 import { NATION_BY_NAME } from '../data/nations';
 import { advanceAllContinental, nextContinentalStop } from '../game/continental/competition';
@@ -2055,6 +2058,25 @@ async function playDays(
       return false; // assignment complete
     });
 
+    // Long-running story arcs (wonderkid, nemesis, sagas, objective memory) —
+    // mutated in place by the advance* helpers, persisted below.
+    const storylines = storylinesOf(meta);
+    {
+      const candidateIds = Object.values(meta.academyPlayers ?? {})
+        .filter((ap) => ap.clubId === meta.managerClubId)
+        .map((ap) => ap.playerId)
+        .concat(Object.values(playersById).filter((p) => p.contract.clubId === meta.managerClubId).map((p) => p.id));
+      newsItems.push(...advanceWonderkid(storylines, playersById, candidateIds, toYear, to));
+      newsItems.push(...advanceSagas(storylines, playersById, meta.managerClubId, to));
+      const mgrComp = Object.values(meta.competitions).find((c) => c.clubIds.includes(meta.managerClubId));
+      if (mgrComp && meta.board) {
+        const rows = computeStandings(mgrComp, Object.values(matches));
+        const pos = rows.findIndex((r) => r.clubId === meta.managerClubId) + 1;
+        const maxDay = Object.values(matches).reduce((mx, m) => Math.max(mx, m.neutral ? 0 : m.day), 0);
+        newsItems.push(...advanceObjectiveMemory(storylines, meta.board, pos, to, maxDay, toYear));
+      }
+    }
+
     // Tactical identity: tally the manager's wins under the tactics used, so a
     // body of work resolves into style tags on the Manager screen.
     let managerStyle = meta.managerStyle;
@@ -2099,6 +2121,12 @@ async function playDays(
         (m) => m.played && !m.neutral && (m.homeClubId === meta.managerClubId || m.awayClubId === meta.managerClubId),
       );
       newsItems.push(...generateNarratives(meta.managerClubId, managerSeasonPlayed, mgrPlayed, oppName, to));
+
+      // Nemesis arc: repeated defeats to the same AI manager become a story.
+      if (clubs[oppId]) {
+        const oppMgr = aiManagerOf(oppId, clubs[oppId], meta.seed, meta.aiManagers);
+        if (oppMgr) newsItems.push(...advanceNemesis(storylines, oppMgr.name, gf > ga, gf === ga, to));
+      }
     }
 
     // Press conference from the manager's most recent result (§ Boardroom).
@@ -2223,7 +2251,7 @@ async function playDays(
       ...meta, currentDay: to, news: newsItems, scouting, pendingOffers, board,
       scoutAssignments: scoutRes.assignments, youthProspects, pendingPress,
       scoutReports, playerScoutAssignments: remainingAssignments,
-      pendingGala, history, managerStyle, pendingArrivals,
+      pendingGala, history, managerStyle, pendingArrivals, storylines,
     };
     set({ matches, players: playersById, clubs: clubsAfter, meta: newMeta });
 

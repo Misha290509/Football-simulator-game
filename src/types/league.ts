@@ -356,6 +356,8 @@ export interface SaveGame {
   /** Clubs whose job offers the manager turned down (so fresh approaches come
    *  from elsewhere). Cleared when a job is taken or the season rolls over. */
   declinedJobClubIds?: string[];
+  /** Long-running story arcs (wonderkid, nemesis, sagas, objective memory). */
+  storylines?: import('../game/storylines').StorylineState;
   /** Chosen challenge/difficulty for this save. */
   difficulty?: Difficulty;
 
