@@ -38,6 +38,8 @@ import { evaluateBoardRequest, generatePressQuestion, evaluatePressAnswer, type 
 import { areRivals, derbyResultBonus } from '../game/rivalries';
 import { generateNarratives } from '../game/narratives';
 import { storylinesOf, advanceWonderkid, advanceNemesis, advanceSagas, advanceObjectiveMemory } from '../game/storylines';
+import { challengeById, evaluateChallenge } from '../game/challenges';
+import type { NewsItem } from '../types/league';
 import { aiManagerOf } from '../game/aiManagers';
 import { computeStandings } from '../engine/standings';
 import { buildNationSquads, nationStrength } from '../engine/nationalTeam';
@@ -272,6 +274,12 @@ export function lastSaveId(): string | null {
   try { return localStorage.getItem(LAST_SAVE_KEY); } catch { return null; }
 }
 
+/** Whether the save's active challenge bans incoming transfers. */
+function challengeBansSignings(meta: SaveMeta): boolean {
+  const c = meta.challenge;
+  return !!c && c.status === 'ACTIVE' && challengeById(c.id)?.rule === 'NO_SIGNINGS';
+}
+
 export const useGameStore = create<GameState>((set, get) => ({
   loaded: false,
   saving: false,
@@ -348,6 +356,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   makeBid: async (playerId, fee, wage) => {
     const { meta, clubs, players } = get();
     if (!meta) return { ok: false, message: 'No active save.' };
+    if (challengeBansSignings(meta)) return { ok: false, message: 'Challenge rule: no incoming transfers — build from within.' };
     if (meta.ffp?.embargo) return { ok: false, message: 'Under an FFP transfer embargo — you cannot sign players this season.' };
     const player = players[playerId];
     if (!player) return { ok: false, message: 'Player not found.' };
@@ -508,6 +517,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   completeSigning: async (playerId, fee, offer) => {
     const { meta, clubs, players } = get();
     if (!meta) return { ok: false, message: 'No active save.' };
+    if (challengeBansSignings(meta)) return { ok: false, message: 'Challenge rule: no incoming transfers — build from within.' };
     if (meta.ffp?.embargo) return { ok: false, message: 'Under an FFP transfer embargo — you cannot sign players this season.' };
     const player = players[playerId];
     if (!player) return { ok: false, message: 'Player not found.' };
@@ -577,6 +587,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   loanIn: async (playerId, years, withOption = false) => {
     const { meta, clubs, players } = get();
     if (!meta) return { ok: false, message: 'No active save.' };
+    if (challengeBansSignings(meta)) return { ok: false, message: 'Challenge rule: no incoming transfers — build from within.' };
     if (meta.ffp?.embargo) return { ok: false, message: 'Under an FFP transfer embargo — no loan moves this season.' };
     if (!get().transferWindow().open) return { ok: false, message: 'The transfer window is shut — loans can only be arranged when it is open.' };
     const player = players[playerId];
@@ -1396,12 +1407,37 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       seasons[result.newSeason.id] = result.newSeason;
 
+      // Challenge scenario: judge the season just finished against the win
+      // condition (uses pre-rollover cup kinds to spot fresh cup wins).
+      let challenge = meta.challenge;
+      const challengeNews: NewsItem[] = [];
+      if (challenge && challenge.status === 'ACTIVE') {
+        const def = challengeById(challenge.id);
+        if (def) {
+          const finishedYear = get().currentSeason()?.year ?? meta.startYear;
+          const wonCupThisSeason = Object.entries(result.cupHolders ?? {}).some(([cupId, h]) =>
+            h.clubId === challenge!.clubId && h.year === finishedYear &&
+            (meta.domesticCups?.[cupId]?.kind ?? 'MAJOR') !== 'SUPER');
+          const evalRes = evaluateChallenge(challenge, def, {
+            managerClubId: result.sacked ? '' : meta.managerClubId,
+            finalStandings: result.finalStandings,
+            competitions: result.competitions,
+            wonCupThisSeason,
+            seasonsElapsed: finishedYear - challenge.startYear + 1,
+            day: 0,
+          });
+          challenge = evalRes.state;
+          challengeNews.push(...evalRes.news);
+        }
+      }
+
       const newMeta: SaveMeta = {
         ...meta,
+        challenge,
         competitions: result.competitions,
         seasons,
         currentDay: 0,
-        news: [...meta.news, ...result.news],
+        news: [...meta.news, ...result.news, ...challengeNews],
         board: result.board ?? meta.board,
         sacked: result.sacked ?? false,
         history: [...(meta.history ?? []), ...(result.historyEntry ? [result.historyEntry] : [])],

@@ -358,6 +358,8 @@ export interface SaveGame {
   declinedJobClubIds?: string[];
   /** Long-running story arcs (wonderkid, nemesis, sagas, objective memory). */
   storylines?: import('../game/storylines').StorylineState;
+  /** Active challenge scenario for this save, if the career started as one. */
+  challenge?: import('../game/challenges').ChallengeState;
   /** Chosen challenge/difficulty for this save. */
   difficulty?: Difficulty;
 

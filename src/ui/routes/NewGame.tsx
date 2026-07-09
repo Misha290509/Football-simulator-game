@@ -4,6 +4,7 @@ import { useGameStore } from '../../state/store';
 import { getActiveDataset, isRealDataset } from '../../data/activeDataset';
 import type { Dataset } from '../../types/dataset';
 import { CrestBadge } from '../components/Rating';
+import { CHALLENGES, challengeById, pickChallengeClub } from '../../game/challenges';
 
 const START_YEAR = 2025;
 const SEASON_LABEL = `${START_YEAR}/${((START_YEAR + 1) % 100).toString().padStart(2, '0')}`;
@@ -18,6 +19,7 @@ export function NewGame() {
   const [selectedClub, setSelectedClub] = useState<string | null>(null);
   const [seedText, setSeedText] = useState('');
   const [difficulty, setDifficulty] = useState<'RELAXED' | 'NORMAL' | 'HARD'>('NORMAL');
+  const [challengeId, setChallengeId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -36,21 +38,28 @@ export function NewGame() {
     return <div className="p-6 text-slate-400">Loading dataset…</div>;
   }
 
-  const canStart = managerName.trim().length > 0 && selectedClub !== null && !busy;
+  // A picked challenge pins country, club and difficulty.
+  const challenge = challengeById(challengeId ?? undefined);
+  const challengeClub = challenge ? pickChallengeClub(challenge, dataset) : null;
+  const effAbbrev = challenge ? challengeClub?.abbrev ?? null : selectedClub;
+  const effCountryId = challenge ? challenge.countryId : countryId;
+
+  const canStart = managerName.trim().length > 0 && effAbbrev !== null && !busy;
 
   const start = async () => {
-    if (!canStart || !selectedClub) return;
+    if (!canStart || !effAbbrev) return;
     setBusy(true);
     try {
       const seed = seedText.trim() ? Number(seedText) || hashStr(seedText) : undefined;
       await newGame({
-        saveName: `${managerName.trim()} — ${selectedClub}`,
+        saveName: `${managerName.trim()} — ${effAbbrev}`,
         managerName: managerName.trim(),
         dataset,
-        managerClubId: `club_${countryId}_${selectedClub}`,
+        managerClubId: `club_${effCountryId}_${effAbbrev}`,
         startYear: START_YEAR,
         seed,
-        difficulty,
+        difficulty: challenge ? challenge.difficulty : difficulty,
+        challengeId: challenge?.id,
       });
       navigate('/dashboard');
     } finally {
@@ -65,6 +74,32 @@ export function NewGame() {
         <button className="btn-ghost" onClick={() => navigate('/')}>Cancel</button>
       </div>
 
+      <div className="card p-4">
+        <h2 className="section-title mb-1">Challenges</h2>
+        <p className="text-xs text-slate-500 mb-3">
+          Curated careers with a win condition — or scroll down for a free sandbox career.
+          Worlds are seed-identical, so share a seed with a friend and race the same challenge.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-2">
+          {CHALLENGES.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setChallengeId(challengeId === c.id ? null : c.id)}
+              className={`text-left p-3 rounded-lg border transition-colors ${
+                challengeId === c.id ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'
+              }`}
+            >
+              <div className="font-display font-semibold uppercase tracking-wide text-white">{c.name}</div>
+              <div className="text-xs text-accent-400 mb-1">{c.tagline}</div>
+              <div className="text-xs text-slate-400">{c.brief}</div>
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 mt-1.5">
+                {c.difficulty.toLowerCase()} · {c.seasons} season{c.seasons > 1 ? 's' : ''}{c.rule === 'NO_SIGNINGS' ? ' · no signings' : ''}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="card p-4 space-y-3">
         <label className="block text-sm">
           <span className="text-slate-400">Manager name</span>
@@ -75,7 +110,18 @@ export function NewGame() {
             placeholder="e.g. Alex Hunter"
           />
         </label>
-        <label className="block text-sm">
+        {challenge && (
+          <div className="rounded-lg border border-accent/40 bg-accent/5 p-3 text-sm flex items-center gap-3">
+            {challengeClub && <CrestBadge abbrev={challengeClub.abbrev} color={challengeClub.primaryColor ?? '#3ba776'} size={30} />}
+            <div>
+              <div className="font-semibold text-white">{challenge.name} — {challengeClub?.name ?? '…'}</div>
+              <div className="text-xs text-slate-400">
+                Club, country and difficulty are set by the challenge ({challenge.difficulty.toLowerCase()}).
+              </div>
+            </div>
+          </div>
+        )}
+        {!challenge && <label className="block text-sm">
           <span className="text-slate-400">Country</span>
           <select
             className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm"
@@ -86,9 +132,9 @@ export function NewGame() {
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
-        </label>
-        <div className="block text-sm">
-          <span className="text-slate-400">Challenge</span>
+        </label>}
+        {!challenge && <div className="block text-sm">
+          <span className="text-slate-400">Difficulty</span>
           <div className="mt-1 flex gap-2">
             {(['RELAXED', 'NORMAL', 'HARD'] as const).map((d) => (
               <button
@@ -104,7 +150,7 @@ export function NewGame() {
               : difficulty === 'HARD' ? 'Tighter budget and a demanding board — sackings come quicker.'
               : 'A balanced start.'}
           </p>
-        </div>
+        </div>}
         <label className="block text-sm">
           <span className="text-slate-400">Seed (optional, for reproducible worlds)</span>
           <input
@@ -120,7 +166,7 @@ export function NewGame() {
         </div>
       </div>
 
-      <div className="card p-4">
+      {!challenge && <div className="card p-4">
         <h2 className="text-sm font-semibold text-slate-400 mb-3">Choose your club — {country.name}</h2>
         {country.leagues.map((lg) => (
           <div key={lg.tier} className="mb-4">
@@ -143,10 +189,10 @@ export function NewGame() {
             </div>
           </div>
         ))}
-      </div>
+      </div>}
 
       <button className="btn-primary w-full py-3" disabled={!canStart} onClick={start}>
-        {busy ? 'Building world…' : 'Start Career'}
+        {busy ? 'Building world…' : challenge ? `Start Challenge: ${challenge.name}` : 'Start Career'}
       </button>
     </div>
   );

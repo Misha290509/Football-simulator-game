@@ -15,6 +15,7 @@ import { facilityLevelFor } from '../engine/academy';
 import { setObjective } from './board';
 import { installNewGameAcademies, fillAcademyBands } from './academy';
 import { injectSpecialPlayers } from './specialPlayers';
+import { challengeById } from './challenges';
 import { initialManagerReputation } from './careers';
 import { installContinental } from './continental/install';
 import { LEAGUE_STRIDE } from './continental/competition';
@@ -31,6 +32,8 @@ export interface NewGameConfig {
   startYear: number;
   seed?: number;
   difficulty?: import('../types/league').Difficulty;
+  /** Start this career as a curated challenge scenario. */
+  challengeId?: string;
 }
 
 function seasonLabel(year: number): string {
@@ -175,6 +178,14 @@ export function createNewGame(config: NewGameConfig): WorldSnapshot {
     continentalHistory: [],
     domesticCups: cups.states,
     cupHolders: {},
+    challenge: (() => {
+      const def = challengeById(config.challengeId);
+      if (!def) return undefined;
+      return {
+        id: def.id, clubId: config.managerClubId, startYear: config.startYear,
+        status: 'ACTIVE' as const, note: def.brief,
+      };
+    })(),
     news: [
       {
         id: 'news_welcome',

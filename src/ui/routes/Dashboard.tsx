@@ -117,6 +117,34 @@ export function Dashboard() {
         );
       })()}
 
+      {meta.challenge && (() => {
+        const c = meta.challenge;
+        const cls = c.status === 'WON' ? 'border-gold/50 bg-gold/5'
+          : c.status === 'FAILED' ? 'border-rose-500/40 bg-rose-500/5'
+          : 'border-accent/40 bg-accent/5';
+        return (
+          <div className={`card p-4 flex items-center justify-between gap-4 border ${cls}`}>
+            <div>
+              <div className="section-title">Challenge{c.status !== 'ACTIVE' ? ` · ${c.status}` : ''}</div>
+              <div className="text-sm mt-0.5">
+                <span className="font-display font-semibold uppercase tracking-wide text-white mr-2">
+                  {c.status === 'WON' ? '🏆 ' : ''}{c.id.split('-').join(' ')}
+                </span>
+                <span className="text-slate-400">{c.note}</span>
+              </div>
+            </div>
+            {c.status === 'ACTIVE' && (
+              <div className="text-right shrink-0">
+                <div className="section-title justify-end">Season</div>
+                <div className="font-display font-semibold text-xl text-white">
+                  {(currentYear - c.startYear) + 1}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {board && !meta.sacked && (
         <div className="card p-4 flex items-center justify-between">
           <div>
