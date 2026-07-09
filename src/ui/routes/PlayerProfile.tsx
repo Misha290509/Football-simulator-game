@@ -455,7 +455,7 @@ function CareerRecord({ player, isGk }: { player: Player; isGk: boolean }) {
   );
   return (
     <div className="card p-4">
-      <h2 className="text-sm font-semibold text-slate-400 mb-3">Career record <span className="text-slate-600 font-normal">(all completed seasons)</span></h2>
+      <h2 className="text-sm font-semibold text-slate-400 mb-3">Career record <span className="text-slate-600 font-normal">(incl. the current season, live)</span></h2>
       <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
         {cell('Games', t.apps)}
         {cell('Goals', t.goals, 'text-emerald-300')}
@@ -465,7 +465,7 @@ function CareerRecord({ player, isGk }: { player: Player; isGk: boolean }) {
         {cell('Yellow', t.yellow, 'text-yellow-400')}
         {cell('Red', t.red, 'text-red-400')}
       </div>
-      {player.stats.length === 0 && <p className="text-xs text-slate-500 mt-2">No completed seasons yet — stats appear at the end of the season.</p>}
+      {player.stats.length === 0 && <p className="text-xs text-slate-500 mt-2">No appearances yet — stats build up match by match.</p>}
     </div>
   );
 }

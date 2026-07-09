@@ -7,7 +7,7 @@ import { revealed } from '../../engine/scouting';
 import { Rng } from '../../engine/rng';
 import { PHILOSOPHIES, COUNTRY_NAMES, COUNTRY_YOUTH_INDEX } from '../../data/academyData';
 import { recommendsPlayUp, ACADEMY_UPGRADE_COST, generateYouthCoachPool } from '../../engine/academy';
-import { MAX_SCOUT_POSITIONS } from '../../engine/youthScouting';
+import { MAX_SCOUT_POSITIONS, SCOUT_CONTRACT_MONTHS, SCOUT_CONTRACT_COST } from '../../engine/youthScouting';
 import { ALL_POSITIONS } from '../../types/attributes';
 import type { AgeGroup } from '../../types/academy';
 
@@ -51,6 +51,7 @@ export function Academy() {
   const [scoutId, setScoutId] = useState('');
   const [positions, setPositions] = useState<string[]>([]);
   const [country, setCountry] = useState('ES');
+  const [months, setMonths] = useState(3);
   // Youth-coach wage negotiation: per-candidate offers. Walk-aways persist in
   // the save (meta.walkedStaff), so an insulted coach stays gone.
   const [coachOffer, setCoachOffer] = useState<Record<string, number>>({});
@@ -303,13 +304,14 @@ export function Academy() {
           club={club}
           year={year}
           onDispatch={async () => {
-            const res = await dispatchScout(scoutId, positions, country);
+            const res = await dispatchScout(scoutId, positions, country, months);
             flash(res.message);
             if (res.ok) { setScoutId(''); setPositions([]); }
           }}
           scoutId={scoutId} setScoutId={setScoutId}
           positions={positions} setPositions={setPositions}
           country={country} setCountry={setCountry}
+          months={months} setMonths={setMonths}
           onRecall={recallScout}
           onTrial={async (id) => flash((await trialProspect(id)).message)}
           onSign={async (id) => flash((await signYouthProspect(id)).message)}
@@ -408,7 +410,7 @@ export function Academy() {
 
 function ScoutingTab({
   meta, club, year, scoutId, setScoutId, positions, setPositions, country, setCountry,
-  onDispatch, onRecall, onTrial, onSign,
+  months, setMonths, onDispatch, onRecall, onTrial, onSign,
 }: {
   meta: ReturnType<typeof useGameStore.getState>['meta'];
   club: ReturnType<typeof useGameStore.getState>['clubs'][string];
@@ -416,6 +418,7 @@ function ScoutingTab({
   scoutId: string; setScoutId: (s: string) => void;
   positions: string[]; setPositions: (p: string[]) => void;
   country: string; setCountry: (c: string) => void;
+  months: number; setMonths: (m: number) => void;
   onDispatch: () => void; onRecall: (id: string) => void;
   onTrial: (id: string) => void; onSign: (id: string) => void;
 }) {
@@ -435,7 +438,7 @@ function ScoutingTab({
   return (
     <div className="space-y-5">
       <div className="card p-4">
-        <h2 className="text-sm font-semibold text-slate-400 mb-3">Dispatch a scout</h2>
+        <h2 className="text-sm font-semibold text-slate-400 mb-3">Sign a scouting contract</h2>
         <div className="grid md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm mb-3">
@@ -471,26 +474,58 @@ function ScoutingTab({
             </div>
           </div>
         </div>
-        <div className="mt-4 flex justify-end">
-          <button className="btn-primary" disabled={!scoutId || positions.length === 0} onClick={onDispatch}>Send scout (~8 weeks)</button>
+        <div className="mt-4">
+          <div className="text-sm text-slate-400 mb-1">Contract length</div>
+          <div className="flex flex-wrap gap-2">
+            {SCOUT_CONTRACT_MONTHS.map((m) => {
+              const cost = SCOUT_CONTRACT_COST[m];
+              const afford = club.finances.balance >= cost;
+              return (
+                <button
+                  key={m}
+                  className={months === m ? 'btn-primary text-sm' : 'btn-ghost text-sm'}
+                  disabled={!afford}
+                  title={afford ? `${m} monthly reports of 5–8 prospects` : 'Not enough funds'}
+                  onClick={() => setMonths(m)}
+                >
+                  {m} months <span className="opacity-70">· {formatMoney(cost)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-slate-500">The scout files a report of 5–8 prospects every month until the contract ends.</p>
+          <button
+            className="btn-primary"
+            disabled={!scoutId || positions.length === 0 || club.finances.balance < SCOUT_CONTRACT_COST[months]}
+            onClick={onDispatch}
+          >Sign scout ({months} months · {formatMoney(SCOUT_CONTRACT_COST[months])})</button>
         </div>
       </div>
 
       {assignments.length > 0 && (
         <div className="card p-4">
-          <h2 className="text-sm font-semibold text-slate-400 mb-3">Active trips</h2>
+          <h2 className="text-sm font-semibold text-slate-400 mb-3">Active contracts</h2>
           <div className="space-y-2">
             {assignments.map((a) => {
               const s = scoutById(a.scoutId);
+              // Contract progress = reports filed / term; legacy trips fall back to progress %.
+              const pct = a.monthsTotal
+                ? Math.round(((a.reportsDelivered ?? 0) / a.monthsTotal) * 100)
+                : Math.round(a.progress ?? 0);
               return (
                 <div key={a.scoutId} className="flex items-center justify-between bg-surface-700 rounded px-3 py-2 text-sm">
                   <div className="min-w-0">
                     <span className="font-medium">{s ? `${s.name.first} ${s.name.last}` : a.scoutId}</span>
                     <span className="text-slate-500"> — {COUNTRY_NAMES[a.country] ?? a.country} · {a.positions.join(', ')}</span>
+                    {a.monthsTotal && (
+                      <span className="text-xs text-slate-500"> · {a.reportsDelivered ?? 0}/{a.monthsTotal} reports</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="w-28 h-1.5 bg-surface-600 rounded"><div className="h-1.5 rounded bg-sky-500" style={{ width: `${Math.round(a.progress)}%` }} /></div>
-                    <button className="btn-ghost text-xs py-1" onClick={() => onRecall(a.scoutId)}>Recall</button>
+                    <div className="w-28 h-1.5 bg-surface-600 rounded"><div className="h-1.5 rounded bg-sky-500" style={{ width: `${pct}%` }} /></div>
+                    <button className="btn-ghost text-xs py-1" title="End the contract early (no refund)" onClick={() => onRecall(a.scoutId)}>Recall</button>
                   </div>
                 </div>
               );
@@ -502,7 +537,7 @@ function ScoutingTab({
       <div className="card p-4">
         <h2 className="text-sm font-semibold text-slate-400 mb-3">Prospect reports ({prospects.length})</h2>
         {prospects.length === 0 ? (
-          <p className="text-sm text-slate-500">No prospects discovered yet. Send a scout abroad and advance time.</p>
+          <p className="text-sm text-slate-500">No prospects yet. Sign a scout to a contract and advance time — reports arrive monthly.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="data-table w-full">

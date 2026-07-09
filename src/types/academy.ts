@@ -71,14 +71,25 @@ export interface AcademyPlayer {
   isProdigy: boolean;
 }
 
-/** An interactive scouting trip (core requirement + Ideas 6–8). */
+/**
+ * A youth-scouting contract. The scout watches a country/positions and files a
+ * fresh report of several prospects every month until the term (3/6/9 months)
+ * runs out. Legacy single-trip fields are kept optional for old saves.
+ */
 export interface ScoutAssignment {
   scoutId: string;
   positions: Position[]; // 1–3, enforced
   country: string;
-  durationRemaining: number; // matchdays left
-  progress: number; // 0–100
+  /** Contract term in months (3, 6 or 9). Absent on pre-contract saves. */
+  monthsTotal?: number;
+  /** How many monthly reports have already been filed. */
+  reportsDelivered?: number;
+  /** Sim day the next monthly report is due. */
+  nextReportDay?: number;
   foundPlayerIds: string[];
+  // Legacy single-trip fields (pre-contract model).
+  durationRemaining?: number; // matchdays left
+  progress?: number; // 0–100
 }
 
 /** A scouted-but-unsigned prospect awaiting a trial / academy contract. */

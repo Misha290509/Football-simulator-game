@@ -26,7 +26,7 @@ import {
 import { migrateSave } from '../db/migrations';
 import { ageGroupForAge, computeReadiness, ageOfPlayer, ACADEMY_UPGRADE_COST } from '../engine/academy';
 import { recordGraduateInAcademy, fillAcademyBands } from '../game/academy';
-import { resolveScoutAssignments, SCOUT_TRIP_DAYS, MAX_SCOUT_POSITIONS } from '../engine/youthScouting';
+import { resolveScoutAssignments, MAX_SCOUT_POSITIONS, SCOUT_MONTH_DAYS, SCOUT_CONTRACT_COST } from '../engine/youthScouting';
 import {
   createLiveMatch, kickOff, tickLiveMatch, startSecondHalf, applyManagerChange, applyTeamTalk, liveOutcome, tickShootout,
   type LiveMatchState, type Side as LiveSide,
@@ -56,7 +56,7 @@ import { createNewGame, type NewGameConfig } from '../game/newGame';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
-import { resolveAndRollover } from '../game/season';
+import { resolveAndRollover, aggregateSeasonStats } from '../game/season';
 import { galaNews } from '../game/gala';
 import { runAiToAiTransfers } from '../game/aiTransfers';
 import { recordStyleResult } from '../game/aiManagers';
@@ -174,7 +174,7 @@ interface GameState {
   demoteToAcademy: (playerId: string) => Promise<BidResult>;
   releaseAcademyPlayer: (playerId: string) => Promise<BidResult>;
   // Youth scouting (§ Academy)
-  dispatchScout: (scoutId: string, positions: string[], country: string) => Promise<BidResult>;
+  dispatchScout: (scoutId: string, positions: string[], country: string, months: number) => Promise<BidResult>;
   recallScout: (scoutId: string) => Promise<void>;
   trialProspect: (playerId: string) => Promise<BidResult>;
   signYouthProspect: (playerId: string) => Promise<BidResult>;
@@ -881,23 +881,32 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // --- Youth scouting (§ Academy) ---------------------------------------
 
-  dispatchScout: async (scoutId, positions, country) => {
+  dispatchScout: async (scoutId, positions, country, months) => {
     const { meta, clubs } = get();
     if (!meta) return { ok: false, message: 'No active save.' };
     if (positions.length < 1 || positions.length > MAX_SCOUT_POSITIONS) {
       return { ok: false, message: `Pick 1–${MAX_SCOUT_POSITIONS} target positions.` };
     }
     if (!country) return { ok: false, message: 'Pick a target country.' };
+    const cost = SCOUT_CONTRACT_COST[months];
+    if (!cost) return { ok: false, message: 'Pick a 3, 6 or 9-month contract.' };
     const club = clubs[meta.managerClubId];
     const scout = (club.staff ?? []).find((s) => s.id === scoutId && s.role === 'SCOUT');
     if (!scout) return { ok: false, message: 'Unknown scout.' };
     const assignments = meta.scoutAssignments ?? [];
-    if (assignments.some((a) => a.scoutId === scoutId)) return { ok: false, message: `${scout.name.last} is already on a trip.` };
-    const newAssignment = { scoutId, positions: positions as Position[], country, durationRemaining: SCOUT_TRIP_DAYS, progress: 0, foundPlayerIds: [] };
+    if (assignments.some((a) => a.scoutId === scoutId)) return { ok: false, message: `${scout.name.last} is already under contract.` };
+    if (club.finances.balance < cost) return { ok: false, message: `Not enough funds — a ${months}-month contract costs £${cost.toLocaleString()}.` };
+    const newAssignment = {
+      scoutId, positions: positions as Position[], country,
+      monthsTotal: months, reportsDelivered: 0, nextReportDay: meta.currentDay + SCOUT_MONTH_DAYS,
+      foundPlayerIds: [],
+    };
+    const newClub = { ...club, finances: { ...club.finances, balance: club.finances.balance - cost } };
     const newMeta: SaveMeta = { ...meta, scoutAssignments: [...assignments, newAssignment] };
-    set({ meta: newMeta });
+    set({ meta: newMeta, clubs: { ...clubs, [club.id]: newClub } });
+    await putClubs(meta.id, [newClub]);
     await persistMeta(newMeta);
-    return { ok: true, message: `${scout.name.last} dispatched to ${country}.` };
+    return { ok: true, message: `${scout.name.last} signed to a ${months}-month contract scouting ${country} (£${cost.toLocaleString()}).` };
   },
 
   recallScout: async (scoutId) => {
@@ -2118,6 +2127,26 @@ async function playDays(
       newsItems.push(...after.news);
     }
 
+    // Live in-season stats: refresh the running season tally for everyone who
+    // featured this advance, so player career records update every matchday
+    // rather than only at the season rollover. Recompute from the full
+    // current-season match set (idempotent) and replace this season's rows.
+    if (season) {
+      const sid = season.id;
+      const seasonMatches = Object.values(matches).filter((m) => m.seasonId === sid && m.played && !m.neutral);
+      const { stats: freshStats } = aggregateSeasonStats(sid, seasonMatches, playersById);
+      const playedIds = new Set<string>();
+      for (const m of played) if (!m.neutral) for (const ps of m.playerStats) playedIds.add(ps.playerId);
+      if (playedIds.size) playersById = { ...playersById };
+      for (const pid of playedIds) {
+        const cur = playersById[pid];
+        if (!cur) continue;
+        const rows = freshStats.get(pid) ?? [];
+        playersById[pid] = { ...cur, stats: [...cur.stats.filter((s) => s.seasonId !== sid), ...rows] };
+        changedIds.add(pid);
+      }
+    }
+
     // Advance scouting knowledge on assigned targets (§M5).
     const scouting = { ...(meta.scouting ?? {}) };
     const daysAdvanced = Math.max(1, to - from);
@@ -2143,16 +2172,16 @@ async function playDays(
     }
     const pendingOffers = [...(meta.pendingOffers ?? []), ...newOffers].slice(-25);
 
-    // Resolve active youth scouting trips → new prospects (§ Academy).
+    // Resolve active youth scouting contracts → monthly prospect reports (§ Academy).
     const scoutsById: Record<string, import('../types/staff').Staff> = {};
     for (const s of clubs[meta.managerClubId]?.staff ?? []) scoutsById[s.id] = s;
-    const scoutRng = new Rng((meta.seed ^ (to * 40503)) >>> 0);
     const scoutRes = resolveScoutAssignments(
-      meta.scoutAssignments ?? [], scoutsById, meta.managerClubId, toYear, daysAdvanced,
-      meta.ratingCap ?? 90, scoutRng,
+      meta.scoutAssignments ?? [], scoutsById, meta.managerClubId, toYear, from, to,
+      meta.ratingCap ?? 90, (meta.seed ^ (to * 40503)) >>> 0,
     );
     newsItems.push(...scoutRes.news);
-    const youthProspects = [...(meta.youthProspects ?? []), ...scoutRes.prospects].slice(-40);
+    // A 9-month contract can file up to ~72 prospects; keep a generous rolling window.
+    const youthProspects = [...(meta.youthProspects ?? []), ...scoutRes.prospects].slice(-90);
 
     // Resolve market scouting assignments whose report is now due.
     const scoutReports = { ...(meta.scoutReports ?? {}) };

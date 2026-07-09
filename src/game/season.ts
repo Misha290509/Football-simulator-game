@@ -107,7 +107,7 @@ export interface RolloverResult {
 }
 
 /** Aggregate per-player, per-competition season stats from played matches. */
-function aggregateSeasonStats(
+export function aggregateSeasonStats(
   seasonId: string,
   matches: Match[],
   playersById: Record<string, Player>,
@@ -436,10 +436,14 @@ export async function resolveAndRollover(
       }
     }
     const cId = base.contract.clubId as string;
-    // Attach this season's stats to history before aging.
+    // Attach this season's stats to history before aging. The in-season live
+    // tracker (playDays) may already have written this season's rows into
+    // base.stats, so strip any current-season entries first to avoid a double
+    // count — the freshly aggregated rows below are the canonical final tally.
+    const sid = currentSeason?.id ?? 'season';
     const withStats: Player = {
       ...base,
-      stats: [...base.stats, ...(stats.get(base.id) ?? [])],
+      stats: [...base.stats.filter((s) => s.seasonId !== sid), ...(stats.get(base.id) ?? [])],
     };
     if (shouldRetire(withStats, nextYear, rng)) {
       retiredIds.push(base.id);
