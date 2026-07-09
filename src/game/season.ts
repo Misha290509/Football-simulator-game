@@ -844,7 +844,7 @@ export async function resolveAndRollover(
     const club = p.contract.clubId ? clubs[p.contract.clubId]?.name : undefined;
     const ctx = a.note ? ` (${a.note})` : a.value ? ` with ${a.value}` : '';
     news.push(mkNews(meta.currentDay, 'AWARD',
-      `${am.emoji} ${who} wins the ${am.label}`,
+      `${am.emoji} ${who} wins the ${a.label}`,
       `${who}${club ? ` of ${club}` : ''} is named ${a.label}${ctx}.`));
   }
   const pendingGala = awardsRes.gala.length ? scheduleGala(seasonId, seasonYear, awardsRes.gala, newMatches) : null;
@@ -959,7 +959,11 @@ function mkNews(day: number, category: NewsItem['category'], title: string, body
   return { id: `news_${day}_${_newsSeq++}`, day, category, title, body, read: false };
 }
 
-// The singular, worldwide/continental individual honours worth a headline of
-// their own. Per-league awards (GOLDEN_BOOT, PLAYER_OF_SEASON) and the 11-slot
-// TEAM_OF_SEASON are excluded so the feed stays a highlight reel, not a firehose.
-const MARQUEE_AWARD_NEWS = new Set(['GLOBAL_GOLDEN_BOOT', 'UEFA_POTY', 'CONFED_POTY']);
+// The individual honours worth a headline of their own: the singular
+// worldwide/continental trophies plus each top division's Player of the Season
+// and Golden Boot. The 11-slot TEAM_OF_SEASON stays out so the feed doesn't
+// drown in near-identical entries.
+const MARQUEE_AWARD_NEWS = new Set([
+  'GLOBAL_GOLDEN_BOOT', 'PLAYMAKER', 'UEFA_POTY', 'CONFED_POTY',
+  'PLAYER_OF_SEASON', 'GOLDEN_BOOT',
+]);

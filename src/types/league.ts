@@ -339,6 +339,8 @@ export interface SaveGame {
   achievements?: Record<string, number>;
   /** Deferred autumn awards gala (Ballon d'Or et al.), pending its October date. */
   pendingGala?: GalaCeremony | null;
+  /** Reigning Ballon d'Or holder, set when the autumn gala is announced. */
+  ballonDor?: { playerId: string; name: string; year: number } | null;
   /** Stored AI-manager churn (defaults are derived; only changes live here). */
   aiManagers?: Record<string, import('../game/aiManagers').AiManager>;
   /** The human manager's tactic win counters → style tags. */

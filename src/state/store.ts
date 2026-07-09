@@ -2350,6 +2350,7 @@ async function playDays(
     // the new season honouring the prior campaign. Fires once its day arrives.
     let pendingGala = meta.pendingGala ?? null;
     let history = meta.history;
+    let ballonDor = meta.ballonDor ?? null;
     if (pendingGala && !pendingGala.announced && to >= pendingGala.announceDay) {
       newsItems.push(galaNews(pendingGala, playersById, to));
       playersById = { ...playersById };
@@ -2361,6 +2362,10 @@ async function playDays(
       }
       const gala = pendingGala;
       history = (meta.history ?? []).map((h) => (h.seasonId === gala.seasonId ? { ...h, awards: [...h.awards, ...gala.awards] } : h));
+      // Crown the reigning Ballon d'Or so the dashboard can carry a standing badge.
+      const ballon = gala.awards.find((a) => a.type === 'GLOBAL_BEST');
+      const winner = ballon?.playerId ? playersById[ballon.playerId] : undefined;
+      if (winner) ballonDor = { playerId: winner.id, name: `${winner.name.first} ${winner.name.last}`, year: gala.year };
       pendingGala = null;
     }
 
@@ -2368,7 +2373,7 @@ async function playDays(
       ...meta, currentDay: to, news: newsItems, scouting, pendingOffers, board,
       scoutAssignments: scoutRes.assignments, youthProspects, pendingPress,
       scoutReports, playerScoutAssignments: remainingAssignments,
-      pendingGala, history, managerStyle, pendingArrivals, storylines,
+      pendingGala, history, managerStyle, pendingArrivals, storylines, ballonDor,
     };
     set({ matches, players: playersById, clubs: clubsAfter, meta: newMeta });
 
