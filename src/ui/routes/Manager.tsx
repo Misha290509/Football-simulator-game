@@ -63,6 +63,17 @@ export function Manager() {
         <div className="card p-4">
           <div className="text-xs uppercase tracking-wide text-slate-500">Career</div>
           <div className="text-sm mt-1">{totalTrophies} trophies · {totalSeasons} seasons · {stints.length} club{stints.length === 1 ? '' : 's'}</div>
+          {meta.nationalJob && (
+            <div className="text-sm mt-1.5">
+              <span className="text-slate-500">National team:</span>{' '}
+              <span className="font-semibold text-accent-400">{meta.nationalJob}</span>
+            </div>
+          )}
+          {(meta.nationalTrophies ?? []).length > 0 && (
+            <div className="text-xs text-gold mt-1">
+              {(meta.nationalTrophies ?? []).map((h) => `🏆 ${h.name}`).join(' · ')}
+            </div>
+          )}
         </div>
       </div>
 

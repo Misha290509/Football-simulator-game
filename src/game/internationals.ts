@@ -375,3 +375,31 @@ export function runCopaAmerica(
 ): TournamentResult | null {
   return runTournament('COPA', `Copa América ${year}`, year, copaField(), 4, 0, players, rng);
 }
+
+// --- Manager campaign summary ------------------------------------------------
+
+export interface CampaignFinish {
+  /** e.g. "champions", "runners-up", "semi-finalists", "quarter-finalists",
+   *  "eliminated in the Round of 16", "out at the group stage". */
+  label: string;
+  /** Manager-reputation swing for a national coach with this finish. */
+  repDelta: number;
+  /** True when the nation lifted the trophy. */
+  champion: boolean;
+}
+
+/** How deep a nation went in a finished tournament (for its manager's story). */
+export function nationFinish(t: TournamentSummary, nation: string): CampaignFinish | null {
+  if (!t.participants.includes(nation)) return null;
+  if (t.championNation === nation) return { label: 'champions', repDelta: 12, champion: true };
+  if (t.runnerUpNation === nation) return { label: 'runners-up', repDelta: 6, champion: false };
+
+  // Deepest knockout round the nation appeared in.
+  const rounds = t.knockout.filter((k) => k.homeNation === nation || k.awayNation === nation);
+  if (rounds.length === 0) return { label: 'out at the group stage', repDelta: -4, champion: false };
+  const last = rounds[rounds.length - 1];
+  const r = last.round.toLowerCase();
+  if (r.includes('semi')) return { label: 'semi-finalists', repDelta: 3, champion: false };
+  if (r.includes('quarter')) return { label: 'quarter-finalists', repDelta: 1, champion: false };
+  return { label: `eliminated in the ${last.round}`, repDelta: -2, champion: false };
+}

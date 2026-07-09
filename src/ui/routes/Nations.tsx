@@ -38,8 +38,19 @@ export function Nations() {
 
       <div className="card p-4">
         {job ? (
-          <div className="flex items-center justify-between">
-            <div><span className="text-slate-400 text-sm">You manage</span> <span className="font-semibold">{job}</span></div>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div><span className="text-slate-400 text-sm">You manage</span> <span className="font-semibold">{job}</span></div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                {(() => {
+                  const y = useGameStore.getState().currentSeason()?.year ?? meta.startYear;
+                  const nextWC = y + ((2 - (y % 4)) + 4) % 4 || y;
+                  const nextEuros = y + ((0 - (y % 4)) + 4) % 4 || y;
+                  const next = Math.min(nextWC === y ? y : nextWC, nextEuros === y ? y : nextEuros);
+                  return `Next major tournament summer: ${next}. Campaign results move your reputation — and trophies are forever.`;
+                })()}
+              </div>
+            </div>
             <button className="btn-ghost text-sm" onClick={() => resignNationalJob()}>Resign national post</button>
           </div>
         ) : (

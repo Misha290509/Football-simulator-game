@@ -39,6 +39,7 @@ import { areRivals, derbyResultBonus } from '../game/rivalries';
 import { generateNarratives } from '../game/narratives';
 import { storylinesOf, advanceWonderkid, advanceNemesis, advanceSagas, advanceObjectiveMemory } from '../game/storylines';
 import { challengeById, evaluateChallenge } from '../game/challenges';
+import { nationFinish } from '../game/internationals';
 import type { NewsItem } from '../types/league';
 import { aiManagerOf } from '../game/aiManagers';
 import { computeStandings } from '../engine/standings';
@@ -1479,10 +1480,25 @@ export const useGameStore = create<GameState>((set, get) => ({
           newMeta.worldChampion = { nation: wc.championNation, year: wc.year };
           newMeta.internationalHistory = [...(meta.internationalHistory ?? []), { year: wc.year, nation: wc.championNation }].slice(-20);
         }
+        // The manager's own campaign: every summer their nation plays, the
+        // finish moves their reputation and writes their story — not just wins.
         for (const t of tournaments) {
-          if (meta.nationalJob && meta.nationalJob === t.championNation) {
-            newMeta.managerReputation = clamp((newMeta.managerReputation ?? 50) + 12, 5, 99);
-            newMeta.news = [...newMeta.news, { id: `news_intlmgr_${t.kind}_${t.year}`, day: 0, category: 'BOARD', title: `${t.name} winner!`, body: `You led ${t.championNation} to glory at the ${t.name} — your reputation soars.`, read: false }];
+          if (!meta.nationalJob) continue;
+          const finish = nationFinish(t, meta.nationalJob);
+          if (!finish) continue;
+          newMeta.managerReputation = clamp((newMeta.managerReputation ?? 50) + finish.repDelta, 5, 99);
+          if (finish.champion) {
+            newMeta.nationalTrophies = [...(meta.nationalTrophies ?? []), { name: t.name, year: t.year }];
+            newMeta.news = [...newMeta.news, { id: `news_intlmgr_${t.kind}_${t.year}`, day: 0, category: 'BOARD', title: `${t.name} winner!`, body: `You led ${meta.nationalJob} to glory at the ${t.name} — your reputation soars.`, read: false }];
+          } else {
+            newMeta.news = [...newMeta.news, {
+              id: `news_intlmgr_${t.kind}_${t.year}`, day: 0, category: 'BOARD',
+              title: `${t.name}: ${meta.nationalJob} ${finish.label}`,
+              body: finish.repDelta >= 0
+                ? `A creditable summer with the national side — your stock rises.`
+                : `A disappointing exit — questions are asked about your dual role.`,
+              read: false,
+            }];
           }
         }
       }

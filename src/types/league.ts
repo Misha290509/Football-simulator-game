@@ -319,6 +319,8 @@ export interface SaveGame {
   lastTournaments?: TournamentSummary[];
   /** National team the manager also leads (nation name), if any. */
   nationalJob?: string | null;
+  /** International honours won as a national-team manager. */
+  nationalTrophies?: { name: string; year: number }[];
 
   // --- Continental club competitions (§ Continental) ---------------------
   /** In-progress continental competitions this season, keyed by id. */
