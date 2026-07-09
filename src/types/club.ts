@@ -21,6 +21,14 @@ export interface Tactics {
   offensive: OffensiveTactic;
 }
 
+/** A saved team sheet the manager can switch to on the Tactics page. */
+export interface LineupPreset {
+  name: string;
+  formation: string;
+  lineup: (string | null)[]; // starting XI by slot index
+  bench: string[]; // substitutes' bench, player ids
+}
+
 export interface Stadium {
   name: string;
   capacity: number;
@@ -66,6 +74,9 @@ export interface Club {
   autoMode?: boolean;
   /** When true, Auto-Mode keeps the chosen formation instead of optimizing it. */
   lockFormation?: boolean;
+  /** Named team-sheet presets the manager can switch between (e.g. a first XI
+   *  and a rotated/rest XI). Each captures formation + starting XI + bench. */
+  lineupPresets?: LineupPreset[];
   /** Season-by-season finance history for charts (§8, M4). */
   financeHistory?: FinanceSnapshot[];
   // Depth systems (§8, M5)

@@ -9,6 +9,16 @@ import { buildOppositionReport } from '../../game/oppositionReport';
 import { aiManagerOf } from '../../game/aiManagers';
 import { matchDate, formatShort, formatFull, currentDate } from '../../game/gameCalendar';
 
+const NEWS_CATEGORY: Record<string, { color: string; icon: string }> = {
+  BOARD: { color: 'text-sky-400', icon: '🏛️' },
+  TRANSFER: { color: 'text-amber-400', icon: '🔁' },
+  INJURY: { color: 'text-red-400', icon: '🚑' },
+  RESULT: { color: 'text-slate-300', icon: '⚽' },
+  AWARD: { color: 'text-emerald-400', icon: '🏆' },
+  MILESTONE: { color: 'text-purple-400', icon: '📈' },
+  GENERAL: { color: 'text-slate-400', icon: '📰' },
+};
+
 export function Dashboard() {
   const navigate = useNavigate();
   const meta = useGameStore((s) => s.meta)!;
@@ -269,6 +279,30 @@ export function Dashboard() {
           )}
         </div>
       </div>
+
+      {meta.news.length > 0 && (
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-slate-400">Latest news</h2>
+            <button className="text-xs text-accent-400 hover:underline" onClick={() => navigate('/inbox')}>View all ▸</button>
+          </div>
+          <div className="space-y-1.5">
+            {[...meta.news].reverse().slice(0, 6).map((n) => {
+              const cat = NEWS_CATEGORY[n.category] ?? NEWS_CATEGORY.GENERAL;
+              return (
+                <div key={n.id} className="flex items-start gap-2.5 rounded px-1.5 py-1.5 hover:bg-surface-700">
+                  <span className="text-base leading-5 shrink-0" aria-hidden>{cat.icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-slate-200 truncate">{n.title}</div>
+                    <div className="text-xs text-slate-400 line-clamp-1">{n.body}</div>
+                  </div>
+                  <span className={`text-[10px] font-semibold uppercase tracking-wide ml-auto shrink-0 ${cat.color}`}>{n.category}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="card p-4">
         <h2 className="text-sm font-semibold text-slate-400 mb-3">Key players</h2>

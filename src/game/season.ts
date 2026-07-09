@@ -27,6 +27,7 @@ import { runAiToAiTransfers } from './aiTransfers';
 import { rolloverAiManagers } from './aiManagers';
 import { resolveSeasonCompetitions } from './competitions';
 import { computeSeasonAwards, buildCompMeta } from './awards';
+import { awardMeta } from './awardMeta';
 import { scheduleGala } from './gala';
 import { processAcademyRollover } from './academy';
 import { runYouthCompetitions } from './youthCompetitions';
@@ -831,6 +832,21 @@ export async function resolveAndRollover(
       for (const p of Object.values(finalPlayers)) if (p.contract.clubId === a.clubId) stamp(p.id, a.type, a.label);
     }
   }
+  // Announce the marquee individual honours worldwide, so a manager sees when a
+  // star wins big even outside their own club. Only the singular global/continental
+  // trophies are newsed — per-league scorers/best-players would flood the feed.
+  for (const a of awardsRes.seasonEnd) {
+    if (!a.playerId || !MARQUEE_AWARD_NEWS.has(a.type)) continue;
+    const p = finalPlayers[a.playerId];
+    if (!p) continue;
+    const am = awardMeta(a.type);
+    const who = `${p.name.first} ${p.name.last}`;
+    const club = p.contract.clubId ? clubs[p.contract.clubId]?.name : undefined;
+    const ctx = a.note ? ` (${a.note})` : a.value ? ` with ${a.value}` : '';
+    news.push(mkNews(meta.currentDay, 'AWARD',
+      `${am.emoji} ${who} wins the ${am.label}`,
+      `${who}${club ? ` of ${club}` : ''} is named ${a.label}${ctx}.`));
+  }
   const pendingGala = awardsRes.gala.length ? scheduleGala(seasonId, seasonYear, awardsRes.gala, newMatches) : null;
 
   // --- Rival managers: reputations move with results; strugglers get sacked.
@@ -942,3 +958,8 @@ let _newsSeq = 0;
 function mkNews(day: number, category: NewsItem['category'], title: string, body: string): NewsItem {
   return { id: `news_${day}_${_newsSeq++}`, day, category, title, body, read: false };
 }
+
+// The singular, worldwide/continental individual honours worth a headline of
+// their own. Per-league awards (GOLDEN_BOOT, PLAYER_OF_SEASON) and the 11-slot
+// TEAM_OF_SEASON are excluded so the feed stays a highlight reel, not a firehose.
+const MARQUEE_AWARD_NEWS = new Set(['GLOBAL_GOLDEN_BOOT', 'UEFA_POTY', 'CONFED_POTY']);

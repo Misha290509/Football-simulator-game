@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 import {
@@ -34,6 +34,14 @@ export function Tactics() {
   const setLockFormation = useGameStore((s) => s.setLockFormation);
   const autoFillLineup = useGameStore((s) => s.autoFillLineup);
   const saveSquad = useGameStore((s) => s.saveSquad);
+  const saveLineupPreset = useGameStore((s) => s.saveLineupPreset);
+  const applyLineupPreset = useGameStore((s) => s.applyLineupPreset);
+  const deleteLineupPreset = useGameStore((s) => s.deleteLineupPreset);
+
+  const [presetName, setPresetName] = useState('');
+  const [toast, setToast] = useState<string | null>(null);
+  const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 4000); };
+  const presets = club.lineupPresets ?? [];
 
   const formation = club.formation;
   const slots = FORMATIONS[formation] ?? FORMATIONS['4-3-3'];
@@ -213,6 +221,53 @@ export function Tactics() {
         })}
       </div>
 
+      {/* Saved team sheets — switch a first XI / rest XI in one click */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="section-title">Team sheets</h2>
+          <span className="text-xs text-slate-500">Save your current XI &amp; formation, then switch to rest players in a click.</span>
+        </div>
+        {presets.length > 0 ? (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {presets.map((p, i) => (
+              <div key={p.name} className="flex items-center bg-surface-700 rounded-md overflow-hidden border border-surface-600">
+                <button
+                  className="px-3 py-1.5 text-sm hover:bg-accent/10"
+                  title={`Load ${p.name} (${p.formation})`}
+                  onClick={async () => flash((await applyLineupPreset(i)).message)}
+                >
+                  <span className="font-medium">{p.name}</span>
+                  <span className="text-xs text-slate-500 ml-1.5">{p.formation}</span>
+                </button>
+                <button
+                  className="px-2 py-1.5 text-slate-500 hover:text-rose-300 border-l border-surface-600"
+                  title={`Delete ${p.name}`}
+                  onClick={() => deleteLineupPreset(i)}
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500 mb-3">No saved team sheets yet.</p>
+        )}
+        <div className="flex gap-2 max-w-md">
+          <input
+            className="flex-1 bg-surface-700 border border-surface-600 rounded px-3 py-1.5 text-sm"
+            placeholder={presets.length ? 'Name (e.g. Rotation, Cup XI)…' : 'Name your first XI (e.g. First XI)…'}
+            value={presetName}
+            maxLength={20}
+            onChange={(e) => setPresetName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && presetName.trim()) { void saveLineupPreset(presetName).then((r) => flash(r.message)); setPresetName(''); } }}
+          />
+          <button
+            className="btn-ghost text-sm"
+            disabled={!presetName.trim() || presets.length >= 6}
+            onClick={async () => { flash((await saveLineupPreset(presetName)).message); setPresetName(''); }}
+          >Save current XI</button>
+        </div>
+        {presets.length >= 6 && <p className="text-xs text-amber-300/80 mt-1.5">Preset limit reached (6) — delete one to add another.</p>}
+      </div>
+
       <div className="grid lg:grid-cols-[1fr,300px] gap-4">
         {/* Pitch */}
         <div className="card p-4">
@@ -267,6 +322,8 @@ export function Tactics() {
           </div>
         </div>
       </div>
+
+      {toast && <div className="fixed bottom-6 right-6 card px-4 py-3 text-sm shadow-lg border-accent max-w-sm">{toast}</div>}
     </div>
   );
 }

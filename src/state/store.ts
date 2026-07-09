@@ -224,6 +224,11 @@ interface GameState {
   autoFillLineup: () => Promise<void>;
   /** Persist a manually-edited starting XI + bench (drag-and-drop). */
   saveSquad: (lineup: (string | null)[], bench: (string | null)[]) => Promise<void>;
+  /** Snapshot the current team sheet (formation + XI + bench) as a named preset. */
+  saveLineupPreset: (name: string) => Promise<BidResult>;
+  /** Switch the team sheet to a saved preset, dropping any players no longer available. */
+  applyLineupPreset: (index: number) => Promise<BidResult>;
+  deleteLineupPreset: (index: number) => Promise<void>;
 
   // God Mode sandbox (§8, M7)
   setGodMode: (on: boolean) => Promise<void>;
@@ -1267,6 +1272,66 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!meta) return;
     const club = clubs[meta.managerClubId];
     const updated = { ...club, lineup, bench, autoMode: false };
+    set({ clubs: { ...clubs, [club.id]: updated } });
+    await putClubs(meta.id, [updated]);
+  },
+
+  saveLineupPreset: async (name) => {
+    const { meta, clubs } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    const trimmed = name.trim();
+    if (!trimmed) return { ok: false, message: 'Give the team sheet a name.' };
+    const club = clubs[meta.managerClubId];
+    const squad = get().getClubPlayers(club.id);
+    // Snapshot the effective team sheet — resolve auto-mode into concrete ids so
+    // the preset is a real XI even when the club is on auto-select.
+    const lineup = club.lineup ?? assignXI(squad, club.formation, { autoMode: true }).map((a) => a?.player.id ?? null);
+    const bench = (club.bench ?? resolveBench(squad, club.formation, { autoMode: true }).map((p) => p.id))
+      .filter((id): id is string => !!id);
+    const preset = { name: trimmed, formation: club.formation, lineup: [...lineup], bench: [...bench] };
+    const existing = club.lineupPresets ?? [];
+    const idx = existing.findIndex((p) => p.name.toLowerCase() === trimmed.toLowerCase());
+    const lineupPresets = idx >= 0
+      ? existing.map((p, i) => (i === idx ? preset : p))
+      : [...existing, preset].slice(0, 6); // keep it manageable
+    const updated = { ...club, lineupPresets };
+    set({ clubs: { ...clubs, [club.id]: updated } });
+    await putClubs(meta.id, [updated]);
+    return { ok: true, message: idx >= 0 ? `Updated team sheet “${trimmed}”.` : `Saved team sheet “${trimmed}”.` };
+  },
+
+  applyLineupPreset: async (index) => {
+    const { meta, clubs } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    const club = clubs[meta.managerClubId];
+    const preset = club.lineupPresets?.[index];
+    if (!preset) return { ok: false, message: 'That team sheet is gone.' };
+    // Players may have been sold/injured since the preset was saved — drop any
+    // who are no longer in the squad rather than field a ghost.
+    const inSquad = new Set(get().getClubPlayers(club.id).map((p) => p.id));
+    let dropped = 0;
+    const lineup = preset.lineup.map((id) => {
+      if (id && !inSquad.has(id)) { dropped += 1; return null; }
+      return id;
+    });
+    const bench = preset.bench.filter((id) => inSquad.has(id));
+    const updated = { ...club, formation: preset.formation, lineup, bench, autoMode: false };
+    set({ clubs: { ...clubs, [club.id]: updated } });
+    await putClubs(meta.id, [updated]);
+    return {
+      ok: true,
+      message: dropped > 0
+        ? `Loaded “${preset.name}” — ${dropped} player${dropped > 1 ? 's are' : ' is'} no longer available, so ${dropped > 1 ? 'those slots were' : 'that slot was'} left open.`
+        : `Loaded team sheet “${preset.name}”.`,
+    };
+  },
+
+  deleteLineupPreset: async (index) => {
+    const { meta, clubs } = get();
+    if (!meta) return;
+    const club = clubs[meta.managerClubId];
+    const lineupPresets = (club.lineupPresets ?? []).filter((_, i) => i !== index);
+    const updated = { ...club, lineupPresets };
     set({ clubs: { ...clubs, [club.id]: updated } });
     await putClubs(meta.id, [updated]);
   },
