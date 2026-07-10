@@ -73,7 +73,7 @@ import {
   generateOffers,
   type BidResult,
 } from '../game/transfers';
-import { agentDemands, evaluateContractOffer, applyContractOffer, type ContractOffer, type NegotiationResult } from '../game/contracts';
+import { agentDemands, evaluateContractOffer, applyContractOffer, leaveWillingness, type ContractOffer, type NegotiationResult } from '../game/contracts';
 import { transferFloor, overpricedAsk, respondToTransferOffer, type FeeOffer } from '../game/feeNegotiation';
 import type { TransferTalk, InstalmentPayment } from '../types/league';
 
@@ -2427,20 +2427,27 @@ async function playDays(
       }
     }
 
-    // Player unhappiness → transfer requests. A deeply unhappy, ambitious squad
-    // player who isn't getting the game time his status warrants may down tools.
+    // Player unhappiness → transfer requests. A player who has outgrown a weaker
+    // side (team strength) or can't get on the pitch (playing time) grows restless
+    // and may down tools — the same willingness that makes rivals easy to prise away.
     const unhappyRng = new Rng((meta.seed ^ (to * 374761393)) >>> 0);
+    const mgrClubNow = clubs[meta.managerClubId];
+    const mgrGames = season
+      ? Object.values(matches).filter((m) => m.seasonId === season.id && m.played && !m.neutral && (m.homeClubId === meta.managerClubId || m.awayClubId === meta.managerClubId)).length
+      : 0;
     for (const p of Object.values(playersById)) {
-      if (p.contract.clubId !== meta.managerClubId || p.transferRequested || p.transferListed) continue;
-      const wantsOut = p.morale < 32 && p.hidden.ambition > 58
-        && (p.squadRole === 'SURPLUS' || p.squadRole === 'BACKUP' || p.contract.expiresYear - toYear <= 1);
-      if (wantsOut && unhappyRng.chance(0.14)) {
+      if (p.contract.clubId !== meta.managerClubId || p.transferRequested || p.transferListed || !mgrClubNow) continue;
+      const apps = season ? p.stats.filter((s) => s.seasonId === season.id).reduce((n, s) => n + s.appearances, 0) : 0;
+      const w = leaveWillingness(p, mgrClubNow, apps, mgrGames);
+      // Keen to go and out of contention → a real chance he asks to leave.
+      if (w >= 70 && unhappyRng.chance(0.06 + (w - 70) * 0.006)) {
         playersById[p.id] = { ...p, transferRequested: true };
         changedIds.add(p.id);
+        const reason = mgrGames > 0 && apps / mgrGames < 0.4 ? 'wants regular football' : 'feels he has outgrown the club';
         newsItems.push({
           id: `news_treq_${p.id}_${to}`, day: to, category: 'TRANSFER',
           title: `${p.name.first} ${p.name.last} hands in a transfer request`,
-          body: `${p.name.last} is unhappy and has asked to leave. Respond on his profile — grant it (list him) or reject it (he'll sulk).`,
+          body: `${p.name.last} ${reason} and has asked to leave. Respond on his profile — grant it (list him) or reject it (he'll sulk).`,
           read: false,
         });
       }

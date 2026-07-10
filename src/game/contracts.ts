@@ -62,12 +62,31 @@ export function agentDemands(player: Player, club: Club, year: number): Contract
 }
 
 /**
+ * How keen a player is to leave his current club, 0 (settled) – 100 (desperate
+ * to go). Driven by how far he has outgrown a weaker side (team strength) and how
+ * little he actually plays (game time); ambition sharpens it, high morale calms it.
+ */
+export function leaveWillingness(player: Player, currentClub: Club, appearances: number, clubGames: number): number {
+  const gap = player.overall - currentClub.reputation; // a big fish in a small pond
+  const playRatio = clubGames > 0 ? Math.min(1, appearances / clubGames) : 0.6;
+  let w = 40 + gap * 3.2;
+  w += (0.55 - playRatio) * 55;                 // benched → restless; ever-present → happy
+  w += (player.hidden.ambition - 55) * 0.5;
+  w -= (player.morale - 55) * 0.25;
+  return Math.min(100, Math.max(0, Math.round(w)));
+}
+
+/** Optional context when prising a player from another club. */
+export interface LeaveContext { currentClub?: Club | null; appearances?: number; clubGames?: number }
+
+/**
  * Evaluate the manager's offer. Scores each term against the agent's demands;
  * a strong offer is accepted, a near-miss is countered (agent meets you part-way),
- * a poor one (or an unsettled player who wants out) is rejected.
+ * a poor one (or an unsettled player who wants out) is rejected. When `context`
+ * describes his current club, his willingness to leave gates the move.
  */
 export function evaluateContractOffer(
-  player: Player, club: Club, offer: ContractOffer, year: number,
+  player: Player, club: Club, offer: ContractOffer, year: number, context?: LeaveContext,
 ): NegotiationResult {
   const name = player.name.last;
   const gap = player.overall - club.reputation;
@@ -78,6 +97,15 @@ export function evaluateContractOffer(
   }
   if (offer.years < 1 || offer.years > 6) {
     return { outcome: 'REJECT', message: 'Contract length must be between 1 and 6 years.' };
+  }
+
+  // Prising him from another club: a settled starter at a strong side digs in,
+  // while an out-of-favour player at a weaker club is easy to tempt.
+  let willingnessAdj = 0;
+  if (context?.currentClub && context.currentClub.id !== club.id) {
+    const w = leaveWillingness(player, context.currentClub, context.appearances ?? 0, context.clubGames ?? 0);
+    if (w < 22) return { outcome: 'REJECT', message: `${name} is settled at ${context.currentClub.shortName} and isn't looking to move.` };
+    willingnessAdj = (w - 55) * 0.35; // keen → easier; reluctant → harder
   }
 
   const demand = agentDemands(player, club, year);
@@ -110,6 +138,8 @@ export function evaluateContractOffer(
   // Professional, happy players are easier to please.
   score += (player.hidden.professionalism - 60) / 6;
   score += (player.morale - 60) / 8;
+  // How keen he is to leave his current club sways the whole negotiation.
+  score += willingnessAdj;
 
   if (score >= 22) return { outcome: 'ACCEPT', message: `${name} is happy to put pen to paper!` };
   if (score >= -18) {

@@ -68,6 +68,14 @@ export function TransferMarket() {
     if (!b) return false;
     return b.key !== null ? winNow.key === b.key : meta.currentDay - b.day < 25;
   };
+  // Clubs you've rubbed up the wrong way while haggling — worth seeing before
+  // you open a bid, since high tension slows deals and can freeze a club out.
+  const soured = useMemo(() => Object.entries(meta.clubRelations ?? {})
+    .map(([id, r]) => ({ club: clubs[id], tension: r.tension, frozenDays: r.refuseUntil ? Math.max(0, r.refuseUntil - meta.currentDay) : 0 }))
+    .filter((r) => r.club && (r.tension >= 12 || r.frozenDays > 0))
+    .sort((a, b) => (b.frozenDays - a.frozenDays) || (b.tension - a.tension)),
+  [meta.clubRelations, meta.currentDay, clubs]);
+
   const reports = meta.scoutReports ?? {};
   const assignments = meta.playerScoutAssignments ?? [];
   const assignedPlayerIds = useMemo(() => new Set(assignments.map((a) => a.playerId)), [assignments]);
@@ -180,6 +188,26 @@ export function TransferMarket() {
               <span key={a.playerId} className="bg-surface-700 rounded px-3 py-1 text-sm">✔ {a.playerName} <span className="text-slate-500 text-xs">{formatMoney(a.fee)}</span></span>
             ))}
           </div>
+        </div>
+      )}
+
+      {soured.length > 0 && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-2">Club relations</h2>
+          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
+            {soured.map(({ club, tension, frozenDays }) => (
+              <div key={club.id} className="flex items-center gap-3 text-sm">
+                <span className="w-28 truncate">{club.shortName}</span>
+                <div className="flex-1 h-1.5 bg-surface-700 rounded overflow-hidden">
+                  <div className={`h-1.5 rounded ${tension >= 80 ? 'bg-rose-500' : tension >= 50 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${tension}%` }} />
+                </div>
+                {frozenDays > 0
+                  ? <span className="text-xs text-rose-400 w-32 text-right">won't talk · ~{frozenDays}d</span>
+                  : <span className="text-xs text-slate-500 w-32 text-right">{tension >= 80 ? 'strained' : tension >= 50 ? 'tense' : 'cordial'}</span>}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-slate-500 mt-2">Lowball bids raise tension; at breaking point a club freezes you out for about two weeks before cooling off.</p>
         </div>
       )}
 
@@ -366,8 +394,18 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
   const [terms, setTerms] = useState<ContractOffer | null>(null);
   const activeTerms = terms ?? demands;
   const setT = <K extends keyof ContractOffer>(k: K, v: ContractOffer[K]) => setTerms({ ...activeTerms, [k]: v });
+  // How settled he is at his current club (team strength + game time) sways whether
+  // he'll agree to join — a nailed-on starter at a strong side takes some convincing.
+  const allMatches = useGameStore((s) => s.matches);
+  const seasonId = useGameStore((s) => s.currentSeason()?.id);
+  const leaveCtx = useMemo(() => {
+    if (!seller) return undefined;
+    const clubGames = Object.values(allMatches).filter((m) => m.seasonId === seasonId && m.played && !m.neutral && (m.homeClubId === seller.id || m.awayClubId === seller.id)).length;
+    const appearances = player.stats.filter((st) => st.seasonId === seasonId).reduce((n, st) => n + st.appearances, 0);
+    return { currentClub: seller, appearances, clubGames };
+  }, [allMatches, seasonId, seller, player]);
   const submitTerms = async () => {
-    const r = evaluateContractOffer(player, buyer, activeTerms, year);
+    const r = evaluateContractOffer(player, buyer, activeTerms, year, leaveCtx);
     setMsg(r.message);
     if (r.outcome === 'ACCEPT') {
       const done = await completeSigning(player.id, agreedFee, activeTerms, offer.instalmentYears);

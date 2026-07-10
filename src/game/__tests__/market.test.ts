@@ -5,6 +5,7 @@ import { buildScoutReport, scoutStars, marketView, eliteKnownIds } from '../../e
 import { estimateValue } from '../../engine/development';
 import { clubValuation, negotiateFee, transferFloor, overpricedAsk, respondToTransferOffer, dealGrade, type FeeOffer } from '../feeNegotiation';
 import { evaluateLoanTerms } from '../transfers';
+import { leaveWillingness, evaluateContractOffer, agentDemands } from '../contracts';
 import type { Staff } from '../../types/staff';
 import type { Player } from '../../types/player';
 
@@ -180,5 +181,24 @@ describe('Loan term negotiation', () => {
 
   it('accepts a fair, even split', () => {
     expect(evaluateLoanTerms(p, buyer, parent, 1, 0.5, null).ok).toBe(true);
+  });
+});
+
+describe('Willingness to leave', () => {
+  const strong = [...clubs].sort((a, b) => b.reputation - a.reputation)[0];
+  const weak = [...clubs].sort((a, b) => a.reputation - b.reputation)[0];
+  const star: Player = { ...target, overall: 84, hidden: { ...target.hidden, ambition: 70 }, morale: 60 };
+
+  it('rises when outgrowing a weak club and warming the bench', () => {
+    const benchedAtWeak = leaveWillingness(star, weak, 1, 20);
+    const settledStarter = leaveWillingness({ ...star, overall: strong.reputation - 5, morale: 80 }, strong, 20, 20);
+    expect(benchedAtWeak).toBeGreaterThan(settledStarter);
+    expect(benchedAtWeak).toBeGreaterThan(60);
+  });
+
+  it('an ever-present starter at a strong club won\'t be tempted away', () => {
+    const settled: Player = { ...star, overall: strong.reputation - 6, morale: 82 };
+    const r = evaluateContractOffer(settled, weak, agentDemands(settled, weak, 2024), 2024, { currentClub: strong, appearances: 20, clubGames: 20 });
+    expect(r.outcome).toBe('REJECT');
   });
 });

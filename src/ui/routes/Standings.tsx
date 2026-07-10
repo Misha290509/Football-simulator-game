@@ -12,7 +12,9 @@ export function Standings() {
   const managerClubId = meta.managerClubId;
 
   const competitions = Object.values(meta.competitions).sort((a, b) => a.tier - b.tier);
-  const [compId, setCompId] = useState(competitions[0]?.id);
+  // Open on the manager's own division rather than the top tier by default.
+  const myCompId = competitions.find((c) => c.clubIds.includes(managerClubId))?.id ?? competitions[0]?.id;
+  const [compId, setCompId] = useState(myCompId);
   const comp = meta.competitions[compId];
 
   const rows = useMemo(
