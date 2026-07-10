@@ -68,12 +68,25 @@ import {
   weeklyWageBill,
   evaluateRenewal,
   applyRenewal,
-  evaluateLoanIn,
+  evaluateLoanTerms,
   applyLoanMove,
   generateOffers,
   type BidResult,
 } from '../game/transfers';
 import { agentDemands, evaluateContractOffer, applyContractOffer, type ContractOffer, type NegotiationResult } from '../game/contracts';
+import { transferFloor, overpricedAsk, respondToTransferOffer, type FeeOffer } from '../game/feeNegotiation';
+import type { TransferTalk, InstalmentPayment } from '../types/league';
+
+/** The club's answer to one fee offer, plus the manager's standing with them. */
+export interface FeeTalkResult {
+  ok: boolean;
+  message: string;
+  outcome?: 'ACCEPT' | 'COUNTER' | 'REFUSE';
+  counterFee?: number; // the club's updated ask (COUNTER)
+  agreedFee?: number;  // the fee that was agreed (ACCEPT)
+  grade?: string;      // deal grade (ACCEPT)
+  tension?: number;    // 0–100 relationship tension after this round
+}
 import { ACHIEVEMENTS } from '../game/achievements';
 import { buildScoutReport } from '../engine/marketScout';
 import { physioFactor, scoutingRate, FACILITY_UPGRADE_COST, generateStaffPool, evaluateStaffTerms } from '../engine/staff';
@@ -154,10 +167,14 @@ interface GameState {
   offerContract: (playerId: string, offer: ContractOffer) => Promise<NegotiationResult>;
   respondToTransferRequest: (playerId: string, grant: boolean) => Promise<void>;
   assignMarketScout: (scoutId: string, playerId: string) => Promise<BidResult>;
-  completeSigning: (playerId: string, fee: number, offer: ContractOffer) => Promise<BidResult>;
+  completeSigning: (playerId: string, fee: number, offer: ContractOffer, instalmentYears?: number) => Promise<BidResult>;
+  /** One round of haggling over a fee. Returns the club's answer + your standing. */
+  submitTransferOffer: (playerId: string, offer: FeeOffer) => Promise<FeeTalkResult>;
+  /** Abandon an open transfer talk (a small dent to the relationship). */
+  abandonTransferTalk: (playerId: string) => Promise<void>;
   /** Transfer-window state for the current date (open? which? label). */
   transferWindow: () => { open: boolean; kind: 'SUMMER' | 'WINTER' | null; nextLabel: string; key: string | null };
-  loanIn: (playerId: string, years: number, withOption?: boolean) => Promise<BidResult>;
+  loanIn: (playerId: string, years: number, wageSplitParent?: number, optionToBuy?: number | null) => Promise<BidResult>;
   triggerLoanOption: (playerId: string) => Promise<BidResult>;
   acceptOffer: (offerId: string) => Promise<void>;
   rejectOffer: (offerId: string) => Promise<void>;
@@ -394,6 +411,66 @@ export const useGameStore = create<GameState>((set, get) => ({
     return res;
   },
 
+  submitTransferOffer: async (playerId, offer) => {
+    const { meta, clubs, players } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    if (challengeBansSignings(meta)) return { ok: false, message: 'Challenge rule: no incoming transfers — build from within.' };
+    if (meta.ffp?.embargo) return { ok: false, message: 'Under an FFP transfer embargo — you cannot sign players this season.' };
+    const player = players[playerId];
+    if (!player) return { ok: false, message: 'Player not found.' };
+    const buyer = clubs[meta.managerClubId];
+    const seller = player.contract.clubId ? clubs[player.contract.clubId] ?? null : null;
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    if (!seller) return { ok: true, outcome: 'ACCEPT', message: 'Free agent — no fee required.', agreedFee: 0 };
+
+    const rel = meta.clubRelations?.[seller.id] ?? { tension: 0 };
+    if (rel.refuseUntil && meta.currentDay < rel.refuseUntil) {
+      return { ok: false, outcome: 'REFUSE', message: `${seller.shortName} won't discuss transfers with you right now — you have soured relations. Give it a couple of weeks.`, tension: rel.tension };
+    }
+
+    const floor = transferFloor(player, seller, buyer, year);
+    const talks = { ...(meta.transferTalks ?? {}) };
+    let talk = talks[playerId] as TransferTalk | undefined;
+    if (!talk || talk.clubId !== seller.id) {
+      const rng = new Rng((meta.seed ^ hashSeed(`talk_${playerId}`) ^ meta.currentDay) >>> 0);
+      const initialAsk = overpricedAsk(floor, 1.25 + rng.int(0, 25) / 100);
+      talk = { playerId, clubId: seller.id, floor, ask: initialAsk, initialAsk, rounds: 0 };
+    }
+
+    const resp = respondToTransferOffer({
+      offer, player, sellerName: seller.shortName,
+      floor: talk.floor, ask: talk.ask, initialAsk: talk.initialAsk, tension: rel.tension,
+    });
+    const relations = { ...(meta.clubRelations ?? {}), [seller.id]: { ...rel, tension: resp.tension } };
+
+    if (resp.outcome === 'ACCEPT') {
+      delete talks[playerId];
+      const newMeta: SaveMeta = { ...meta, clubRelations: relations, transferTalks: talks };
+      set({ meta: newMeta }); await persistMeta(newMeta);
+      return { ok: true, outcome: 'ACCEPT', message: resp.message, agreedFee: offer.fee, grade: resp.grade, tension: resp.tension };
+    }
+    if (resp.outcome === 'REFUSE') {
+      relations[seller.id] = { tension: resp.tension, refuseUntil: meta.currentDay + 14 };
+      delete talks[playerId];
+      const newMeta: SaveMeta = { ...meta, clubRelations: relations, transferTalks: talks };
+      set({ meta: newMeta }); await persistMeta(newMeta);
+      return { ok: false, outcome: 'REFUSE', message: resp.message, tension: resp.tension };
+    }
+    // COUNTER — remember the drifting ask so the next round resumes from here.
+    talks[playerId] = { ...talk, ask: resp.ask, rounds: talk.rounds + 1 };
+    const newMeta: SaveMeta = { ...meta, clubRelations: relations, transferTalks: talks };
+    set({ meta: newMeta }); await persistMeta(newMeta);
+    return { ok: false, outcome: 'COUNTER', message: resp.message, counterFee: resp.ask, tension: resp.tension };
+  },
+
+  abandonTransferTalk: async (playerId) => {
+    const { meta } = get();
+    if (!meta || !meta.transferTalks?.[playerId]) return;
+    const talks = { ...meta.transferTalks }; delete talks[playerId];
+    const newMeta: SaveMeta = { ...meta, transferTalks: talks };
+    set({ meta: newMeta }); await persistMeta(newMeta);
+  },
+
   setTransferListed: async (playerId, listed) => {
     const { meta, players } = get();
     if (!meta) return;
@@ -520,7 +597,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { open: kind !== null, kind, nextLabel, key: windowKey(meta, maxDay) };
   },
 
-  completeSigning: async (playerId, fee, offer) => {
+  completeSigning: async (playerId, fee, offer, instalmentYears = 1) => {
     const { meta, clubs, players } = get();
     if (!meta) return { ok: false, message: 'No active save.' };
     if (challengeBansSignings(meta)) return { ok: false, message: 'Challenge rule: no incoming transfers — build from within.' };
@@ -528,7 +605,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = players[playerId];
     if (!player) return { ok: false, message: 'Player not found.' };
     const buyer = clubs[meta.managerClubId];
-    if (fee > buyer.finances.transferBudget) return { ok: false, message: 'The agreed fee exceeds your transfer budget.' };
+    // With installments only this year's slice counts against the budget now.
+    const years = Math.max(1, Math.min(4, Math.round(instalmentYears)));
+    const perYear = years > 1 ? Math.round(fee / years) : fee;
+    if (perYear > buyer.finances.transferBudget) return { ok: false, message: years > 1 ? 'This year’s installment exceeds your transfer budget.' : 'The agreed fee exceeds your transfer budget.' };
     const buyerSquad = get().getClubPlayers(buyer.id);
     if (weeklyWageBill(buyerSquad) + offer.wage > buyer.finances.wageBudget) {
       return { ok: false, message: 'Those wages would breach your wage budget.' };
@@ -540,8 +620,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Window shut → deal is done now (fee paid, terms agreed) but the player
     // registers when the next window opens. He keeps playing for his club.
     if (!win.open) {
-      const paidBuyer: Club = { ...buyer, finances: { ...buyer.finances, balance: buyer.finances.balance - fee, transferBudget: buyer.finances.transferBudget - fee } };
-      const paidSeller = seller ? { ...seller, finances: { ...seller.finances, balance: seller.finances.balance + fee, transferBudget: seller.finances.transferBudget + Math.round(fee * 0.6) } } : null;
+      // Pre-agreed while shut: pay only this year's slice now; stage the rest.
+      const paidBuyer: Club = { ...buyer, finances: { ...buyer.finances, balance: buyer.finances.balance - perYear, transferBudget: buyer.finances.transferBudget - perYear } };
+      const paidSeller = seller ? { ...seller, finances: { ...seller.finances, balance: seller.finances.balance + perYear, transferBudget: seller.finances.transferBudget + Math.round(perYear * 0.6) } } : null;
+      const staged: InstalmentPayment[] = [];
+      for (let i = 1; i < years; i++) {
+        staged.push({ dueYear: year + i, payerClubId: buyer.id, payeeClubId: seller?.id ?? null, amount: perYear, playerName: `${player.name.first} ${player.name.last}` });
+      }
       const arrival: PendingArrival = {
         playerId, toClubId: buyer.id, fee, wage: offer.wage, years: offer.years,
         releaseClause: offer.releaseClause ?? null, playerName: `${player.name.first} ${player.name.last}`,
@@ -549,15 +634,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
       const newClubs = { ...clubs, [paidBuyer.id]: paidBuyer };
       if (paidSeller) newClubs[paidSeller.id] = paidSeller;
+      const feeText = years > 1 ? `${fee.toLocaleString()} over ${years} years` : `${fee.toLocaleString()}`;
       const news = {
         id: `news_predeal_${player.id}_${Date.now().toString(36)}`, day: meta.currentDay, category: 'TRANSFER' as const,
         title: `Pre-agreed: ${player.name.first} ${player.name.last}`,
-        body: `Deal done with ${seller?.shortName ?? 'the player'} for ${fee.toLocaleString()} — he joins in ${win.nextLabel}. He stays with his club until the window opens.`,
+        body: `Deal done with ${seller?.shortName ?? 'the player'} for ${feeText} — he joins in ${win.nextLabel}. He stays with his club until the window opens.`,
         read: false,
       };
       const reports = { ...(meta.scoutReports ?? {}) }; delete reports[playerId];
       const newMeta: SaveMeta = {
         ...meta, news: [...meta.news, news], scoutReports: reports,
+        installments: [...(meta.installments ?? []), ...staged],
         pendingArrivals: [...(meta.pendingArrivals ?? []), arrival],
         playerScoutAssignments: (meta.playerScoutAssignments ?? []).filter((a) => a.playerId !== playerId),
       };
@@ -567,20 +654,28 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { ok: true, message: `${player.name.last} agreed — he joins in ${win.nextLabel}.` };
     }
 
-    const upd = applyTransfer(buyer, seller, player, fee, offer.wage, year);
+    // Move the player and pay only this year's slice up front (perYear === fee
+    // when not staged); the rest is scheduled to fall due in future summers.
+    const upd = applyTransfer(buyer, seller, player, perYear, offer.wage, year);
     const signed = applyContractOffer(upd.player, offer, year);
     const newClubs = { ...clubs, [upd.buyer.id]: upd.buyer };
     if (upd.seller) newClubs[upd.seller.id] = upd.seller;
+    const staged: InstalmentPayment[] = [];
+    for (let i = 1; i < years; i++) {
+      staged.push({ dueYear: year + i, payerClubId: buyer.id, payeeClubId: seller?.id ?? null, amount: perYear, playerName: `${player.name.first} ${player.name.last}` });
+    }
+    const feeText = years > 1 ? `${fee.toLocaleString()} over ${years} years (${perYear.toLocaleString()}/yr)` : `${fee.toLocaleString()}`;
     const news = {
       id: `news_sign_${player.id}_${Date.now().toString(36)}`, day: meta.currentDay, category: 'TRANSFER' as const,
       title: `Signed ${player.name.first} ${player.name.last}`,
-      body: `${player.position} joins from ${seller?.shortName ?? 'free agency'} for ${fee.toLocaleString()} on ${offer.wage.toLocaleString()}/wk.`,
+      body: `${player.position} joins from ${seller?.shortName ?? 'free agency'} for ${feeText} on ${offer.wage.toLocaleString()}/wk.`,
       read: false,
     };
     // Clear any scout report/assignment now that he's ours.
     const reports = { ...(meta.scoutReports ?? {}) }; delete reports[playerId];
     const newMeta: SaveMeta = {
       ...meta, news: [...meta.news, news], scoutReports: reports,
+      installments: [...(meta.installments ?? []), ...staged],
       playerScoutAssignments: (meta.playerScoutAssignments ?? []).filter((a) => a.playerId !== playerId),
     };
     set({ clubs: newClubs, players: { ...players, [playerId]: signed }, meta: newMeta });
@@ -590,7 +685,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { ok: true, message: `${player.name.last} signs!` };
   },
 
-  loanIn: async (playerId, years, withOption = false) => {
+  loanIn: async (playerId, years, wageSplitParent = 0.5, optionToBuy = null) => {
     const { meta, clubs, players } = get();
     if (!meta) return { ok: false, message: 'No active save.' };
     if (challengeBansSignings(meta)) return { ok: false, message: 'Challenge rule: no incoming transfers — build from within.' };
@@ -601,19 +696,36 @@ export const useGameStore = create<GameState>((set, get) => ({
     const toClub = clubs[meta.managerClubId];
     const fromClub = player.contract.clubId ? clubs[player.contract.clubId] : null;
     if (!fromClub || fromClub.id === toClub.id) return { ok: false, message: 'Cannot loan this player.' };
-    const res = evaluateLoanIn(player, toClub, years);
-    if (!res.ok) return res;
+    // Soured relations shut the door on loans too, until the freeze lifts.
+    const rel = meta.clubRelations?.[fromClub.id] ?? { tension: 0 };
+    if (rel.refuseUntil && meta.currentDay < rel.refuseUntil) {
+      return { ok: false, message: `${fromClub.shortName} won't deal with you right now — relations are strained. Try again in a couple of weeks.` };
+    }
+    const split = Math.min(1, Math.max(0, wageSplitParent));
+    const res = evaluateLoanTerms(player, toClub, fromClub, years, split, optionToBuy);
+    if (!res.ok) {
+      // A rejected loan nudges tension up (they tire of unrealistic asks).
+      const tension = Math.min(100, rel.tension + 6);
+      const relations = { ...(meta.clubRelations ?? {}), [fromClub.id]: { ...rel, tension } };
+      const newMeta: SaveMeta = { ...meta, clubRelations: relations };
+      set({ meta: newMeta }); await persistMeta(newMeta);
+      return res;
+    }
     const year = get().currentSeason()?.year ?? meta.startYear;
-    // An option to buy is agreed at a slight premium to the player's value.
-    const option = withOption ? Math.round(player.value * 1.1) : null;
-    const mv = applyLoanMove(player, fromClub, toClub, year + years, 0.5, option);
+    const mv = applyLoanMove(player, fromClub, toClub, year + years, split, optionToBuy);
+    const relations = { ...(meta.clubRelations ?? {}), [fromClub.id]: { ...rel, tension: Math.max(0, rel.tension - 4) } };
+    const newMeta: SaveMeta = { ...meta, clubRelations: relations };
     set({
       clubs: { ...clubs, [mv.fromClub.id]: mv.fromClub, [mv.toClub.id]: mv.toClub },
       players: { ...players, [mv.player.id]: mv.player },
+      meta: newMeta,
     });
     await putClubs(meta.id, [mv.fromClub, mv.toClub]);
     await putPlayers(meta.id, [mv.player]);
-    return { ok: true, message: option ? `${res.message} Option to buy: ${option.toLocaleString()}.` : res.message };
+    await persistMeta(newMeta);
+    const parentPct = Math.round(split * 100);
+    const optText = optionToBuy != null ? ` Option to buy: ${optionToBuy.toLocaleString()}.` : '';
+    return { ok: true, message: `${res.message} ${fromClub.shortName} cover ${parentPct}% of his wages.${optText}` };
   },
 
   triggerLoanOption: async (playerId) => {
@@ -1577,6 +1689,31 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       }
 
+      // Staged transfer fees falling due this new season hit the fresh budget —
+      // an installment deal only costs its per-year slice each summer.
+      if ((meta.installments?.length ?? 0) > 0) {
+        const nextYear = result.newSeason.year;
+        const due = (meta.installments ?? []).filter((p) => p.dueYear <= nextYear);
+        newMeta.installments = (meta.installments ?? []).filter((p) => p.dueYear > nextYear);
+        if (due.length) {
+          const paidClubs = { ...result.clubs };
+          let managerOut = 0;
+          for (const p of due) {
+            const payer = paidClubs[p.payerClubId];
+            if (payer) {
+              paidClubs[p.payerClubId] = { ...payer, finances: { ...payer.finances, balance: payer.finances.balance - p.amount, transferBudget: Math.max(0, payer.finances.transferBudget - p.amount) } };
+              if (p.payerClubId === meta.managerClubId) managerOut += p.amount;
+            }
+            if (p.payeeClubId && paidClubs[p.payeeClubId]) {
+              const payee = paidClubs[p.payeeClubId];
+              paidClubs[p.payeeClubId] = { ...payee, finances: { ...payee.finances, balance: payee.finances.balance + p.amount } };
+            }
+          }
+          result.clubs = paidClubs;
+          if (managerOut > 0) newMeta.news = [...newMeta.news, { id: `news_instal_${nextYear}`, day: 0, category: 'BOARD', title: 'Transfer installments due', body: `£${managerOut.toLocaleString()} in staged transfer fees came due this summer.`, read: false }];
+        }
+      }
+
       // Persist playoff/cup/continental (history) + new fixtures + squads.
       await putMatches(meta.id, result.playoffMatches);
       await putMatches(meta.id, result.extraMatches ?? []);
@@ -2398,11 +2535,24 @@ async function playDays(
       pendingGala = null;
     }
 
+    // Transfer relations cool over time: tension ebbs, and a club that broke off
+    // talks is willing again once its two-week freeze has passed (resetting to a
+    // calmer baseline so it remembers the friction without holding a grudge).
+    let clubRelations = meta.clubRelations;
+    if (clubRelations && Object.keys(clubRelations).length) {
+      const ease = Math.max(1, Math.round((to - from) * 0.6));
+      clubRelations = Object.fromEntries(Object.entries(clubRelations).map(([id, r]) => {
+        if (r.refuseUntil && to >= r.refuseUntil) return [id, { tension: Math.min(r.tension, 45) }];
+        return [id, { tension: Math.max(0, r.tension - ease), refuseUntil: r.refuseUntil }];
+      }));
+    }
+
     const newMeta: SaveMeta = {
       ...meta, currentDay: to, news: newsItems, scouting, pendingOffers, board,
       scoutAssignments: scoutRes.assignments, youthProspects, pendingPress,
       scoutReports, playerScoutAssignments: remainingAssignments,
       pendingGala, history, managerStyle, pendingArrivals, storylines, ballonDor,
+      clubRelations,
     };
     set({ matches, players: playersById, clubs: clubsAfter, meta: newMeta });
 

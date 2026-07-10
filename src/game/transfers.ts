@@ -209,6 +209,35 @@ export function evaluateLoanIn(player: Player, club: Club, years: number): BidRe
   return { ok: true, message: 'Loan move agreed!' };
 }
 
+/**
+ * Judge negotiated loan terms. Base eligibility aside, the parent club resists
+ * covering a big share of the wages, but a generous option-to-buy sweetens them
+ * into paying more. `wageSplitParent` is the fraction of wages the PARENT pays.
+ */
+export function evaluateLoanTerms(
+  player: Player, toClub: Club, fromClub: Club, years: number,
+  wageSplitParent: number, optionToBuy: number | null,
+): BidResult {
+  const base = evaluateLoanIn(player, toClub, years);
+  if (!base.ok) return base;
+  const val = player.value;
+  // How much of the wage the parent will stomach, lifted by a strong buy option.
+  let tolerance = 0.5;
+  if (optionToBuy != null) {
+    if (optionToBuy >= val * 1.2) tolerance += 0.3;
+    else if (optionToBuy >= val * 0.9) tolerance += 0.15;
+    else if (optionToBuy < val * 0.6) tolerance -= 0.15; // insultingly cheap option
+  }
+  tolerance = Math.min(0.9, Math.max(0.1, tolerance));
+  if (wageSplitParent > tolerance + 0.001) {
+    return {
+      ok: false,
+      message: `${fromClub.shortName} won't cover ${Math.round(wageSplitParent * 100)}% of his wages — they'll go to about ${Math.round(tolerance * 100)}%. Pay more of the wages yourself, or raise the option to buy.`,
+    };
+  }
+  return { ok: true, message: `${fromClub.shortName} agree to the loan on those terms.` };
+}
+
 /** Move a player on loan from their current club to `toClub`. */
 export function applyLoanMove(
   player: Player,

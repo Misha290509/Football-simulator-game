@@ -6,7 +6,7 @@ import { Rating } from '../components/Rating';
 import { MoneyInput } from '../components/MoneyInput';
 import { ageOf, fullName, formatMoney, formatWage } from '../format';
 import { marketView, eliteKnownIds, scoutStars, clubScoutRating, departmentStars, type MarketView } from '../../engine/marketScout';
-import { negotiateFee, clubValuation, type FeeOffer } from '../../game/feeNegotiation';
+import { clubValuation, type FeeOffer } from '../../game/feeNegotiation';
 import { agentDemands, evaluateContractOffer, type ContractOffer } from '../../game/contracts';
 import type { Player, SquadRole } from '../../types/player';
 import type { Staff } from '../../types/staff';
@@ -301,7 +301,7 @@ export function TransferMarket() {
 
       {loanTarget && (
         <LoanModal player={loanTarget} onClose={() => setLoanTarget(null)}
-          onLoan={async (years, withOption) => { const r = await loanIn(loanTarget.id, years, withOption); flash(r.message); if (r.ok) setLoanTarget(null); }} />
+          onLoan={async (years, wageSplitParent, optionToBuy) => { const r = await loanIn(loanTarget.id, years, wageSplitParent, optionToBuy); flash(r.message); if (r.ok) setLoanTarget(null); }} />
       )}
 
       {toast && <div className="fixed bottom-6 right-6 card px-4 py-3 text-sm shadow-lg border-accent max-w-sm">{toast}</div>}
@@ -340,19 +340,25 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
   onBreakOff: () => void;
 }) {
   const completeSigning = useGameStore((s) => s.completeSigning);
+  const submitTransferOffer = useGameStore((s) => s.submitTransferOffer);
   const [phase, setPhase] = useState<'FEE' | 'TERMS'>(seller ? 'FEE' : 'TERMS');
   const [agreedFee, setAgreedFee] = useState(0);
+  const [dealGrade, setDealGrade] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+
+  // Live relationship + any in-progress ask, kept in the save so talks resume.
+  const tension = useGameStore((s) => (seller ? s.meta?.clubRelations?.[seller.id]?.tension ?? 0 : 0));
+  const clubAsk = useGameStore((s) => (seller ? s.meta?.transferTalks?.[player.id]?.ask : undefined));
 
   // Phase 1 — fee (default to the value the manager can see).
   const startFee = view.value ?? clubValuation(player, seller, buyer, year);
   const [offer, setOffer] = useState<FeeOffer>({ fee: startFee, instalmentYears: 1, sellOnPct: 0, addOns: 0 });
-  const submitFee = () => {
-    const r = negotiateFee(player, seller, buyer, offer, year);
+  const submitFee = async () => {
+    const r = await submitTransferOffer(player.id, offer);
     setMsg(r.message);
-    if (r.outcome === 'ACCEPT') { setAgreedFee(offer.fee); setPhase('TERMS'); setMsg(null); }
-    else if (r.outcome === 'COUNTER' && r.counterFee) setOffer({ ...offer, fee: r.counterFee });
-    else if (r.outcome === 'REJECT') { flash(r.message); onBreakOff(); } // insulting — talks end
+    if (r.outcome === 'ACCEPT') { setAgreedFee(r.agreedFee ?? offer.fee); setDealGrade(r.grade ?? null); setPhase('TERMS'); }
+    else if (r.outcome === 'REFUSE') { flash(r.message); onBreakOff(); onClose(); }
+    // COUNTER: their new (lower) ask is shown below; nudge your bid and try again.
   };
 
   // Phase 2 — personal terms.
@@ -364,7 +370,7 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
     const r = evaluateContractOffer(player, buyer, activeTerms, year);
     setMsg(r.message);
     if (r.outcome === 'ACCEPT') {
-      const done = await completeSigning(player.id, agreedFee, activeTerms);
+      const done = await completeSigning(player.id, agreedFee, activeTerms, offer.instalmentYears);
       flash(done.message);
       if (done.ok) onClose();
     } else if (r.outcome === 'COUNTER' && r.counter) setTerms(r.counter);
@@ -384,6 +390,16 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
 
       {phase === 'FEE' ? (
         <div className="grid grid-cols-2 gap-3 text-sm">
+          {seller && (
+            <div className="col-span-2 flex items-center gap-3 text-xs">
+              <span className="text-slate-400">Relations with {seller.shortName}</span>
+              <div className="flex-1 h-1.5 bg-surface-700 rounded overflow-hidden">
+                <div className={`h-1.5 rounded ${tension >= 80 ? 'bg-rose-500' : tension >= 50 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${tension}%` }} />
+              </div>
+              <span className="font-mono text-slate-400">{tension >= 80 ? 'strained' : tension >= 50 ? 'tense' : 'cordial'}</span>
+            </div>
+          )}
+          {clubAsk != null && <p className="col-span-2 text-xs text-amber-300/90">They're currently holding out for around {clubAsk.toLocaleString()} — keep haggling to talk them down.</p>}
           <label className="col-span-2"><span className="text-slate-400">Transfer fee (guaranteed)</span><MoneyInput value={offer.fee} onChange={(v) => setOffer({ ...offer, fee: v })} /></label>
           <label><span className="text-slate-400">Pay over (years)</span>
             <div className="flex gap-1 mt-1">{[1, 2, 3, 4].map((y) => <button key={y} className={offer.instalmentYears === y ? 'btn-primary px-2 py-0.5 text-xs' : 'btn-ghost px-2 py-0.5 text-xs'} onClick={() => setOffer({ ...offer, instalmentYears: y })}>{y}</button>)}</div>
@@ -410,7 +426,7 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
 
       {msg && <p className="text-sm text-amber-300 mt-3">{msg}</p>}
       <div className="flex justify-between items-center gap-2 mt-4">
-        <span className="text-xs text-slate-500">{phase === 'TERMS' && agreedFee > 0 ? `Fee agreed: ${formatMoney(agreedFee)}` : ''}</span>
+        <span className="text-xs text-slate-500">{phase === 'TERMS' && agreedFee > 0 ? `Fee agreed: ${formatMoney(agreedFee)}${dealGrade ? ` · deal grade ${dealGrade}` : ''}` : ''}</span>
         <div className="flex gap-2">
           <button className="btn-ghost" onClick={onClose}>Close</button>
           {phase === 'FEE'
@@ -422,17 +438,28 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
   );
 }
 
-function LoanModal({ player, onClose, onLoan }: { player: Player; onClose: () => void; onLoan: (years: number, withOption: boolean) => void }) {
+function LoanModal({ player, onClose, onLoan }: {
+  player: Player; onClose: () => void;
+  onLoan: (years: number, wageSplitParent: number, optionToBuy: number | null) => void;
+}) {
   const [years, setYears] = useState(1);
+  const [parentPct, setParentPct] = useState(50); // % of wages the parent covers
   const [withOption, setWithOption] = useState(false);
+  const [option, setOption] = useState(Math.round(player.value * 1.1));
   return (
     <Modal onClose={onClose} title={`Loan ${fullName(player)}`}>
-      <p className="text-sm text-slate-400 mb-4">{player.position} · wages split 50/50 with the parent club</p>
+      <p className="text-sm text-slate-400 mb-4">{player.position} · negotiate the wage split and an optional buy clause with the parent club.</p>
       <label className="block text-sm mb-4"><span className="text-slate-400">Loan length</span>
         <div className="flex gap-2 mt-1">{[1, 2].map((y) => <button key={y} className={years === y ? 'btn-primary' : 'btn-ghost'} onClick={() => setYears(y)}>{y} {y === 1 ? 'year' : 'years'}</button>)}</div>
       </label>
-      <label className="flex items-center gap-2 text-sm mb-4"><input type="checkbox" checked={withOption} onChange={(e) => setWithOption(e.target.checked)} /><span className="text-slate-300">Negotiate an option to buy (~{(player.value * 1.1).toLocaleString()})</span></label>
-      <div className="flex justify-end gap-2"><button className="btn-ghost" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={() => onLoan(years, withOption)}>Request loan</button></div>
+      <label className="block text-sm mb-4">
+        <span className="text-slate-400">Parent club pays {parentPct}% of wages <span className="text-slate-600">(you cover {100 - parentPct}%)</span></span>
+        <input type="range" min={0} max={100} step={5} value={parentPct} onChange={(e) => setParentPct(Number(e.target.value))} className="w-full mt-1" />
+        <span className="text-xs text-slate-500">Ask them to cover more and they'll want a better buy clause in return.</span>
+      </label>
+      <label className="flex items-center gap-2 text-sm mb-2"><input type="checkbox" checked={withOption} onChange={(e) => setWithOption(e.target.checked)} /><span className="text-slate-300">Negotiate an option to buy</span></label>
+      {withOption && <div className="mb-4"><MoneyInput value={option} onChange={setOption} /><span className="text-xs text-slate-500">His market value is ~{player.value.toLocaleString()}; a generous option unlocks a bigger wage share.</span></div>}
+      <div className="flex justify-end gap-2"><button className="btn-ghost" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={() => onLoan(years, parentPct / 100, withOption ? option : null)}>Request loan</button></div>
     </Modal>
   );
 }

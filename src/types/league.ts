@@ -90,6 +90,31 @@ export interface Award {
   note?: string; // short human context (e.g. "18 goals, 11 assists")
 }
 
+/** A live transfer negotiation for one target: the club's drifting public ask
+ *  vs its hidden floor, plus the round count, so talks resume and grade. */
+export interface TransferTalk {
+  playerId: string;
+  clubId: string;
+  /** Hidden lowest cash fee the club will actually accept. */
+  floor: number;
+  /** The club's current (overpriced) ask; drifts toward the floor as you haggle. */
+  ask: number;
+  /** The first ask, kept for grading how far you talked them down. */
+  initialAsk: number;
+  rounds: number;
+}
+
+/** One year's slice of an installment transfer fee. */
+export interface InstalmentPayment {
+  /** Season year the payment falls due (deducted at that rollover). */
+  dueYear: number;
+  /** The manager's club pays; the selling club (if any) receives. */
+  payerClubId: string;
+  payeeClubId: string | null;
+  amount: number;
+  playerName: string;
+}
+
 /** A transfer agreed while the window was shut; the player joins when it opens. */
 export interface PendingArrival {
   playerId: string;
@@ -357,6 +382,16 @@ export interface SaveGame {
   brokenTalks?: Record<string, { key: string | null; day: number }>;
   /** Youth-coach candidates who walked out of wage talks (id → day walked). */
   walkedStaff?: Record<string, number>;
+  /** How each club feels about the manager's transfer haggling, keyed by clubId.
+   *  Tension rises with lowball offers; at 100 the club refuses to talk until
+   *  `refuseUntil`, after which it resets to a calmer baseline. */
+  clubRelations?: Record<string, { tension: number; refuseUntil?: number }>;
+  /** Live transfer talks the manager has open, keyed by target playerId. Holds
+   *  the club's drifting ask and the hidden floor so a negotiation can be
+   *  resumed and graded on completion. */
+  transferTalks?: Record<string, TransferTalk>;
+  /** Scheduled installment payments on agreed transfers (deducted per year). */
+  installments?: InstalmentPayment[];
   /** Clubs whose job offers the manager turned down (so fresh approaches come
    *  from elsewhere). Cleared when a job is taken or the season rolls over. */
   declinedJobClubIds?: string[];

@@ -62,8 +62,10 @@ function generateProspect(
   const position = rng.pick(positions);
   // Realistic ceiling: country youth strength + scout region knowledge set the
   // baseline; high potentials get progressively rarer (90+ generational).
-  const baseCeil = 64 + youthIndexFor(country) * 0.12 + region * 0.06;
-  const potential = rollSkewedPotential(baseCeil, youthIndexFor(country) / 100, rng);
+  // Deliberately conservative — most scouted teenagers are squad fillers, and
+  // real gems are rare, so a small club isn't handed a golden generation.
+  const baseCeil = 58 + youthIndexFor(country) * 0.10 + region * 0.05;
+  const potential = rollSkewedPotential(baseCeil, (youthIndexFor(country) / 100) * 0.7, rng);
   const target = clamp(Math.min(potential, ratingCap) - rng.int(16, 30), 26, Math.min(potential, ratingCap) - 5);
   const player = generatePlayer({
     rng, currentYear: year, target, position, ageRange: [15, 17], nationality: country,

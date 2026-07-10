@@ -3,7 +3,8 @@ import { loadDataset } from '../../data/datasetLoader';
 import { ENGLAND_DATASET } from '../../data/england';
 import { buildScoutReport, scoutStars, marketView, eliteKnownIds } from '../../engine/marketScout';
 import { estimateValue } from '../../engine/development';
-import { clubValuation, negotiateFee, type FeeOffer } from '../feeNegotiation';
+import { clubValuation, negotiateFee, transferFloor, overpricedAsk, respondToTransferOffer, dealGrade, type FeeOffer } from '../feeNegotiation';
+import { evaluateLoanTerms } from '../transfers';
 import type { Staff } from '../../types/staff';
 import type { Player } from '../../types/player';
 
@@ -125,5 +126,59 @@ describe('Fee negotiation', () => {
 
   it('signs a free agent with no fee', () => {
     expect(negotiateFee(target, null, buyer, { fee: 0, instalmentYears: 1, sellOnPct: 0, addOns: 0 }, 2024).outcome).toBe('ACCEPT');
+  });
+});
+
+describe('Tension-driven haggling', () => {
+  const seller = clubs[0];
+  const buyer = clubs[1];
+  const p: Player = { ...target, squadRole: 'FIRST' };
+  const floor = transferFloor(p, seller, buyer, 2024);
+  const initialAsk = overpricedAsk(floor, 1.4);
+  const bid = (fee: number): FeeOffer => ({ fee, instalmentYears: 1, sellOnPct: 0, addOns: 0 });
+
+  it('opens with an ask above the hidden floor', () => {
+    expect(initialAsk).toBeGreaterThan(floor);
+  });
+
+  it('accepts once you meet the floor and drifts the ask down otherwise', () => {
+    const short = respondToTransferOffer({ offer: bid(Math.round(floor * 0.8)), player: p, sellerName: seller.shortName, floor, ask: initialAsk, initialAsk, tension: 0 });
+    expect(short.outcome).toBe('COUNTER');
+    expect(short.ask).toBeLessThan(initialAsk); // they give ground
+    expect(short.ask).toBeGreaterThanOrEqual(floor);
+    const met = respondToTransferOffer({ offer: bid(floor), player: p, sellerName: seller.shortName, floor, ask: short.ask, initialAsk, tension: short.tension });
+    expect(met.outcome).toBe('ACCEPT');
+    expect(met.grade).toBeTruthy();
+  });
+
+  it('raises tension on lowballs and refuses at the ceiling', () => {
+    const insult = respondToTransferOffer({ offer: bid(Math.round(floor * 0.4)), player: p, sellerName: seller.shortName, floor, ask: initialAsk, initialAsk, tension: 0 });
+    expect(insult.tension).toBeGreaterThan(0);
+    const maxed = respondToTransferOffer({ offer: bid(Math.round(floor * 0.4)), player: p, sellerName: seller.shortName, floor, ask: initialAsk, initialAsk, tension: 95 });
+    expect(maxed.outcome).toBe('REFUSE');
+    expect(maxed.tension).toBe(100);
+  });
+
+  it('grades the minimum price A+ and full ask worst', () => {
+    expect(dealGrade(floor, floor, initialAsk)).toBe('A+');
+    expect(['D', 'E']).toContain(dealGrade(initialAsk, floor, initialAsk));
+  });
+});
+
+describe('Loan term negotiation', () => {
+  const buyer = clubs[1];
+  const parent = clubs[0];
+  // A loan-eligible player: not a key man, modest overall.
+  const p: Player = { ...target, squadRole: 'ROTATION', overall: 68, value: 5_000_000 };
+
+  it('rejects a greedy wage split but accepts it with a strong buy option', () => {
+    const greedy = evaluateLoanTerms(p, buyer, parent, 1, 0.9, null);
+    expect(greedy.ok).toBe(false);
+    const sweetened = evaluateLoanTerms(p, buyer, parent, 1, 0.75, Math.round(p.value * 1.3));
+    expect(sweetened.ok).toBe(true);
+  });
+
+  it('accepts a fair, even split', () => {
+    expect(evaluateLoanTerms(p, buyer, parent, 1, 0.5, null).ok).toBe(true);
   });
 });
