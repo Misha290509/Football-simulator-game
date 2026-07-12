@@ -12,6 +12,7 @@ import { Rng, clamp } from '../engine/rng';
 import { overallAt, bestOverall } from '../engine/ratings';
 import { generateSquad } from '../engine/generator';
 import { marketWage, transferBudgetFor, startingBalanceFor } from '../engine/finances';
+import { estimateValue } from '../engine/valuation';
 import { traitsForClub } from '../game/clubTraits';
 import { translateLegacyPosition } from '../types/attributes';
 import { DEFAULT_ATTRIBUTES, DEFAULT_HIDDEN } from './defaults';
@@ -108,7 +109,10 @@ function mapDatasetPlayer(
       releaseClause: null,
       bonuses: [],
     },
-    value: dp.value ?? Math.round(Math.pow(Math.max(0, overall - 40) / 10, 3.2) * 90_000),
+    // Value from the canonical curve rather than the dataset's baked figure, so
+    // real players are priced on the same (steeper, inflation-aware) scale the
+    // game uses everywhere — and don't jump the first time they're revalued.
+    value: estimateValue(overall, startYear - bornYear, clamp(dp.potential ?? overall)),
     squadRole: 'FIRST',
     stats: [],
     awards: [],

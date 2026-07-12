@@ -17,6 +17,7 @@ import type { Foot, Player, SquadRole } from '../types/player';
 import { Rng, clamp } from './rng';
 import { overallAt, bestOverall, attributeWeight, GK_KEYS } from './ratings';
 import { marketWage } from './finances';
+import { estimateValue } from './valuation';
 import { FIRST_NAMES, LAST_NAMES } from '../data/names';
 
 /** Default rating ceiling if a save doesn't specify one. */
@@ -88,14 +89,6 @@ function makeHidden(rng: Rng): HiddenAttributes {
   };
 }
 
-function estimateValue(ovr: number, age: number, potential: number): number {
-  // Smooth exponential in OVR, discounted for age, premium for upside.
-  const baseline = Math.pow(Math.max(0, ovr - 40) / 10, 3.2) * 90_000;
-  const ageFactor =
-    age <= 23 ? 1.25 : age <= 27 ? 1.0 : age <= 30 ? 0.7 : age <= 33 ? 0.4 : 0.18;
-  const potentialPremium = 1 + Math.max(0, potential - ovr) * 0.03;
-  return Math.round((baseline * ageFactor * potentialPremium) / 10_000) * 10_000;
-}
 
 export interface GeneratePlayerOpts {
   rng: Rng;

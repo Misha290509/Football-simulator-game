@@ -11,6 +11,7 @@ import { POSITION_GROUP } from '../types/attributes';
 import { Rng, clamp } from './rng';
 import { overallAt, bestOverall } from './ratings';
 import { generatePlayer, reputationToAbility, DEFAULT_RATING_CAP } from './generator';
+import { estimateValue } from './valuation';
 
 const PHYSICAL_DECLINE = ['acceleration', 'sprintSpeed', 'agility', 'balance'];
 
@@ -165,13 +166,8 @@ export function developPlayer(
   return p;
 }
 
-export function estimateValue(ovr: number, age: number, potential: number): number {
-  const baseline = Math.pow(Math.max(0, ovr - 40) / 10, 3.4) * 110_000;
-  const ageFactor =
-    age <= 23 ? 1.3 : age <= 27 ? 1.0 : age <= 30 ? 0.65 : age <= 33 ? 0.35 : 0.15;
-  const potentialPremium = 1 + Math.max(0, potential - ovr) * 0.04;
-  return Math.round((baseline * ageFactor * potentialPremium) / 10_000) * 10_000;
-}
+// Re-exported so existing importers keep working; the curve lives in valuation.ts.
+export { estimateValue };
 
 export function shouldRetire(player: Player, toYear: number, rng: Rng): boolean {
   const age = toYear - player.born.year;
