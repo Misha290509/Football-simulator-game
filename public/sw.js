@@ -1,7 +1,9 @@
 // Minimal offline-first service worker (§11-M7). Caches the app shell so the
 // game runs offline; all game data already lives in IndexedDB. Network-first
 // for navigations (fresh deploys), cache-first for hashed static assets.
-const CACHE = 'football-gm-v1';
+// NOTE: bump CACHE on any change here so old clients purge their stale cache
+// and pull fresh code — otherwise a browser can keep serving an old bundle.
+const CACHE = 'football-gm-v2';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (e) => {
@@ -24,14 +26,16 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(fetch(request).catch(() => caches.match('/index.html')));
     return;
   }
+  // Network-first with a cached fallback: online, you always get the freshest
+  // code (no more serving a stale bundle after an update); offline, you fall
+  // back to the last-cached copy so the game still runs.
   e.respondWith(
-    caches.match(request).then((cached) =>
-      cached ??
-      fetch(request).then((res) => {
+    fetch(request)
+      .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(request, copy));
         return res;
-      }).catch(() => cached),
-    ),
+      })
+      .catch(() => caches.match(request)),
   );
 });
