@@ -23,7 +23,7 @@ const mean = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b
 function styleOf(club: Club): string {
   const d = club.tactics?.defensive ?? 'BALANCED';
   const o = club.tactics?.offensive ?? 'POSSESSION';
-  const dd = d === 'DEEP' ? 'sit deep and soak up pressure' : d === 'PRESSING' ? 'press aggressively high up' : 'hold a balanced line';
+  const dd = d === 'DEEP' ? 'sit deep and let them attack' : d === 'PRESSING' ? 'press aggressively high up' : 'hold a balanced line';
   const oo = o === 'COUNTER' ? 'break quickly on the counter' : o === 'DIRECT' ? 'play direct, forward football' : 'keep the ball and build patiently';
   return `They ${dd} and ${oo}.`;
 }
@@ -55,9 +55,9 @@ export function buildOppositionReport(opp: Club, players: Player[], seasonMatche
   const lines: [string, number][] = [['attack', att], ['midfield', mid], ['defence', def]];
   const strong = [...lines].sort((a, b) => b[1] - a[1])[0][0];
   const weak = [...lines].sort((a, b) => a[1] - b[1])[0][0];
-  const threat = strong === 'attack' ? 'A potent attack — stay compact and deny space in behind.'
+  const threat = strong === 'attack' ? 'A strong attack — stay compact and deny space in behind.'
     : strong === 'midfield' ? 'They dominate midfield — win the battle in the centre.'
-    : 'A resolute defence — you may need patience and width to break them down.';
+    : 'An impenetrable defence — you may need patience and width to break them down.';
   const weakness = weak === 'defence' ? 'Their defence is the weak link — get runners in behind.'
     : weak === 'midfield' ? 'Their midfield can be overrun — flood the centre.'
     : 'Limited threat up top — push your full-backs on and take the initiative.';

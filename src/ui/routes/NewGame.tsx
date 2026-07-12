@@ -77,8 +77,7 @@ export function NewGame() {
       <div className="card p-4">
         <h2 className="section-title mb-1">Challenges</h2>
         <p className="text-xs text-slate-500 mb-3">
-          Curated careers with a win condition — or scroll down for a free sandbox career.
-          Worlds are seed-identical, so share a seed with a friend and race the same challenge.
+          Pre determined challanges to make it more exciting.
         </p>
         <div className="grid sm:grid-cols-2 gap-2">
           {CHALLENGES.map((c) => (

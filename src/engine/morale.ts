@@ -13,7 +13,7 @@ export const TONE_LABEL: Record<TalkTone, string> = {
   CALM: 'Calm & focused',
   FIRED_UP: 'Demand more',
   PLEASED: 'Praise them',
-  FURIOUS: 'Aggressive',
+  FURIOUS: 'Shout',
   RELAXED: 'No pressure',
 };
 
@@ -99,9 +99,9 @@ export const INTERACT_LABEL: Record<InteractKind, string> = {
 };
 /** Tooltip copy explaining each option's effect. */
 export const INTERACT_DESC: Record<InteractKind, string> = {
-  PRAISE: 'Biggest morale boost — but it also feeds his ego (he becomes more self-centred).',
+  PRAISE: 'Biggest morale boost — but it also feeds his ego.',
   REASSURE: 'A gentle morale lift, with no effect on his ego.',
-  WARN: 'Knocks his morale, but takes his ego down a peg (more of a team player).',
+  WARN: 'Knocks his morale, but takes his ego down a peg.',
 };
 
 /** A player's self-importance (0–100), defaulting from ambition on older saves. */
@@ -126,7 +126,7 @@ export function evaluateInteraction(kind: InteractKind, player: Player): Interac
 
   if (kind === 'PRAISE') {
     // Praise is the biggest morale lift, and it inflates the ego.
-    if (form > 20) return { moraleDelta: 8, formDelta: 3, egoDelta: 6, message: `${last} is buoyed by your praise.` };
+    if (form > 20) return { moraleDelta: 8, formDelta: 3, egoDelta: 6, message: `${last} is lifted by your praise.` };
     if (prof < 45) return { moraleDelta: 6, formDelta: -4, egoDelta: 10, message: `${last} looks a little too pleased with himself.` };
     if (form < -10) return { moraleDelta: 3, formDelta: 0, egoDelta: 3, message: `${last} accepts it, but knows he can do better.` };
     return { moraleDelta: 6, formDelta: 1, egoDelta: 5, message: `${last} appreciates the encouragement.` };

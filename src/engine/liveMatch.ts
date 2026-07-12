@@ -85,7 +85,7 @@ export interface LiveMatchState {
 const GOAL_PHRASES = [
   'buries it low into the corner!', 'rifles it into the roof of the net!',
   'slots it past the keeper!', 'heads it home!', 'smashes it in off the bar!',
-  'finishes coolly one-on-one!', 'curls a beauty into the top corner!',
+  'finishes calmly one-on-one!', 'curls a beauty into the top corner!',
 ];
 const SAVE_PHRASES = ['is denied by a stunning save!', 'sees the keeper get down well!', 'forces a fingertip save!'];
 const CHANCE_PHRASES = ['drags it just wide!', 'blazes over the bar!', 'hits the side netting!', 'is a whisker away!'];

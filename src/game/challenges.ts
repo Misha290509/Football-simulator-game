@@ -43,8 +43,8 @@ export const CHALLENGES: ChallengeDef[] = [
   {
     id: 'great-escape',
     name: 'The Great Escape',
-    tagline: 'Everyone has you down. Prove them wrong.',
-    brief: 'Take the weakest club in La Liga and survive relegation in your first season.',
+    tagline: 'You are the underdog of your league.',
+    brief: 'Prove everyone wrong by taking the weakest club in Laliga to glory.',
     countryId: 'ES',
     clubPick: 'WEAKEST_T1',
     difficulty: 'HARD',
@@ -53,9 +53,9 @@ export const CHALLENGES: ChallengeDef[] = [
   },
   {
     id: 'cantera-code',
-    name: 'The Cantera Code',
-    tagline: 'No signings. Only sons of the academy.',
-    brief: 'Manage Athletic Club with incoming transfers banned — win a major trophy within 5 seasons using homegrown talent.',
+    name: 'La Cantera',
+    tagline: 'No signings. Only your youngsters.',
+    brief: 'Manage Athletic Club with incoming transfers banned and win a major trophy within 5 seasons using homegrown talent.',
     countryId: 'ES',
     clubPick: { abbrev: 'ATH' },
     difficulty: 'NORMAL',
@@ -65,8 +65,8 @@ export const CHALLENGES: ChallengeDef[] = [
   },
   {
     id: 'giant-killers',
-    name: 'Giant Killers',
-    tagline: 'A second-tier side. A cup with big ears at the end of it.',
+    name: 'Second Tier',
+    tagline: 'A second division team. Shock the world',
     brief: 'Take the strongest club in the English second tier and win a domestic cup within 4 seasons.',
     countryId: 'GB',
     clubPick: 'BEST_T2',
@@ -77,7 +77,7 @@ export const CHALLENGES: ChallengeDef[] = [
   {
     id: 'long-climb',
     name: 'The Long Climb',
-    tagline: 'From the second tier to the summit.',
+    tagline: 'From the second tier to the top.',
     brief: 'Start in the German second tier and win the Bundesliga within 8 seasons.',
     countryId: 'DE',
     clubPick: 'BEST_T2',
