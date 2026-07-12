@@ -62,5 +62,7 @@ describe('Continental competitions across a full season (store)', () => {
     const nextCl = next.meta!.continental?.['UEFA_CL'];
     expect(nextCl?.stage).toBe('LEAGUE'); // reset for the new campaign
     expect(next.meta!.continentalChampions?.['UEFA_CL']?.clubId).toBe(oldChampion);
-  }, 180_000);
+    // A full-season sim runs ~150s solo; allow generous headroom so parallel-load
+    // variance in the suite doesn't tip a deterministic pass into a timeout.
+  }, 300_000);
 });
