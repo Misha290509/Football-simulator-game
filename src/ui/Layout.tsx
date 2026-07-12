@@ -22,6 +22,7 @@ const NAV_GROUPS: { title: string; items: { to: string; label: string }[] }[] = 
     title: 'Market',
     items: [
       { to: '/transfers', label: 'Transfers' },
+      { to: '/contracts', label: 'Contracts' },
       { to: '/scouting', label: 'Scouting' },
       { to: '/compare', label: 'Compare' },
     ],

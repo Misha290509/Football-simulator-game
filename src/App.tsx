@@ -15,6 +15,7 @@ const Fixtures = lazy(() => import('./ui/routes/Fixtures').then((m) => ({ defaul
 const MatchDetail = lazy(() => import('./ui/routes/MatchDetail').then((m) => ({ default: m.MatchDetail })));
 const Inbox = lazy(() => import('./ui/routes/Inbox').then((m) => ({ default: m.Inbox })));
 const TransferMarket = lazy(() => import('./ui/routes/TransferMarket').then((m) => ({ default: m.TransferMarket })));
+const Contracts = lazy(() => import('./ui/routes/Contracts').then((m) => ({ default: m.Contracts })));
 const Finances = lazy(() => import('./ui/routes/Finances').then((m) => ({ default: m.Finances })));
 const Scouting = lazy(() => import('./ui/routes/Scouting').then((m) => ({ default: m.Scouting })));
 const Club = lazy(() => import('./ui/routes/Club').then((m) => ({ default: m.Club })));
@@ -81,6 +82,7 @@ export default function App() {
       <Route path="/fixtures" element={<Protected><Fixtures /></Protected>} />
       <Route path="/match/:id" element={<Protected><MatchDetail /></Protected>} />
       <Route path="/transfers" element={<Protected><TransferMarket /></Protected>} />
+      <Route path="/contracts" element={<Protected><Contracts /></Protected>} />
       <Route path="/scouting" element={<Protected><Scouting /></Protected>} />
       <Route path="/club" element={<Protected><Club /></Protected>} />
       <Route path="/academy" element={<Protected><Academy /></Protected>} />
