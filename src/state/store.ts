@@ -33,7 +33,7 @@ import {
 } from '../engine/liveMatch';
 import { evaluateInteraction, egoOf, type TalkTone, type InteractKind } from '../engine/morale';
 import { switchClub, fallbackJobOffers } from '../game/careers';
-import { setObjective } from '../game/board';
+import { setObjective, tickBoardConfidence, confidenceBand } from '../game/board';
 import { evaluateBoardRequest, generatePressQuestion, evaluatePressAnswer, type BoardRequestKind } from '../game/boardroom';
 import { areRivals, derbyResultBonus } from '../game/rivalries';
 import { generateNarratives } from '../game/narratives';
@@ -2430,6 +2430,43 @@ async function playDays(
       .filter((m) => m.homeClubId === meta.managerClubId || m.awayClubId === meta.managerClubId)
       .sort((a, b) => b.day - a.day)[0];
     let board = meta.board;
+
+    // Dynamic board confidence: the board reacts to league results as the season
+    // unfolds and voices concern before any end-of-season reckoning.
+    {
+      const mgrComp = Object.values(meta.competitions).find((c) => c.clubIds.includes(meta.managerClubId));
+      if (board && mgrComp) {
+        let w = 0, d = 0, l = 0;
+        for (const m of playedMerged) {
+          if (m.competitionId !== mgrComp.id) continue;
+          const isH = m.homeClubId === meta.managerClubId;
+          const isA = m.awayClubId === meta.managerClubId;
+          if (!isH && !isA) continue;
+          const gf = isH ? m.homeGoals : m.awayGoals;
+          const ga = isH ? m.awayGoals : m.homeGoals;
+          if (gf > ga) w++; else if (gf === ga) d++; else l++;
+        }
+        if (w + d + l > 0) {
+          const rows = computeStandings(mgrComp, Object.values(matches));
+          const pos = rows.findIndex((r) => r.clubId === meta.managerClubId) + 1;
+          if (pos > 0) {
+            const before = confidenceBand(board.confidence);
+            board = { ...board, confidence: tickBoardConfidence(board, pos, w, d, l) };
+            const after = confidenceBand(board.confidence);
+            if (after > before) {
+              newsItems.push({
+                id: `news_boardmood_${to}`, day: to, category: 'BOARD',
+                title: after === 2 ? 'The board are reviewing your position' : 'The board have voiced concern',
+                body: after === 2
+                  ? 'Results have the board weighing your future — a turnaround is needed, and quickly.'
+                  : "The board aren't happy with the recent run and expect an improvement.",
+                read: false,
+              });
+            }
+          }
+        }
+      }
+    }
 
     if (mgrPlayed) {
       const isHome = mgrPlayed.homeClubId === meta.managerClubId;

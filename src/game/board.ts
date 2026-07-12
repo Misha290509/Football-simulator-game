@@ -54,3 +54,23 @@ export function evaluateObjective(finalPosition: number, board: BoardState): Obj
 // The board is patient: confidence starts at 60, penalties are gentle and the
 // bar is low, so it takes several poor seasons in a row to be dismissed.
 export const SACK_THRESHOLD = 8;
+
+/**
+ * In-season confidence movement. The board reacts to results as they come in —
+ * wins buy goodwill, defeats erode it — weighted by whether the league position
+ * is ahead of or behind the finish they asked for. Gentle by design so a bad
+ * week worries them without one loss costing your job.
+ */
+export function tickBoardConfidence(
+  board: BoardState, position: number, wins: number, draws: number, losses: number,
+): number {
+  let c = board.confidence + wins * 1.5 + draws * 0.2 - losses * 1.6;
+  const gap = board.targetPosition - position; // + = better than promised
+  c += gap >= 2 ? 1 : gap >= 0 ? 0.3 : gap >= -3 ? -1 : -2;
+  return Math.min(100, Math.max(0, Math.round(c)));
+}
+
+/** Board mood band, worse = higher (0 calm · 1 concerned · 2 reviewing you). */
+export function confidenceBand(confidence: number): 0 | 1 | 2 {
+  return confidence < 15 ? 2 : confidence < 30 ? 1 : 0;
+}
