@@ -37,6 +37,8 @@ export function Academy() {
   const recallScout = useGameStore((s) => s.recallScout);
   const trialProspect = useGameStore((s) => s.trialProspect);
   const signYouthProspect = useGameStore((s) => s.signYouthProspect);
+  const dismissYouthProspect = useGameStore((s) => s.dismissYouthProspect);
+  const dismissAllProspects = useGameStore((s) => s.dismissAllProspects);
   const upgradeAcademyFacility = useGameStore((s) => s.upgradeAcademyFacility);
   const hireYouthCoach = useGameStore((s) => s.hireYouthCoach);
   const setMentor = useGameStore((s) => s.setMentor);
@@ -315,6 +317,8 @@ export function Academy() {
           onRecall={recallScout}
           onTrial={async (id) => flash((await trialProspect(id)).message)}
           onSign={async (id) => flash((await signYouthProspect(id)).message)}
+          onReject={async (id) => flash((await dismissYouthProspect(id)).message)}
+          onRejectAll={async () => flash((await dismissAllProspects()).message)}
         />
       )}
 
@@ -410,7 +414,7 @@ export function Academy() {
 
 function ScoutingTab({
   meta, club, year, scoutId, setScoutId, positions, setPositions, country, setCountry,
-  months, setMonths, onDispatch, onRecall, onTrial, onSign,
+  months, setMonths, onDispatch, onRecall, onTrial, onSign, onReject, onRejectAll,
 }: {
   meta: ReturnType<typeof useGameStore.getState>['meta'];
   club: ReturnType<typeof useGameStore.getState>['clubs'][string];
@@ -421,6 +425,7 @@ function ScoutingTab({
   months: number; setMonths: (m: number) => void;
   onDispatch: () => void; onRecall: (id: string) => void;
   onTrial: (id: string) => void; onSign: (id: string) => void;
+  onReject: (id: string) => void; onRejectAll: () => void;
 }) {
   if (!meta) return null;
   const assignments = meta.scoutAssignments ?? [];
@@ -535,7 +540,18 @@ function ScoutingTab({
       )}
 
       <div className="card p-4">
-        <h2 className="text-sm font-semibold text-slate-400 mb-3">Prospect reports ({prospects.length})</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-400">Prospect reports ({prospects.length})</h2>
+          {prospects.length > 0 && (
+            <button
+              className="btn-ghost text-xs py-0.5 px-2 text-rose-300"
+              title="Clear every prospect report at once"
+              onClick={() => { if (window.confirm(`Reject all ${prospects.length} prospect reports? This can't be undone.`)) onRejectAll(); }}
+            >
+              Dismiss all
+            </button>
+          )}
+        </div>
         {prospects.length === 0 ? (
           <p className="text-sm text-slate-500">No prospects yet. Sign a scout to a contract and advance time — reports arrive monthly.</p>
         ) : (
@@ -568,6 +584,7 @@ function ScoutingTab({
                         <div className="flex gap-1 justify-end">
                           <button className="btn-ghost text-xs py-0.5 px-2" disabled={pr.trialled} title="Trial reveals truer ratings (£25,000)" onClick={() => onTrial(pr.player.id)}>{pr.trialled ? 'Trialled' : 'Trial'}</button>
                           <button className="btn-primary text-xs py-0.5 px-2" onClick={() => onSign(pr.player.id)}>Sign</button>
+                          <button className="btn-ghost text-xs py-0.5 px-2 text-rose-300" title="Pass on this prospect and remove the report" onClick={() => onReject(pr.player.id)}>Reject</button>
                         </div>
                       </td>
                     </tr>

@@ -196,6 +196,8 @@ interface GameState {
   recallScout: (scoutId: string) => Promise<void>;
   trialProspect: (playerId: string) => Promise<BidResult>;
   signYouthProspect: (playerId: string) => Promise<BidResult>;
+  dismissYouthProspect: (playerId: string) => Promise<BidResult>;
+  dismissAllProspects: () => Promise<BidResult>;
   // Man-management (§ Man-management)
   interactWithPlayer: (playerId: string, kind: InteractKind) => Promise<BidResult>;
 
@@ -1145,6 +1147,33 @@ export const useGameStore = create<GameState>((set, get) => ({
     await putPlayers(meta.id, [np]);
     await persistMeta(newMeta);
     return { ok: true, message: `${prospect.player.name.last} signed to the academy.` };
+  },
+
+  dismissYouthProspect: async (playerId) => {
+    const { meta } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    const prospects = meta.youthProspects ?? [];
+    const prospect = prospects.find((p) => p.player.id === playerId);
+    if (!prospect) return { ok: false, message: 'Prospect not found.' };
+    // Drop the report — the player stays out in the world, just off your list.
+    const newMeta: SaveMeta = { ...meta, youthProspects: prospects.filter((p) => p.player.id !== playerId) };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return { ok: true, message: `${prospect.player.name.last} passed over.` };
+  },
+
+  dismissAllProspects: async () => {
+    const { meta } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    const prospects = meta.youthProspects ?? [];
+    // Clear only your own scouts' reports; leave any others untouched.
+    const remaining = prospects.filter((p) => p.discoveredByClubId !== meta.managerClubId);
+    const cleared = prospects.length - remaining.length;
+    if (cleared === 0) return { ok: false, message: 'No prospect reports to clear.' };
+    const newMeta: SaveMeta = { ...meta, youthProspects: remaining };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return { ok: true, message: `Cleared ${cleared} prospect${cleared === 1 ? '' : 's'} from your reports.` };
   },
 
   upgradeAcademyFacility: async (which) => {
