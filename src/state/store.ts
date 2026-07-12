@@ -28,7 +28,7 @@ import { ageGroupForAge, computeReadiness, ageOfPlayer, ACADEMY_UPGRADE_COST } f
 import { recordGraduateInAcademy, fillAcademyBands } from '../game/academy';
 import { resolveScoutAssignments, MAX_SCOUT_POSITIONS, SCOUT_MONTH_DAYS, SCOUT_CONTRACT_COST } from '../engine/youthScouting';
 import {
-  createLiveMatch, kickOff, tickLiveMatch, startSecondHalf, applyManagerChange, applyTeamTalk, liveOutcome, tickShootout,
+  createLiveMatch, kickOff, tickLiveMatch, startSecondHalf, applyManagerChange, applyTeamTalk, liveOutcome, tickShootout, takeShootoutKick,
   type LiveMatchState, type Side as LiveSide,
 } from '../engine/liveMatch';
 import { evaluateInteraction, egoOf, type TalkTone, type InteractKind } from '../engine/morale';
@@ -267,6 +267,14 @@ interface GameState {
   tickLive: () => void;
   liveResumeSecondHalf: () => void;
   liveTickShootout: () => void;
+  /** Choose whether to take the shootout yourself (true) or let the assistant do it. */
+  liveShootoutMode: (manual: boolean) => void;
+  /** Reorder your shootout takers before the first kick. */
+  liveShootoutOrder: (order: string[]) => void;
+  /** Take your kick, aiming 0=left, 1=centre, 2=right. */
+  liveShootoutAim: (aim: number) => void;
+  /** Defend the opponent's kick by diving 0=left, 1=centre, 2=right. */
+  liveShootoutDive: (dive: number) => void;
   liveSub: (offId: string, onId: string) => void;
   liveSetFormation: (formation: string) => void;
   liveSetTactic: (kind: 'defensive' | 'offensive', value: string) => void;
@@ -1859,6 +1867,51 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!state || !liveRng || state.phase !== 'SHOOTOUT') return;
     const s = structuredClone(state);
     tickShootout(s, liveRng);
+    set({ liveMatch: s });
+  },
+
+  liveShootoutMode: (manual) => {
+    const state = get().liveMatch;
+    if (!state?.shootout) return;
+    const s = structuredClone(state);
+    const managed: LiveSide = s.home.managed ? 'home' : 'away';
+    if (manual && !s.shootout!.order) {
+      // Default taker order: those on the pitch, best finishers first.
+      const players = get().players;
+      s.shootout!.order = [...s[managed].onPitch].sort(
+        (a, b) => (players[b]?.attributes.technical.finishing ?? 0) - (players[a]?.attributes.technical.finishing ?? 0),
+      );
+    }
+    s.shootout!.manual = manual;
+    set({ liveMatch: s });
+  },
+
+  liveShootoutOrder: (order) => {
+    const state = get().liveMatch;
+    if (!state?.shootout || state.shootout.kicks.length > 0) return; // locked once kicks begin
+    const s = structuredClone(state);
+    s.shootout!.order = order;
+    set({ liveMatch: s });
+  },
+
+  liveShootoutAim: (aim) => {
+    const state = get().liveMatch;
+    if (!state?.shootout || !liveRng || state.phase !== 'SHOOTOUT') return;
+    const managed: LiveSide = state.home.managed ? 'home' : 'away';
+    const taken = state.shootout.kicks.filter((k) => k.side === managed).length;
+    const order = state.shootout.order ?? [];
+    const takerId = order.length ? order[taken % order.length] : undefined;
+    const takerSkill = takerId ? get().players[takerId]?.attributes.technical.finishing : undefined;
+    const s = structuredClone(state);
+    takeShootoutKick(s, liveRng, { aim, takerSkill, takerId });
+    set({ liveMatch: s });
+  },
+
+  liveShootoutDive: (dive) => {
+    const state = get().liveMatch;
+    if (!state?.shootout || !liveRng || state.phase !== 'SHOOTOUT') return;
+    const s = structuredClone(state);
+    takeShootoutKick(s, liveRng, { keeperDive: dive });
     set({ liveMatch: s });
   },
 

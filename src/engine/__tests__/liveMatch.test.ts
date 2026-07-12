@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { loadDataset } from '../../data/datasetLoader';
 import { ENGLAND_DATASET } from '../../data/england';
 import { buildLineupProfile } from '../lineup';
-import { createLiveMatch, kickOff, tickLiveMatch, startSecondHalf, applyManagerChange, liveOutcome, tickShootout, type LiveMatchState } from '../liveMatch';
+import { createLiveMatch, kickOff, tickLiveMatch, startSecondHalf, applyManagerChange, liveOutcome, tickShootout, takeShootoutKick, type LiveMatchState } from '../liveMatch';
 import { Rng } from '../rng';
 import type { Club } from '../../types/club';
 
@@ -111,6 +111,30 @@ describe('Live match engine', () => {
     expect(state.shootout.winner).toMatch(/home|away/);
     // Best-of-five minimum: at least 6 kicks unless clinched early (≥ 2 each side start).
     expect(state.shootout.kicks.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('sending the keeper the wrong way scores far more than guessing right', () => {
+    const c = clubs[0];
+    const mk = () => {
+      const { state, rng } = createLiveMatch({
+        matchId: 'ko3', competitionId: 'UEFA_CL', seasonId: 's',
+        homeClubId: c.id, awayClubId: clubs[1].id,
+        homeProfile: profileOf(c), awayProfile: profileOf(clubs[1]),
+        managedSide: 'home', seed: 21, needsWinner: true,
+      });
+      state.phase = 'SHOOTOUT';
+      return { state, rng };
+    };
+    let matchedGoals = 0, missedGoals = 0;
+    for (let i = 0; i < 60; i++) {
+      const a = mk(); a.state.shootout = { home: 0, away: 0, kicks: [], done: false, winner: null, manual: true };
+      takeShootoutKick(a.state, a.rng, { aim: 1, keeperDive: 1, takerSkill: 70 }); // keeper guesses right
+      if (a.state.shootout.kicks[0].scored) matchedGoals++;
+      const b = mk(); b.state.shootout = { home: 0, away: 0, kicks: [], done: false, winner: null, manual: true };
+      takeShootoutKick(b.state, b.rng, { aim: 0, keeperDive: 2, takerSkill: 70 }); // keeper wrong way
+      if (b.state.shootout.kicks[0].scored) missedGoals++;
+    }
+    expect(missedGoals).toBeGreaterThan(matchedGoals);
   });
 
   it('records a substitution and updates the pitch', () => {

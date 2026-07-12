@@ -16,13 +16,17 @@ type Pool = { playerId: string; weight: number }[];
 export type LivePhase = 'PREMATCH' | 'FIRST_HALF' | 'HALF_TIME' | 'SECOND_HALF' | 'SHOOTOUT' | 'FULL_TIME';
 export type Side = 'home' | 'away';
 
-export interface ShootoutKick { side: Side; scored: boolean }
+export interface ShootoutKick { side: Side; scored: boolean; takerId?: string; aim?: number; keeperDive?: number }
 export interface ShootoutState {
   home: number;
   away: number;
   kicks: ShootoutKick[];
   done: boolean;
   winner: Side | null;
+  /** Manager takes his side's kicks himself (undefined = not chosen yet). */
+  manual?: boolean;
+  /** The managed side's chosen taker order (player ids), used round by round. */
+  order?: string[];
 }
 
 interface AiSub { minute: number; offId: string; onId: string }
@@ -340,23 +344,43 @@ function ratePlayers(state: LiveMatchState, rng: Rng, end: number): void {
 }
 
 /**
+ * Resolve one penalty from the taker's aim (0=left, 1=centre, 2=right) versus the
+ * keeper's dive. Guess the corner right and it's likely saved; send the keeper the
+ * wrong way and it's almost always in. Low skill risks ballooning it off target.
+ */
+function resolveKick(takerSkill: number, keeperSkill: number, aim: number, keeperDive: number, rng: Rng): boolean {
+  if (rng.chance(clamp(0.09 - takerSkill / 1600, 0.015, 0.09))) return false; // off target
+  if (aim === keeperDive) {
+    const saveP = clamp(0.5 + (keeperSkill - takerSkill) / 280, 0.28, 0.82);
+    return !rng.chance(saveP);
+  }
+  return rng.chance(clamp(0.9 + (takerSkill - keeperSkill) / 700, 0.8, 0.97));
+}
+
+/**
  * Take one penalty in a shootout (alternating home/away, home first). Best of
  * five, then sudden death; resolves the tie and finishes the match once decided.
+ * `opts` lets the manager supply his kick's aim / keeper dive / taker; anything
+ * omitted is chosen by the RNG (the assistant/AI).
  */
-export function tickShootout(state: LiveMatchState, rng: Rng): void {
+export function takeShootoutKick(
+  state: LiveMatchState, rng: Rng,
+  opts: { aim?: number; keeperDive?: number; takerSkill?: number; takerId?: string } = {},
+): void {
   if (state.phase !== 'SHOOTOUT' || !state.shootout || state.shootout.done) return;
   const sh = state.shootout;
   const ht = sh.kicks.filter((k) => k.side === 'home').length;
   const at = sh.kicks.filter((k) => k.side === 'away').length;
   const side: Side = ht <= at ? 'home' : 'away'; // home kicks first each round
-  const keeper = side === 'home' ? state.away : state.home;
-  // The designated penalty taker's skill (falls back to the side's attack).
-  const takerSkill = side === 'home'
+  const keeperSide: Side = side === 'home' ? 'away' : 'home';
+  const keeperSkill = state[keeperSide].profile.gk;
+  const takerSkill = opts.takerSkill ?? (side === 'home'
     ? (state.homePenSkill ?? state.home.profile.attack)
-    : (state.awayPenSkill ?? state.away.profile.attack);
-  const p = clamp(0.72 + (takerSkill - keeper.profile.gk) / 300, 0.5, 0.95);
-  const scored = rng.chance(p);
-  sh.kicks.push({ side, scored });
+    : (state.awayPenSkill ?? state.away.profile.attack));
+  const aim = opts.aim ?? rng.int(0, 2);
+  const keeperDive = opts.keeperDive ?? rng.int(0, 2);
+  const scored = resolveKick(takerSkill, keeperSkill, aim, keeperDive, rng);
+  sh.kicks.push({ side, scored, takerId: opts.takerId, aim, keeperDive });
   if (scored) { if (side === 'home') sh.home++; else sh.away++; }
 
   if (shootoutDecided(sh)) {
@@ -369,6 +393,11 @@ export function tickShootout(state: LiveMatchState, rng: Rng): void {
       description: `Won on penalties ${sh.home}–${sh.away}`,
     });
   }
+}
+
+/** Auto (assistant) penalty — the RNG picks aim and dive. */
+export function tickShootout(state: LiveMatchState, rng: Rng): void {
+  takeShootoutKick(state, rng);
 }
 
 /** Whether the shootout has a decided winner. */

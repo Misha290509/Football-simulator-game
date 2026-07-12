@@ -24,6 +24,10 @@ export function LiveMatch() {
   const liveTeamTalk = useGameStore((s) => s.liveTeamTalk);
   const resumeSecondHalf = useGameStore((s) => s.liveResumeSecondHalf);
   const liveTickShootout = useGameStore((s) => s.liveTickShootout);
+  const liveShootoutMode = useGameStore((s) => s.liveShootoutMode);
+  const liveShootoutOrder = useGameStore((s) => s.liveShootoutOrder);
+  const liveShootoutAim = useGameStore((s) => s.liveShootoutAim);
+  const liveShootoutDive = useGameStore((s) => s.liveShootoutDive);
   const liveSub = useGameStore((s) => s.liveSub);
   const liveSetFormation = useGameStore((s) => s.liveSetFormation);
   const liveSetTactic = useGameStore((s) => s.liveSetTactic);
@@ -174,27 +178,86 @@ export function LiveMatch() {
       })()}
 
       {/* Penalty shootout */}
-      {live.phase === 'SHOOTOUT' && live.shootout && (
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-amber-300">Penalty shootout</h2>
-            <span className="text-lg font-bold tabular-nums">{live.shootout.home} – {live.shootout.away}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-4 mb-3">
-            {(['home', 'away'] as const).map((sideKey) => (
-              <div key={sideKey}>
-                <div className="text-xs text-slate-500 mb-1 truncate">{clubs[live[sideKey].clubId]?.shortName}</div>
-                <div className="flex gap-1 flex-wrap">
-                  {live.shootout!.kicks.filter((k) => k.side === sideKey).map((k, i) => (
-                    <span key={i} className={k.scored ? 'text-emerald-400' : 'text-rose-500'}>{k.scored ? '●' : '○'}</span>
-                  ))}
+      {live.phase === 'SHOOTOUT' && live.shootout && (() => {
+        const sh = live.shootout!;
+        const ht = sh.kicks.filter((k) => k.side === 'home').length;
+        const at = sh.kicks.filter((k) => k.side === 'away').length;
+        const kickingSide: Side = ht <= at ? 'home' : 'away';
+        const ourTurn = kickingSide === managed;
+        const takenByUs = sh.kicks.filter((k) => k.side === managed).length;
+        const currentTaker = sh.order && sh.order.length ? sh.order[takenByUs % sh.order.length] : undefined;
+        const AIM = [['◀ Left', 0], ['▲ Centre', 1], ['Right ▶', 2]] as const;
+        return (
+          <div className="card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-amber-300">Penalty shootout</h2>
+              <span className="text-lg font-bold tabular-nums">{sh.home} – {sh.away}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-3">
+              {(['home', 'away'] as const).map((sideKey) => (
+                <div key={sideKey}>
+                  <div className="text-xs text-slate-500 mb-1 truncate">{clubs[live[sideKey].clubId]?.shortName}</div>
+                  <div className="flex gap-1 flex-wrap">
+                    {sh.kicks.filter((k) => k.side === sideKey).map((k, i) => (
+                      <span key={i} className={k.scored ? 'text-emerald-400' : 'text-rose-500'}>{k.scored ? '●' : '○'}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {sh.manual === undefined ? (
+              <div>
+                <p className="text-xs text-slate-400 mb-2">Take the shootout yourself, or let your assistant handle it?</p>
+                <div className="flex gap-2">
+                  <button className="btn-primary flex-1" onClick={() => liveShootoutMode(true)}>Take control</button>
+                  <button className="btn-ghost flex-1" onClick={() => liveShootoutMode(false)}>Assistant takes them</button>
                 </div>
               </div>
-            ))}
+            ) : sh.manual === false ? (
+              <button className="btn-primary w-full" onClick={() => liveTickShootout()}>Take penalty ▸</button>
+            ) : (
+              <div className="space-y-3">
+                {/* Taker order — editable only before the first kick. */}
+                {sh.kicks.length === 0 && sh.order && (
+                  <div>
+                    <div className="text-xs text-slate-500 mb-1">Your taker order</div>
+                    <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                      {sh.order.map((id, i) => (
+                        <div key={id} className="flex items-center gap-2 text-sm bg-surface-700 rounded px-2 py-1">
+                          <span className="font-mono text-xs text-slate-500 w-4">{i + 1}</span>
+                          <span className="flex-1 truncate">{name(id)} <span className="text-slate-500 text-xs">{players[id]?.position}</span></span>
+                          <button className="text-xs text-slate-400 disabled:opacity-30" disabled={i === 0} onClick={() => { const o = [...sh.order!]; [o[i - 1], o[i]] = [o[i], o[i - 1]]; liveShootoutOrder(o); }}>▲</button>
+                          <button className="text-xs text-slate-400 disabled:opacity-30" disabled={i === sh.order!.length - 1} onClick={() => { const o = [...sh.order!]; [o[i + 1], o[i]] = [o[i], o[i + 1]]; liveShootoutOrder(o); }}>▼</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {ourTurn ? (
+                  <div>
+                    <p className="text-sm mb-2"><span className="text-slate-400">Your kick — </span><span className="font-semibold">{name(currentTaker)}</span>. Pick your spot:</p>
+                    <div className="flex gap-2">
+                      {AIM.map(([label, v]) => (
+                        <button key={v} className="btn-primary flex-1" onClick={() => liveShootoutAim(v)}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm mb-2"><span className="text-slate-400">Their kick.</span> Which way does your keeper dive?</p>
+                    <div className="flex gap-2">
+                      {AIM.map(([label, v]) => (
+                        <button key={v} className="btn-ghost flex-1" onClick={() => liveShootoutDive(v)}>{label.replace('▲ ', '')}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <button className="btn-primary w-full" onClick={() => liveTickShootout()}>Take penalty ▸</button>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Controls */}
       {live.phase === 'PREMATCH' || live.phase === 'HALF_TIME' ? (
