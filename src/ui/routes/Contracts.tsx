@@ -27,6 +27,7 @@ export function Contracts() {
   const year = season?.year ?? meta.startYear;
 
   const [renewFor, setRenewFor] = useState<Player | null>(null);
+  const [enquireFor, setEnquireFor] = useState<Player | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 4500); };
 
@@ -137,7 +138,13 @@ export function Contracts() {
                           Activate buy option ({formatMoney(p.loan.optionToBuy)})
                         </button>
                       ) : (
-                        <span className="text-xs text-slate-500" title="This loan was agreed without an option to buy.">No buy option</span>
+                        <button
+                          className="btn-ghost text-xs py-0.5 px-2"
+                          title="No option to buy was agreed — negotiate a fee with the parent club."
+                          onClick={() => setEnquireFor(p)}
+                        >
+                          Enquire to buy
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -183,6 +190,7 @@ export function Contracts() {
       </div>
 
       {renewFor && <RenewModal player={renewFor} onClose={() => setRenewFor(null)} flash={flash} />}
+      {enquireFor && <EnquireBuyModal player={enquireFor} parentName={enquireFor.loan ? clubs[enquireFor.loan.parentClubId]?.shortName ?? 'the parent club' : 'the parent club'} onClose={() => setEnquireFor(null)} flash={flash} />}
       {toast && <div className="fixed bottom-6 right-6 card px-4 py-3 text-sm shadow-lg border-accent max-w-sm">{toast}</div>}
     </div>
   );
@@ -225,6 +233,55 @@ function RenewModal({ player, onClose, flash }: {
         <div className="flex justify-end gap-2 mt-4">
           <button className="btn-ghost" onClick={onClose}>Close</button>
           <button className="btn-primary" onClick={submit}>Offer new deal</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Negotiate a permanent transfer for a loanee whose loan carried no option to
+ * buy. Haggles round-by-round with the parent club: they open high and drift
+ * toward a hidden floor as you bid, so it's the same feel as the transfer market.
+ */
+function EnquireBuyModal({ player, parentName, onClose, flash }: {
+  player: Player; parentName: string; onClose: () => void; flash: (m: string) => void;
+}) {
+  const enquireLoanBuy = useGameStore((s) => s.enquireLoanBuy);
+  const abandonTransferTalk = useGameStore((s) => s.abandonTransferTalk);
+  const [fee, setFee] = useState<number>(Math.max(100_000, Math.round(player.value / 100_000) * 100_000));
+  const [msg, setMsg] = useState<string | null>(null);
+  const [counter, setCounter] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    const r = await enquireLoanBuy(player.id, fee);
+    setBusy(false);
+    setMsg(r.message);
+    if (r.outcome === 'ACCEPT') { flash(`${player.name.last} signs permanently${r.grade ? ` · deal grade ${r.grade}` : ''}!`); onClose(); }
+    else if (r.outcome === 'COUNTER' && r.counterFee != null) setCounter(r.counterFee);
+    else if (r.outcome === 'REFUSE') { flash(r.message); onClose(); }
+  };
+
+  const breakOff = async () => { await abandonTransferTalk(player.id); onClose(); };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="card p-5 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold mb-1">Enquire to buy — {fullName(player)}</h2>
+        <p className="text-sm text-slate-400 mb-3">On loan from {parentName} · {player.position} · valued around {formatMoney(player.value)}. No option was agreed, so name your fee and haggle.</p>
+        <label className="text-sm block"><span className="text-slate-400">Transfer fee</span><MoneyInput value={fee} onChange={setFee} /></label>
+        {counter != null && (
+          <div className="mt-2 text-xs text-amber-300">
+            {parentName} want {formatMoney(counter)}.
+            <button className="ml-2 btn-ghost px-2 py-0.5 text-xs" onClick={() => setFee(counter)}>Match their ask</button>
+          </div>
+        )}
+        {msg && <p className="text-sm text-amber-300 mt-3">{msg}</p>}
+        <div className="flex justify-end gap-2 mt-4">
+          <button className="btn-ghost" onClick={breakOff}>Break off</button>
+          <button className="btn-primary" disabled={busy} onClick={submit}>{busy ? 'Talking…' : 'Make offer'}</button>
         </div>
       </div>
     </div>

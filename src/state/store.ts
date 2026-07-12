@@ -176,6 +176,7 @@ interface GameState {
   transferWindow: () => { open: boolean; kind: 'SUMMER' | 'WINTER' | null; nextLabel: string; key: string | null };
   loanIn: (playerId: string, years: number, wageSplitParent?: number, optionToBuy?: number | null) => Promise<BidResult>;
   triggerLoanOption: (playerId: string) => Promise<BidResult>;
+  enquireLoanBuy: (playerId: string, fee: number) => Promise<FeeTalkResult>;
   acceptOffer: (offerId: string) => Promise<void>;
   rejectOffer: (offerId: string) => Promise<void>;
   /** Counter an incoming transfer bid with a higher fee; the AI accepts, improves or walks. */
@@ -760,6 +761,78 @@ export const useGameStore = create<GameState>((set, get) => ({
     await putPlayers(meta.id, [permanent]);
     await persistMeta(newMeta);
     return { ok: true, message: `${player.name.last} signed permanently for ${fee.toLocaleString()}.` };
+  },
+
+  // Negotiate a permanent mid-loan buy when no option was agreed. Haggles with
+  // the parent club round-by-round (same engine as the transfer market), keyed
+  // on the loanee so the drifting ask persists between offers.
+  enquireLoanBuy: async (playerId, fee) => {
+    const { meta, clubs, players } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    if (challengeBansSignings(meta)) return { ok: false, message: 'Challenge rule: no incoming transfers — build from within.' };
+    if (meta.ffp?.embargo) return { ok: false, message: 'Under an FFP transfer embargo — you cannot sign players this season.' };
+    const player = players[playerId];
+    if (!player?.loan || player.contract.clubId !== meta.managerClubId) return { ok: false, message: 'Not on loan at your club.' };
+    const parent = clubs[player.loan.parentClubId] ?? null;
+    if (!parent) return { ok: false, message: "The parent club can't be reached." };
+    const buyer = clubs[meta.managerClubId];
+    const year = get().currentSeason()?.year ?? meta.startYear;
+
+    const rel = meta.clubRelations?.[parent.id] ?? { tension: 0 };
+    if (rel.refuseUntil && meta.currentDay < rel.refuseUntil) {
+      return { ok: false, outcome: 'REFUSE', message: `${parent.shortName} won't discuss a permanent deal right now — give it a couple of weeks.`, tension: rel.tension };
+    }
+
+    // Resume (or open) the haggle. A fresh talk opens above the hidden floor.
+    const floor = transferFloor(player, parent, buyer, year);
+    const talks = { ...(meta.transferTalks ?? {}) };
+    let talk = talks[playerId] as TransferTalk | undefined;
+    if (!talk || talk.clubId !== parent.id) {
+      const rng = new Rng((meta.seed ^ hashSeed(`loanbuy_${playerId}`) ^ meta.currentDay) >>> 0);
+      const initialAsk = overpricedAsk(floor, 1.25 + rng.int(0, 25) / 100);
+      talk = { playerId, clubId: parent.id, floor, ask: initialAsk, initialAsk, rounds: 0 };
+    }
+
+    const offer: FeeOffer = { fee, instalmentYears: 1, sellOnPct: 0, addOns: 0 };
+    const resp = respondToTransferOffer({
+      offer, player, sellerName: parent.shortName,
+      floor: talk.floor, ask: talk.ask, initialAsk: talk.initialAsk, tension: rel.tension,
+    });
+    const relations = { ...(meta.clubRelations ?? {}), [parent.id]: { ...rel, tension: resp.tension } };
+
+    if (resp.outcome === 'ACCEPT') {
+      if (fee > buyer.finances.transferBudget) {
+        // They'd sell, but you can't afford it — hold the talk open to try again.
+        const nm: SaveMeta = { ...meta, clubRelations: relations };
+        set({ meta: nm }); await persistMeta(nm);
+        return { ok: false, message: 'The agreed fee exceeds your transfer budget.' };
+      }
+      // Make the move permanent: pay the fee, clear the loan, keep his terms.
+      const upd = applyTransfer(buyer, parent, { ...player, loan: null }, fee, player.contract.wage, year);
+      const permanent = { ...upd.player, loan: null };
+      const newClubs = { ...clubs, [upd.buyer.id]: upd.buyer };
+      if (upd.seller) newClubs[upd.seller.id] = upd.seller;
+      delete talks[playerId];
+      const news = { id: `news_loanbuy_${playerId}_${meta.currentDay}`, day: meta.currentDay, category: 'TRANSFER' as const, title: `${player.name.last} signed permanently`, body: `${parent.shortName} agree to sell mid-loan — ${player.name.first} ${player.name.last} joins for ${fee.toLocaleString()}.`, read: false };
+      const newMeta: SaveMeta = { ...meta, clubRelations: relations, transferTalks: talks, news: [...meta.news, news] };
+      set({ clubs: newClubs, players: { ...players, [playerId]: permanent }, meta: newMeta });
+      await putClubs(meta.id, [upd.buyer, ...(upd.seller ? [upd.seller] : [])]);
+      await putPlayers(meta.id, [permanent]);
+      await persistMeta(newMeta);
+      return { ok: true, outcome: 'ACCEPT', message: resp.message, agreedFee: fee, grade: resp.grade, tension: resp.tension };
+    }
+    if (resp.outcome === 'REFUSE') {
+      relations[parent.id] = { tension: resp.tension, refuseUntil: meta.currentDay + 14 };
+      delete talks[playerId];
+      const newMeta: SaveMeta = { ...meta, clubRelations: relations, transferTalks: talks };
+      set({ meta: newMeta }); await persistMeta(newMeta);
+      return { ok: false, outcome: 'REFUSE', message: resp.message, tension: resp.tension };
+    }
+    // COUNTER — remember the drifting ask so the next offer resumes from here.
+    talks[playerId] = { ...talk, ask: resp.ask, rounds: talk.rounds + 1 };
+    const newMeta: SaveMeta = { ...meta, clubRelations: relations, transferTalks: talks };
+    set({ meta: newMeta }); await persistMeta(newMeta);
+    return { ok: false, outcome: 'COUNTER', message: resp.message, counterFee: resp.ask, tension: resp.tension };
   },
 
   acceptOffer: async (offerId) => {
