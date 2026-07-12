@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 
 export interface Column<T> {
   key: string;
@@ -17,6 +17,9 @@ interface DataTableProps<T> {
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
   initialSort?: { key: string; dir: 'asc' | 'desc' };
+  /** Opt-in: render a detail panel beneath a row, toggled by a leading chevron.
+   *  Return null for a row that has nothing to expand (no chevron shown). */
+  renderExpanded?: (row: T) => ReactNode;
 }
 
 export function DataTable<T>({
@@ -25,10 +28,12 @@ export function DataTable<T>({
   rowKey,
   onRowClick,
   initialSort,
+  renderExpanded,
 }: DataTableProps<T>) {
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(
     initialSort ?? null,
   );
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
   const sortedRows = useMemo(() => {
     if (!sort) return rows;
@@ -60,6 +65,7 @@ export function DataTable<T>({
       <table className="data-table">
         <thead>
           <tr>
+            {renderExpanded && <th className="w-6" aria-hidden />}
             {columns.map((col) => (
               <th
                 key={col.key}
@@ -83,28 +89,64 @@ export function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {sortedRows.map((row) => (
-            <tr
-              key={rowKey(row)}
-              className={onRowClick ? 'cursor-pointer' : ''}
-              onClick={() => onRowClick?.(row)}
-            >
-              {columns.map((col) => (
-                <td
-                  key={col.key}
-                  className={`${
-                    col.align === 'right'
-                      ? 'text-right'
-                      : col.align === 'center'
-                        ? 'text-center'
-                        : ''
-                  } ${col.className ?? ''}`}
+          {sortedRows.map((row) => {
+            const key = rowKey(row);
+            const detail = renderExpanded?.(row);
+            const isOpen = expanded.has(key);
+            return (
+              <Fragment key={key}>
+                <tr
+                  className={onRowClick ? 'cursor-pointer' : ''}
+                  onClick={() => onRowClick?.(row)}
                 >
-                  {col.render(row)}
-                </td>
-              ))}
-            </tr>
-          ))}
+                  {renderExpanded && (
+                    <td className="text-center align-middle">
+                      {detail != null && (
+                        <button
+                          type="button"
+                          className={`text-slate-500 hover:text-accent-400 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                          aria-label={isOpen ? 'Hide season changes' : 'Show season changes'}
+                          aria-expanded={isOpen}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpanded((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(key)) next.delete(key);
+                              else next.add(key);
+                              return next;
+                            });
+                          }}
+                        >
+                          ▸
+                        </button>
+                      )}
+                    </td>
+                  )}
+                  {columns.map((col) => (
+                    <td
+                      key={col.key}
+                      className={`${
+                        col.align === 'right'
+                          ? 'text-right'
+                          : col.align === 'center'
+                            ? 'text-center'
+                            : ''
+                      } ${col.className ?? ''}`}
+                    >
+                      {col.render(row)}
+                    </td>
+                  ))}
+                </tr>
+                {isOpen && detail != null && (
+                  <tr>
+                    <td colSpan={columns.length + 1} className="bg-surface-800/40 !py-3">
+                      {detail}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>

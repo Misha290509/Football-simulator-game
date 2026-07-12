@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 import { AttributeRadar } from '../components/AttributeRadar';
+import { OvrDeltaBadge } from '../components/SeasonChange';
 import { DevelopmentChart } from '../components/DevelopmentChart';
 import { MoneyInput } from '../components/MoneyInput';
 import { Rating } from '../components/Rating';
@@ -19,22 +20,34 @@ import type { Player, SquadRole, PlayerTrainingFocus } from '../../types/player'
 function AttrGroup({
   title,
   group,
+  deltas,
 }: {
   title: string;
   group: Record<string, number>;
+  deltas?: Record<string, number>;
 }) {
   return (
     <div>
       <h3 className="text-xs uppercase tracking-wide text-slate-500 mb-2">{title}</h3>
       <div className="space-y-1">
-        {Object.entries(group).map(([k, v]) => (
-          <div key={k} className="flex items-center justify-between text-sm">
-            <span className="text-slate-400 capitalize">
-              {k.replace(/([A-Z])/g, ' $1').trim()}
-            </span>
-            <span className={`font-mono ${ratingColor(v)}`}>{Math.round(v)}</span>
-          </div>
-        ))}
+        {Object.entries(group).map(([k, v]) => {
+          const d = deltas?.[k];
+          return (
+            <div key={k} className="flex items-center justify-between text-sm">
+              <span className="text-slate-400 capitalize">
+                {k.replace(/([A-Z])/g, ' $1').trim()}
+              </span>
+              <span className="flex items-center gap-1.5">
+                {d != null && d !== 0 && (
+                  <span className={`text-[10px] font-mono font-semibold ${d > 0 ? 'text-emerald-400' : 'text-rose-400'}`} title="Change last season">
+                    {d > 0 ? '+' : ''}{d}
+                  </span>
+                )}
+                <span className={`font-mono ${ratingColor(v)}`}>{Math.round(v)}</span>
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -78,6 +91,7 @@ export function PlayerProfile() {
   const season = Object.values(meta.seasons).find((s) => s.current);
   const currentYear = season?.year ?? meta.startYear;
   const attrs: Attributes = player.attributes;
+  const seasonDeltas = player.lastSeasonChange?.attrs;
   const status = playerStatus(player);
   const academyEntry = meta.academyPlayers?.[player.id];
   const isFirstTeamOwn = player.contract.clubId === meta.managerClubId;
@@ -203,6 +217,7 @@ export function PlayerProfile() {
               ) : (
                 <div className="text-2xl font-mono font-semibold text-slate-300">{mv.ovr}<span className="text-amber-400/70 text-xs ml-1">~{mv.stars}★</span></div>
               )}
+              {mv.exact && <div className="mt-0.5"><OvrDeltaBadge player={player} /></div>}
             </div>
             <div>
               <div className="text-xs text-slate-500">POT</div>
@@ -298,10 +313,10 @@ export function PlayerProfile() {
       </div>
 
       <div className="card p-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <AttrGroup title="Technical" group={attrs.technical} />
-        <AttrGroup title="Mental" group={attrs.mental} />
-        <AttrGroup title="Physical" group={attrs.physical} />
-        {isGk && <AttrGroup title="Goalkeeping" group={attrs.goalkeeping} />}
+        <AttrGroup title="Technical" group={attrs.technical} deltas={seasonDeltas} />
+        <AttrGroup title="Mental" group={attrs.mental} deltas={seasonDeltas} />
+        <AttrGroup title="Physical" group={attrs.physical} deltas={seasonDeltas} />
+        {isGk && <AttrGroup title="Goalkeeping" group={attrs.goalkeeping} deltas={seasonDeltas} />}
       </div>
       </>)}
 

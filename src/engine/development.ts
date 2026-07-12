@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Player } from '../types/player';
-import type { Position } from '../types/attributes';
+import type { Position, Attributes } from '../types/attributes';
 import { POSITION_GROUP } from '../types/attributes';
 import { Rng, clamp } from './rng';
 import { overallAt, bestOverall } from './ratings';
@@ -40,6 +40,15 @@ export interface DevelopOpts {
   perf?: SeasonPerf;
   trophies?: number; // club honours won this season
   awards?: number; // individual awards won this season
+}
+
+/** Flatten every visible attribute to the integer the UI displays. */
+function flattenRounded(a: Attributes): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const g of [a.technical, a.mental, a.physical, a.goalkeeping]) {
+    for (const k of Object.keys(g)) out[k] = Math.round(g[k]);
+  }
+  return out;
 }
 
 /** Apply an OVR-scale delta to attributes, front-loading physical decline. */
@@ -122,6 +131,11 @@ export function developPlayer(
   }
   delta += rng.normal(0, 0.5);
 
+  // Snapshot the displayed integers before development so we can report exactly
+  // the movement the player will see on the squad screen.
+  const ovrFrom = p.overall;
+  const beforeAttrs = flattenRounded(p.attributes);
+
   applyDelta(p, delta, cap);
 
   const primaryOvr = overallAt(p.attributes, p.position);
@@ -132,6 +146,16 @@ export function developPlayer(
 
   p.value = estimateValue(p.overall, age, p.potential);
   p.developmentLog = [...p.developmentLog, { year: toYear, ovr: p.overall, pot: p.potential }];
+
+  // Record the season's movement (rounded to displayed integers) for the squad
+  // view: the OVR swing plus every individual attribute that actually changed.
+  const afterAttrs = flattenRounded(p.attributes);
+  const attrChanges: Record<string, number> = {};
+  for (const k of Object.keys(afterAttrs)) {
+    const d = afterAttrs[k] - beforeAttrs[k];
+    if (d !== 0) attrChanges[k] = d;
+  }
+  p.lastSeasonChange = { year: toYear, ovrFrom, ovrTo: p.overall, attrs: attrChanges };
 
   // Pre-season reset of transient state.
   p.form = 0;

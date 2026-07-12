@@ -26,6 +26,32 @@ describe('Development & aging', () => {
     expect(dev.overall).toBeLessThanOrEqual(vet.overall);
   });
 
+  it('records the season change: OVR swing and only the attributes that moved', () => {
+    const young = generatePlayer({ rng: new Rng(3), currentYear: 2024, target: 60, position: 'CM', ageRange: [17, 18] });
+    young.potential = Math.max(young.potential, young.overall + 15);
+    const dev = developPlayer(young, 2025, new Rng(11), {
+      perf: { minutes: 2800, avgRating: 7.5, goals: 8, assists: 6, cleanSheets: 0, appearances: 34 },
+    });
+    const change = dev.lastSeasonChange!;
+    expect(change).toBeTruthy();
+    expect(change.year).toBe(2025);
+    expect(change.ovrFrom).toBe(young.overall);
+    expect(change.ovrTo).toBe(dev.overall);
+    // Every recorded delta is non-zero and matches the displayed integer move.
+    const flat = (p: typeof young) => {
+      const a = p.attributes; const out: Record<string, number> = {};
+      for (const g of [a.technical, a.mental, a.physical, a.goalkeeping]) for (const k of Object.keys(g)) out[k] = Math.round(g[k]);
+      return out;
+    };
+    const before = flat(young); const after = flat(dev);
+    for (const [k, d] of Object.entries(change.attrs)) {
+      expect(d).not.toBe(0);
+      expect(after[k] - before[k]).toBe(d);
+    }
+    // A well-performing 17-year-old should have moved at least one attribute.
+    expect(Object.keys(change.attrs).length).toBeGreaterThan(0);
+  });
+
   it('resets transient state at season start', () => {
     const p = generatePlayer({ rng: new Rng(2), currentYear: 2024, target: 70, position: 'RCB' });
     p.fitness = 50; p.form = -40; p.fatigueLoad = 70; p.cards.yellow = 3;

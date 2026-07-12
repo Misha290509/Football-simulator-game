@@ -92,6 +92,19 @@ export interface DevelopmentPoint {
   pot: number;
 }
 
+/**
+ * How a player changed over the season just completed, captured at rollover.
+ * Powers the green/red movement indicators in the squad view: the OVR swing
+ * plus the per-attribute deltas (rounded to the integers the UI shows, so a
+ * displayed 78→80 reads as +2). Only attributes that actually moved are kept.
+ */
+export interface SeasonChange {
+  year: number; // season-end year this snapshot was taken at
+  ovrFrom: number;
+  ovrTo: number;
+  attrs: Record<string, number>; // attribute key → integer delta (non-zero only)
+}
+
 export interface Player {
   id: string;
   name: { first: string; last: string };
@@ -147,6 +160,8 @@ export interface Player {
   stats: SeasonStats[];
   awards: AwardRef[];
   developmentLog: DevelopmentPoint[];
+  /** How the player moved over the most recent completed season (rollover). */
+  lastSeasonChange?: SeasonChange | null;
 
   isReal: boolean; // from real dataset vs generated regen
   dataSourceId?: string;

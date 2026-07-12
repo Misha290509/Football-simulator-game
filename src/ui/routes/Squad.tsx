@@ -7,6 +7,7 @@ import { ageOf, fullName, formatMoney, formatWage, playerStatus } from '../forma
 import type { Player } from '../../types/player';
 import { POSITION_GROUP, ALL_POSITIONS } from '../../types/attributes';
 import { squadChemistry } from '../../engine/chemistry';
+import { OvrDeltaBadge, StatChangePanel } from '../components/SeasonChange';
 
 export function Squad() {
   const navigate = useNavigate();
@@ -45,7 +46,12 @@ export function Squad() {
     {
       key: 'ovr',
       header: 'OVR',
-      render: (p) => <Rating value={p.overall} />,
+      render: (p) => (
+        <span className="inline-flex items-center gap-1.5 justify-end">
+          <Rating value={p.overall} />
+          <OvrDeltaBadge player={p} />
+        </span>
+      ),
       sortValue: (p) => p.overall,
       align: 'right',
     },
@@ -105,8 +111,9 @@ export function Squad() {
             rowKey={(p) => p.id}
             onRowClick={(p) => navigate(`/player/${p.id}`)}
             initialSort={{ key: 'ovr', dir: 'desc' }}
+            renderExpanded={(p) => (p.lastSeasonChange ? <StatChangePanel player={p} /> : null)}
           />
-          <p className="text-xs text-slate-600">Click a row to open the player profile.</p>
+          <p className="text-xs text-slate-600">Click a row to open the player profile. The ▲/▼ next to OVR is last season's change — expand a row with ▸ to see which attributes moved.</p>
         </>
       ) : (
         <DepthChart players={players} year={currentYear} onOpen={(id) => navigate(`/player/${id}`)} />
