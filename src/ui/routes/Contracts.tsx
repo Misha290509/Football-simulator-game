@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 import { Rating } from '../components/Rating';
 import { MoneyInput } from '../components/MoneyInput';
-import { ageOf, fullName, formatWage } from '../format';
+import { ageOf, fullName, formatWage, formatMoney } from '../format';
 import type { Player, SquadRole } from '../../types/player';
 import type { ContractOffer } from '../../game/contracts';
 
@@ -22,6 +22,7 @@ export function Contracts() {
   const allPlayers = useGameStore((s) => s.players);
   const managerClub = useGameStore((s) => s.managerClub())!;
   const squad = useGameStore((s) => s.getClubPlayers(managerClub.id));
+  const triggerLoanOption = useGameStore((s) => s.triggerLoanOption);
   const season = useGameStore((s) => s.currentSeason());
   const year = season?.year ?? meta.startYear;
 
@@ -31,10 +32,15 @@ export function Contracts() {
 
   const yearsLeft = (p: Player) => p.contract.expiresYear - year;
 
-  // Your squad, nearest expiry first — final-year men are the urgent ones.
+  // Loanees sit in your squad but you don't own their contract — you can only
+  // buy them (if an option was agreed), never renew. Keep them out of the renew
+  // list and give them their own section.
+  const loanees = useMemo(() => squad.filter((p) => p.loan), [squad]);
+
+  // Your OWNED players, nearest expiry first — final-year men are the urgent ones.
   const expiring = useMemo(
     () => squad
-      .filter((p) => yearsLeft(p) <= 2)
+      .filter((p) => !p.loan && yearsLeft(p) <= 2)
       .sort((a, b) => yearsLeft(a) - yearsLeft(b) || b.overall - a.overall),
     [squad, year],
   );
@@ -93,6 +99,54 @@ export function Contracts() {
           </div>
         )}
       </div>
+
+      {/* Loan players — owned by another club; buy option, not renewal */}
+      {loanees.length > 0 && (
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-slate-400">On loan at your club</h2>
+            <span className="text-xs text-slate-500">You don't hold their contract — trigger the buy option to sign them for good.</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="data-table w-full">
+              <thead>
+                <tr>
+                  <th>Pos</th><th>Name</th><th className="text-right">Age</th>
+                  <th className="text-right">OVR</th><th className="text-right">Wage</th>
+                  <th>From</th><th>Loan until</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {loanees.map((p) => (
+                  <tr key={p.id} className="bg-sky-500/5">
+                    <td className="font-mono text-slate-400">{p.position}</td>
+                    <td className="font-medium cursor-pointer hover:underline" onClick={() => navigate(`/player/${p.id}`)}>
+                      {fullName(p)} <span className="ml-1 text-[10px] uppercase tracking-wide text-sky-400 border border-sky-500/30 rounded px-1 py-0.5">Loan</span>
+                    </td>
+                    <td className="text-right">{ageOf(p, year)}</td>
+                    <td className="text-right"><Rating value={p.overall} /></td>
+                    <td className="text-right font-mono text-slate-400">{formatWage(p.contract.wage)}</td>
+                    <td className="text-slate-400">{p.loan ? clubs[p.loan.parentClubId]?.shortName ?? '—' : '—'}</td>
+                    <td className="text-slate-400">{p.loan?.untilYear ?? '—'}</td>
+                    <td className="text-right">
+                      {p.loan?.optionToBuy != null ? (
+                        <button
+                          className="btn-primary text-xs py-0.5 px-2"
+                          onClick={async () => flash((await triggerLoanOption(p.id)).message)}
+                        >
+                          Activate buy option ({formatMoney(p.loan.optionToBuy)})
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-500" title="This loan was agreed without an option to buy.">No buy option</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Bosman board */}
       <div className="card p-4">
