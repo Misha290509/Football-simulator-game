@@ -1548,6 +1548,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   simToNextManagerMatch: async () => {
     if (get().meta?.sacked) return; // dismissed — take a new job first
     set({ stopRequested: false });
+    const startDay = get().meta?.currentDay ?? 0;
     // Advance one continental boundary at a time toward the manager's next
     // fixture, recomputing it each step so a freshly-drawn European tie for the
     // manager becomes the new stopping point.
@@ -1558,11 +1559,23 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!meta) return;
       const next = get().managerNextMatch();
       if (!next) { await get().simToSeasonEnd(); return; }
-      if (next.day <= meta.currentDay) return; // arrived at their match
-      const stopAt = nextKnockoutStop(get);
-      const stop = Math.min(next.day, stopAt);
-      if (stop > meta.currentDay) await playDays(get, set, meta.currentDay, stop);
-      else return;
+      if (next.day > meta.currentDay) {
+        // Still ahead of the fixture: fast-forward toward it, pausing at any
+        // continental/cup boundary so ties stay interleaved. When we land on the
+        // match day the loop falls through to the branch below and stops there,
+        // leaving it unplayed so the manager can watch or sim it.
+        const stopAt = nextKnockoutStop(get);
+        const stop = Math.min(next.day, stopAt);
+        if (stop > meta.currentDay) await playDays(get, set, meta.currentDay, stop);
+        else return; // defensive: no forward progress possible
+      } else if (meta.currentDay === startDay) {
+        // We began this call already standing on the (unplayed) fixture — the
+        // manager has chosen to move on rather than watch, so sim just this
+        // matchday and carry on to stop at the *following* match.
+        await simTo(get, set, meta.currentDay + 1);
+      } else {
+        return; // arrived at their next match this click — stop so they can play it
+      }
     }
   },
 
