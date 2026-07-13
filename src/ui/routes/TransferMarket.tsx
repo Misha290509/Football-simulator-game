@@ -7,6 +7,7 @@ import { MoneyInput } from '../components/MoneyInput';
 import { ageOf, fullName, formatMoney, formatWage } from '../format';
 import { marketView, eliteKnownIds, scoutStars, clubScoutRating, departmentStars, type MarketView } from '../../engine/marketScout';
 import { clubValuation, type FeeOffer } from '../../game/feeNegotiation';
+import { loanFee } from '../../game/transfers';
 import { agentDemands, evaluateContractOffer, type ContractOffer } from '../../game/contracts';
 import type { Player, SquadRole } from '../../types/player';
 import type { Staff } from '../../types/staff';
@@ -484,9 +485,16 @@ function LoanModal({ player, onClose, onLoan }: {
   const [parentPct, setParentPct] = useState(50); // % of wages the parent covers
   const [withOption, setWithOption] = useState(false);
   const [option, setOption] = useState(Math.round(player.value * 1.1));
+  const managerClub = useGameStore((s) => s.managerClub());
+  const loaneesUsed = useGameStore((s) => (managerClub ? s.getClubPlayers(managerClub.id).filter((p) => p.loan).length : 0));
+  const fee = loanFee(player);
   return (
     <Modal onClose={onClose} title={`Loan ${fullName(player)}`}>
-      <p className="text-sm text-slate-400 mb-4">{player.position} · negotiate the wage split and an optional buy clause with the parent club.</p>
+      <p className="text-sm text-slate-400 mb-3">{player.position} · negotiate the wage split and an optional buy clause with the parent club.</p>
+      <div className="flex items-center justify-between text-sm mb-4 rounded bg-surface-700 px-3 py-2">
+        <span className="text-slate-400">Loan fee <span className="text-slate-300 font-semibold">{formatMoney(fee)}</span></span>
+        <span className="text-slate-500 text-xs">Loan slots used {loaneesUsed}/3</span>
+      </div>
       <label className="block text-sm mb-4"><span className="text-slate-400">Loan length</span>
         <div className="flex gap-2 mt-1">{[1, 2].map((y) => <button key={y} className={years === y ? 'btn-primary' : 'btn-ghost'} onClick={() => setYears(y)}>{y} {y === 1 ? 'year' : 'years'}</button>)}</div>
       </label>

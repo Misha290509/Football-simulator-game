@@ -205,8 +205,15 @@ export function evaluateLoanIn(player: Player, club: Club, years: number): BidRe
   if (player.loan) return { ok: false, message: 'He is already out on loan.' };
   if (player.squadRole === 'KEY') return { ok: false, message: 'His club won\'t loan out a key player.' };
   if (player.overall >= 72) return { ok: false, message: 'A player of his quality won\'t accept a loan move.' };
-  if (player.overall > club.reputation + 5) return { ok: false, message: 'He\'s too good to join you on loan.' };
+  if (player.overall > club.reputation) return { ok: false, message: 'He\'s too good to join you on loan.' };
   return { ok: true, message: 'Loan move agreed!' };
+}
+
+/** Upfront loan fee the parent charges — a slice of market value, steeper for
+ *  better players, so a loan competes with your transfer budget. */
+export function loanFee(player: Player): number {
+  const pct = 0.05 + Math.max(0, player.overall - 55) * 0.004; // ~5% rising to ~12%
+  return Math.max(50_000, Math.round((player.value * pct) / 50_000) * 50_000);
 }
 
 /**
@@ -238,7 +245,8 @@ export function evaluateLoanTerms(
   return { ok: true, message: `${fromClub.shortName} agree to the loan on those terms.` };
 }
 
-/** Move a player on loan from their current club to `toClub`. */
+/** Move a player on loan from their current club to `toClub`. The loan fee (if
+ *  any) is paid from the borrower's transfer budget to the parent's. */
 export function applyLoanMove(
   player: Player,
   fromClub: Club,
@@ -246,6 +254,7 @@ export function applyLoanMove(
   untilYear: number,
   wageSplitParent: number,
   optionToBuy?: number | null,
+  fee = 0,
 ): { player: Player; fromClub: Club; toClub: Club } {
   return {
     player: {
@@ -256,8 +265,16 @@ export function applyLoanMove(
       transferListed: false,
       squadRole: 'ROTATION',
     },
-    fromClub: { ...fromClub, playerIds: fromClub.playerIds.filter((id) => id !== player.id) },
-    toClub: { ...toClub, playerIds: [...toClub.playerIds.filter((id) => id !== player.id), player.id] },
+    fromClub: {
+      ...fromClub,
+      playerIds: fromClub.playerIds.filter((id) => id !== player.id),
+      finances: { ...fromClub.finances, transferBudget: fromClub.finances.transferBudget + fee },
+    },
+    toClub: {
+      ...toClub,
+      playerIds: [...toClub.playerIds.filter((id) => id !== player.id), player.id],
+      finances: { ...toClub.finances, transferBudget: toClub.finances.transferBudget - fee },
+    },
   };
 }
 

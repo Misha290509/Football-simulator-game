@@ -70,6 +70,7 @@ import {
   applyRenewal,
   evaluateLoanTerms,
   applyLoanMove,
+  loanFee,
   generateOffers,
   type BidResult,
 } from '../game/transfers';
@@ -308,6 +309,9 @@ function rememberLastSave(id: string | null): void {
 export function lastSaveId(): string | null {
   try { return localStorage.getItem(LAST_SAVE_KEY); } catch { return null; }
 }
+
+/** Most loanees a club may hold at once — loans are a supplement, not a squad. */
+const MAX_LOANEES = 3;
 
 /** Whether the save's active challenge bans incoming transfers. */
 function challengeBansSignings(meta: SaveMeta): boolean {
@@ -713,6 +717,28 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (rel.refuseUntil && meta.currentDay < rel.refuseUntil) {
       return { ok: false, message: `${fromClub.shortName} won't deal with you right now — relations are strained. Try again in a couple of weeks.` };
     }
+    // A squad may hold only so many loanees at once.
+    const currentLoanees = get().getClubPlayers(toClub.id).filter((p) => p.loan).length;
+    if (currentLoanees >= MAX_LOANEES) {
+      return { ok: false, message: `You already have ${MAX_LOANEES} players on loan — that's the limit. End a loan before taking another.` };
+    }
+    // Clubs won't strengthen a direct rival in the manager's own league.
+    const myComp = Object.values(meta.competitions).find((c) => c.clubIds.includes(toClub.id));
+    if (myComp && myComp.clubIds.includes(fromClub.id)) {
+      return { ok: false, message: `${fromClub.shortName} won't loan a player to a rival in your own league.` };
+    }
+    // Parent clubs keep their first team — only players outside their best XI are
+    // available (young or not, they don't loan out a starter).
+    const parentSquad = [...get().getClubPlayers(fromClub.id)].sort((a, b) => b.overall - a.overall);
+    const rank = parentSquad.findIndex((p) => p.id === player.id);
+    if (rank >= 0 && rank < 11) {
+      return { ok: false, message: `${fromClub.shortName} see him as part of their first-team plans and won't loan him out.` };
+    }
+    // Upfront loan fee, paid from your transfer budget.
+    const fee = loanFee(player);
+    if (fee > toClub.finances.transferBudget) {
+      return { ok: false, message: `You can't afford the ${fee.toLocaleString()} loan fee — it exceeds your transfer budget.` };
+    }
     const split = Math.min(1, Math.max(0, wageSplitParent));
     const res = evaluateLoanTerms(player, toClub, fromClub, years, split, optionToBuy);
     if (!res.ok) {
@@ -724,7 +750,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       return res;
     }
     const year = get().currentSeason()?.year ?? meta.startYear;
-    const mv = applyLoanMove(player, fromClub, toClub, year + years, split, optionToBuy);
+    const mv = applyLoanMove(player, fromClub, toClub, year + years, split, optionToBuy, fee);
     const relations = { ...(meta.clubRelations ?? {}), [fromClub.id]: { ...rel, tension: Math.max(0, rel.tension - 4) } };
     const newMeta: SaveMeta = { ...meta, clubRelations: relations };
     set({
@@ -737,7 +763,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     await persistMeta(newMeta);
     const parentPct = Math.round(split * 100);
     const optText = optionToBuy != null ? ` Option to buy: ${optionToBuy.toLocaleString()}.` : '';
-    return { ok: true, message: `${res.message} ${fromClub.shortName} cover ${parentPct}% of his wages.${optText}` };
+    const feeText = fee > 0 ? ` Loan fee ${fee.toLocaleString()}.` : '';
+    return { ok: true, message: `${res.message}${feeText} ${fromClub.shortName} cover ${parentPct}% of his wages.${optText}` };
   },
 
   triggerLoanOption: async (playerId) => {
