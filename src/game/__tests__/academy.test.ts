@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { loadDataset } from '../../data/datasetLoader';
 import { ENGLAND_DATASET } from '../../data/england';
-import { academyRatingFor, philosophyFor, eliteAcademyFor, ageGroupForAge, facilityLevelFor } from '../../engine/academy';
+import { academyRatingFor, philosophyFor, eliteAcademyFor, ageGroupForAge, facilityLevelFor, academyPotential } from '../../engine/academy';
+import { Rng } from '../../engine/rng';
 import { migrateSave, CURRENT_SCHEMA_VERSION } from '../../db/migrations';
 import type { SaveMeta } from '../../db/db';
 import type { Club } from '../../types/club';
@@ -37,6 +38,20 @@ describe('Academy tailoring (Phase 1)', () => {
     expect(big).toBeGreaterThan(small);
     expect(big).toBeLessThanOrEqual(5);
     expect(small).toBeGreaterThanOrEqual(1);
+  });
+
+  it('produces genuine prospects: strong ceilings that scale with the academy', () => {
+    const rng = new Rng(7);
+    const sample = (stars: number, rep: number) => Array.from({ length: 3000 }, () => academyPotential(stars, rep, rng)).sort((a, b) => a - b);
+    const small = sample(2, 60);
+    const elite = sample(5, 88);
+    const med = (a: number[]) => a[Math.floor(a.length / 2)];
+    // A modest academy's real prospects are solid (not 50s), and gems still appear.
+    expect(med(small)).toBeGreaterThanOrEqual(75);
+    expect(small.filter((p) => p >= 85).length / small.length).toBeGreaterThan(0.03);
+    // Elite academies routinely produce top talent, and outrank small ones.
+    expect(med(elite)).toBeGreaterThan(med(small));
+    expect(med(elite)).toBeGreaterThanOrEqual(84);
   });
 
   it('applies the elite-academy star floor regardless of formula', () => {

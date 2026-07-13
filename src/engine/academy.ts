@@ -218,15 +218,15 @@ export const PRODIGY_POTENTIAL = 90;
 export function rollSkewedPotential(baseCeil: number, qualityLvl: number, rng: Rng): number {
   let potential = baseCeil + rng.normal(0, 4);
   const lvl = clamp(qualityLvl, 0, 1) as number;
-  if (rng.chance(0.09 * (0.4 + lvl))) potential += rng.int(3, 6); // promising (uncommon)
-  if (rng.chance(0.022 * (0.3 + lvl))) potential += rng.int(4, 8); // star quality (rare)
-  if (rng.chance(0.004 * (0.3 + lvl))) potential += rng.int(6, 14); // generational (very rare)
+  if (rng.chance(0.10 * (0.4 + lvl))) potential += rng.int(3, 6); // promising (uncommon)
+  if (rng.chance(0.024 * (0.3 + lvl))) potential += rng.int(4, 8); // star quality (rare)
+  if (rng.chance(0.0045 * (0.3 + lvl))) potential += rng.int(6, 14); // generational (very rare)
   return clamp(Math.round(potential), 45, 99) as number;
 }
 
 /** Youth potential tailored to an academy's star rating + own reputation. */
 export function academyPotential(stars: number, academyReputation: number, rng: Rng): number {
-  const baseCeil = 69 + stars * 1.7 + academyReputation * 0.05; // ~3★ club ≈ 76, elite ≈ 81
+  const baseCeil = 70 + stars * 1.75 + academyReputation * 0.05; // ~3★ club ≈ 79, elite ≈ 83
   const qualityLvl = (stars - 1) / 4 + academyReputation / 200;
   return rollSkewedPotential(baseCeil, qualityLvl, rng);
 }

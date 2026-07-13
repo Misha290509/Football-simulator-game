@@ -30,15 +30,16 @@ const BAND_YEAR_OFFSET: Record<AgeGroup, number> = { U16: 0, U18: 2, U21: 4 };
 const AGE_BANDS: AgeGroup[] = ['U16', 'U18', 'U21'];
 
 /**
- * Ceiling for a squad-filler prospect: modest, mostly 50s–low-60s, occasionally
- * a useful low-70s player, hard-capped at 80. These pad a band out to a full
- * squad without diluting how rare genuine talent is — no gems here.
+ * Ceiling for a squad-filler prospect: a respectable youth-team player, mostly
+ * low-to-mid 60s, often a useful 70s prospect, hard-capped at 84. These pad a
+ * band out to a full squad — decent raw material, without diluting how rare a
+ * genuine gem (85+) is.
  */
 function depthPotential(rng: Rng): number {
-  let p = 54 + rng.normal(0, 6);
-  if (rng.chance(0.12)) p += rng.int(3, 8); // a solid squad player
-  if (rng.chance(0.02)) p += rng.int(5, 12); // rare late bloomer, still capped
-  return clamp(Math.round(p), 45, 80) as number;
+  let p = 61 + rng.normal(0, 6);
+  if (rng.chance(0.16)) p += rng.int(3, 8); // a solid squad player
+  if (rng.chance(0.03)) p += rng.int(5, 12); // late bloomer, still capped
+  return clamp(Math.round(p), 52, 84) as number;
 }
 
 export interface AcademyInstallResult {
