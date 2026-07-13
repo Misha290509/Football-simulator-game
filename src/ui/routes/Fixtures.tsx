@@ -68,7 +68,7 @@ export function Fixtures() {
         <span className="text-xs w-24 text-left truncate" title={comp ? `${comp.name} — ${m.stageLabel}` : undefined}>
           {cont ? <span className="text-accent-400">{cont.name.replace(' League', '')}</span>
             : cup ? <span className="text-sky-400">{m.stageLabel}</span>
-            : <span className="text-slate-500">MD {Math.floor(m.day / 3) + 1}</span>}
+            : <span className="text-slate-500">MD {m.round}</span>}
         </span>
         <span className="flex-1 flex items-center justify-end gap-2">
           <span className="truncate">{home.shortName}</span>
