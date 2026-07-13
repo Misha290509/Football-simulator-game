@@ -29,6 +29,34 @@ export function updateManagerReputation(
   return clamp(Math.round(current + delta), 5, 99) as number;
 }
 
+/**
+ * The club-reputation level a manager is realistically worth right now — the
+ * anchor for which clubs come calling. Career reputation (5–99) is on its own
+ * compressed scale, so it's mapped back onto the club-reputation scale and
+ * blended with the reputation of the club they were last at (a manager at Elche
+ * is an "Elche-level" manager, whatever their abstract number). A sacking knocks
+ * them down a rung.
+ */
+export function managerLevel(managerReputation: number, lastClubRep: number | undefined, sacked: boolean): number {
+  const career = clamp((managerReputation - 20) * 2, 25, 99);
+  let level = lastClubRep != null ? 0.55 * lastClubRep + 0.45 * career : career;
+  if (sacked) level -= 8;
+  return level;
+}
+
+/**
+ * How good a fit a club is for a manager at `level` (higher = better). Clubs near
+ * or a touch below the manager's level fit best; clubs above are a stretch —
+ * steeply so after a sacking, so an out-of-work small-club boss is courted by
+ * modest clubs, never by Real Madrid. A shared country adds familiarity pull.
+ */
+export function clubFitScore(club: Club, level: number, sacked: boolean, homeCountry?: string): number {
+  const gap = club.reputation - level; // + = club sits above the manager's level
+  let score = gap <= 0 ? gap * 0.5 : -gap * (sacked ? 2.2 : 1.0);
+  if (homeCountry && club.countryId === homeCountry) score += 8;
+  return score;
+}
+
 const REASONS_HEADHUNT = [
   'have been impressed by your work and want you to take charge',
   'see you as the ideal candidate to lead their project',
@@ -79,26 +107,25 @@ export function generateJobOffers(
     });
   }
 
-  const band = sacked
-    ? { lo: managerReputation - 28, hi: managerReputation + 2 }
-    : { lo: managerReputation - 18, hi: managerReputation + (managerReputation >= 72 ? 14 : 8) };
+  const homeCountry = clubs[managerClubId]?.countryId;
+  const level = managerLevel(managerReputation, clubs[managerClubId]?.reputation, sacked);
+  // A hard ceiling on how far above their level a club will look at them: barely
+  // any after a sacking, a real step up when headhunted off a strong season.
+  const ceiling = level + (sacked ? 6 : 18);
 
-  const candidates = Object.values(clubs).filter((c) =>
-    c.id !== managerClubId && vacancy.has(c.id) && c.reputation >= band.lo && c.reputation <= band.hi,
-  );
-  candidates.sort((a, b) => b.reputation - a.reputation);
-
-  // Sacked managers are guaranteed at least one option a rung down.
-  if (sacked && candidates.length === 0) {
-    const fallback = Object.values(clubs)
-      .filter((c) => c.id !== managerClubId && c.reputation <= managerReputation)
-      .sort((a, b) => b.reputation - a.reputation)[0];
-    if (fallback) candidates.push(fallback);
+  // Clubs with a vacancy come calling, ranked by fit to the manager's level. A
+  // sacked manager always gets a route back (widening below the ceiling, then to
+  // anyone if their level is beneath every club) so the career never dead-ends.
+  let candidates = Object.values(clubs).filter((c) => c.id !== managerClubId && vacancy.has(c.id) && c.reputation <= ceiling);
+  if (candidates.length === 0 && sacked) {
+    candidates = Object.values(clubs).filter((c) => c.id !== managerClubId && c.reputation <= ceiling);
+    if (candidates.length === 0) candidates = Object.values(clubs).filter((c) => c.id !== managerClubId);
   }
+  candidates.sort((a, b) => clubFitScore(b, level, sacked, homeCountry) - clubFitScore(a, level, sacked, homeCountry));
 
   const picks = candidates.slice(0, sacked ? 3 : 2);
   return picks.map((c) => {
-    const pool = sacked ? REASONS_REBUILD : c.reputation > managerReputation ? REASONS_HEADHUNT : REASONS_VACANCY;
+    const pool = sacked ? REASONS_REBUILD : c.reputation > level ? REASONS_HEADHUNT : REASONS_VACANCY;
     return {
       id: `job_${day}_${_offerSeq++}`,
       clubId: c.id,
@@ -131,13 +158,17 @@ export function fallbackJobOffers(
   for (const comp of Object.values(competitions)) {
     for (const id of comp.clubIds) leagueOf[id] ??= comp.name;
   }
-  let candidates = Object.values(clubs).filter(
-    (c) => c.id !== managerClubId && !exclude.has(c.id) && c.reputation <= managerReputation + 2,
-  );
-  if (candidates.length === 0) {
-    candidates = Object.values(clubs).filter((c) => c.id !== managerClubId && !exclude.has(c.id));
-  }
-  candidates.sort((a, b) => b.reputation - a.reputation);
+  const homeCountry = clubs[managerClubId]?.countryId;
+  // Emergency search: rank everyone by fit to the manager's (sack-discounted)
+  // level. Clubs at or below their level come first, the elite dead last — so an
+  // out-of-work small-club boss is offered modest clubs, never Real Madrid.
+  const level = managerLevel(managerReputation, clubs[managerClubId]?.reputation, true);
+  const ceiling = level + 6;
+  let pool = Object.values(clubs).filter((c) => c.id !== managerClubId && !exclude.has(c.id) && c.reputation <= ceiling);
+  // Level beneath every club (a badly-out-of-favour boss) → offer the weakest
+  // available clubs rather than, absurdly, the biggest.
+  if (pool.length === 0) pool = Object.values(clubs).filter((c) => c.id !== managerClubId && !exclude.has(c.id));
+  const candidates = pool.sort((a, b) => clubFitScore(b, level, true, homeCountry) - clubFitScore(a, level, true, homeCountry));
   return candidates.slice(0, 3).map((c) => ({
     id: `job_${day}_${_offerSeq++}`,
     clubId: c.id,

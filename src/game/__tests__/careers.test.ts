@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { loadDataset } from '../../data/datasetLoader';
 import { ENGLAND_DATASET } from '../../data/england';
-import { initialManagerReputation, updateManagerReputation, generateJobOffers, switchClub } from '../careers';
+import { initialManagerReputation, updateManagerReputation, generateJobOffers, fallbackJobOffers, switchClub } from '../careers';
 import { Rng } from '../../engine/rng';
 import type { StandingRow } from '../../types/league';
 
@@ -34,8 +34,24 @@ describe('Job market', () => {
     const rep = initialManagerReputation(world.clubs[mid]);
     const offers = generateJobOffers(rep, mid, world.clubs, world.competitions, standings(byRep), new Rng(3), true, 0);
     expect(offers.length).toBeGreaterThan(0);
-    // A sacked manager's offers shouldn't come from clubs far above his reputation.
-    for (const o of offers) expect(o.clubReputation).toBeLessThanOrEqual(rep + 3);
+    // A sacked manager's offers come from clubs at or below the one he left, never far above.
+    for (const o of offers) expect(o.clubReputation).toBeLessThanOrEqual(world.clubs[mid].reputation + 3);
+  });
+
+  it('a sacked SMALL-club manager is not courted by the giants', () => {
+    // Regression: a manager fired from the weakest club must not be offered the
+    // strongest clubs in the world (the old fallback grabbed them by reputation).
+    const small = [...clubIds].sort((a, b) => world.clubs[a].reputation - world.clubs[b].reputation)[0];
+    const rep = initialManagerReputation(world.clubs[small]) - 6; // knocked down by the sacking
+    const reps = clubIds.map((id) => world.clubs[id].reputation).sort((a, b) => b - a);
+    const topRep = reps[0];
+    // Both the normal (empty-standings) and the emergency path.
+    const gen = generateJobOffers(rep, small, world.clubs, world.competitions, {}, new Rng(4), true, 0);
+    const fb = fallbackJobOffers(rep, small, world.clubs, world.competitions, new Rng(4), 0);
+    for (const o of [...gen, ...fb]) {
+      expect(o.clubReputation).toBeLessThan(topRep - 6); // never the elite
+    }
+    expect(fb.length).toBeGreaterThan(0); // but the career never dead-ends
   });
 
   it('a highly-rated manager can be headhunted by bigger clubs', () => {
