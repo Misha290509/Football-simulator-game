@@ -382,12 +382,19 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
   // Phase 1 — fee (default to the value the manager can see).
   const startFee = view.value ?? clubValuation(player, seller, buyer, year);
   const [offer, setOffer] = useState<FeeOffer>({ fee: startFee, instalmentYears: 1, sellOnPct: 0, addOns: 0 });
-  const submitFee = async () => {
-    const r = await submitTransferOffer(player.id, offer);
+  const handleFeeResult = (r: Awaited<ReturnType<typeof submitTransferOffer>>, fallbackFee: number) => {
     setMsg(r.message);
-    if (r.outcome === 'ACCEPT') { setAgreedFee(r.agreedFee ?? offer.fee); setDealGrade(r.grade ?? null); setPhase('TERMS'); }
+    if (r.outcome === 'ACCEPT') { setAgreedFee(r.agreedFee ?? fallbackFee); setDealGrade(r.grade ?? null); setPhase('TERMS'); }
     else if (r.outcome === 'REFUSE') { flash(r.message); onBreakOff(); onClose(); }
     // COUNTER: their new (lower) ask is shown below; nudge your bid and try again.
+  };
+  const submitFee = async () => handleFeeResult(await submitTransferOffer(player.id, offer), offer.fee);
+  // Meet the club's current ask exactly, as a clean single-payment cash bid, so
+  // it always clears their valuation (no instalment/clause haircut to fall short).
+  const acceptAsk = async () => {
+    if (clubAsk == null) return;
+    setOffer({ fee: clubAsk, instalmentYears: 1, sellOnPct: 0, addOns: 0 });
+    handleFeeResult(await submitTransferOffer(player.id, { fee: clubAsk, instalmentYears: 1, sellOnPct: 0, addOns: 0 }), clubAsk);
   };
 
   // Phase 2 — personal terms.
@@ -438,7 +445,12 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
               <span className="font-mono text-slate-400">{tension >= 80 ? 'strained' : tension >= 50 ? 'tense' : 'cordial'}</span>
             </div>
           )}
-          {clubAsk != null && <p className="col-span-2 text-xs text-amber-300/90">They're currently holding out for around {clubAsk.toLocaleString()} — keep haggling to talk them down.</p>}
+          {clubAsk != null && (
+            <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 rounded bg-surface-700 px-3 py-2">
+              <span className="text-xs text-amber-300/90">{seller?.shortName ?? 'The club'} want <span className="font-semibold">{formatMoney(clubAsk)}</span> — haggle them down, or…</span>
+              <button className="btn-primary text-xs py-1 px-3" onClick={acceptAsk}>Accept {formatMoney(clubAsk)}</button>
+            </div>
+          )}
           <label className="col-span-2"><span className="text-slate-400">Transfer fee (guaranteed)</span><MoneyInput value={offer.fee} onChange={(v) => setOffer({ ...offer, fee: v })} /></label>
           <label><span className="text-slate-400">Pay over (years)</span>
             <div className="flex gap-1 mt-1">{[1, 2, 3, 4].map((y) => <button key={y} className={offer.instalmentYears === y ? 'btn-primary px-2 py-0.5 text-xs' : 'btn-ghost px-2 py-0.5 text-xs'} onClick={() => setOffer({ ...offer, instalmentYears: y })}>{y}</button>)}</div>
