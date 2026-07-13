@@ -32,7 +32,7 @@ export function PlayMenu() {
   // Pre-season: nothing has been played yet and the opener is still ahead —
   // the controls advance days (transfers, training), not matchdays.
   const preseason = !complete && playedMatches === 0 && !!nextMatch && meta.currentDay < nextMatch.day;
-  const fixtureMaxDay = seasonMatches.reduce((mx, m) => Math.max(mx, m.neutral ? 0 : m.day), 0);
+  const fixtureMaxDay = useGameStore((s) => s.seasonRefMaxDay());
   const openerDate = preseason && nextMatch
     ? formatShort(matchDate(nextMatch, fixtureMaxDay, season?.year ?? meta.startYear, meta))
     : null;

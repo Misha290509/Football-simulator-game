@@ -291,6 +291,7 @@ interface GameState {
   currentSeasonMatches: () => Match[];
   managerNextMatch: () => Match | null;
   lastMatchday: () => number;
+  seasonRefMaxDay: () => number;
   seasonComplete: () => boolean;
 }
 
@@ -599,7 +600,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   transferWindow: () => {
     const { meta } = get();
     if (!meta) return { open: false, kind: null, nextLabel: 'the next window', key: null };
-    const maxDay = get().lastMatchday();
+    const maxDay = get().seasonRefMaxDay();
     const d = currentDate(meta, maxDay);
     const kind = windowOnDate(d);
     // The next window to open from a shut date: winter (Jan) in autumn, the
@@ -1341,7 +1342,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   refreshStaffMarket: async () => {
     const { meta } = get();
     if (!meta) return 'No save.';
-    const maxDay = get().lastMatchday();
+    const maxDay = get().seasonRefMaxDay();
     const wk = windowKey(meta, maxDay);
     const firstSeed = !meta.staffMarket; // silent one-time init, never gated
     if (!firstSeed) {
@@ -2352,6 +2353,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     return ms.reduce((mx, m) => Math.max(mx, m.day), 0);
   },
 
+  // The manager league's own last matchday — the calendar's anchor. Using this
+  // (instead of the global max, which the Club World Cup and 30-club leagues
+  // inflate) keeps a 20-club league spanning the whole August→May window.
+  seasonRefMaxDay: () => {
+    const { meta } = get();
+    if (!meta) return 0;
+    const league = Object.values(meta.competitions).find(
+      (c) => c.id.startsWith('comp_') && c.clubIds.includes(meta.managerClubId),
+    );
+    if (!league) return get().lastMatchday();
+    let mx = 0;
+    for (const m of get().currentSeasonMatches()) if (m.competitionId === league.id && m.day > mx) mx = m.day;
+    return mx || get().lastMatchday();
+  },
+
   seasonComplete: () =>
     get().currentSeasonMatches().filter((m) => !m.neutral).every((m) => m.played),
 }));
@@ -2690,7 +2706,7 @@ async function playDays(
     // smaller AI-to-AI winter market so the world keeps moving.
     let clubsAfter = clubs;
     let pendingArrivals = meta.pendingArrivals ?? [];
-    const maxDayW = get().lastMatchday();
+    const maxDayW = get().seasonRefMaxDay();
     const wasOpen = isWindowOpen({ ...meta, currentDay: from }, maxDayW);
     const nowOpen = isWindowOpen({ ...meta, currentDay: to }, maxDayW);
     if (wasOpen || nowOpen) {

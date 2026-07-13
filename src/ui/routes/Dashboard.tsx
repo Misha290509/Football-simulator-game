@@ -36,7 +36,7 @@ export function Dashboard() {
   const season = useGameStore((s) => s.currentSeason());
   const currentYear = season?.year ?? meta.startYear;
 
-  const fixtureMaxDay = seasonMatches.reduce((mx, m) => Math.max(mx, m.neutral ? 0 : m.day), 0);
+  const fixtureMaxDay = useGameStore((s) => s.seasonRefMaxDay());
   const comp = Object.values(meta.competitions).find((c) => c.clubIds.includes(club.id))!;
   const table = computeStandings(comp, seasonMatches);
   const position = table.findIndex((r) => r.clubId === club.id) + 1;

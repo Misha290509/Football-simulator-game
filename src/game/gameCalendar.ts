@@ -16,9 +16,7 @@ import type { SaveGame } from '../types/league';
 import type { Match } from '../types/match';
 import type { ContinentalState } from '../types/continental';
 import type { DomesticCupState } from '../types/cup';
-
-/** Days from the opening weekend to the season's final weekend (~early-Aug→end-May). */
-export const SEASON_SPAN_DAYS = 300;
+import { CALENDAR_STRIDE } from './calendar';
 
 /**
  * Sim-day indices reserved as pre-season / off-season before the opening round.
@@ -36,31 +34,100 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-/** The first Saturday on/after 2 August of the season's starting year (the
- *  opening weekend — "beginning of August"). */
+/** The first Saturday on/after 15 August — a real mid-August opening weekend. */
 export function seasonOpenDate(startYear: number): Date {
-  const d = new Date(Date.UTC(startYear, 7, 2));
+  const d = new Date(Date.UTC(startYear, 7, 15));
   while (d.getUTCDay() !== 6) d.setUTCDate(d.getUTCDate() + 1);
   return d;
 }
 
 /**
- * Day-index → calendar date. Two linear segments joined at the opener:
+ * Weekend intervals with no domestic league round — the five FIFA international
+ * breaks and the Christmas / New-Year break — approximating the real calendar.
+ * A weekend whose Saturday falls inside one of these is skipped when laying out
+ * league rounds, producing the fortnight gaps real seasons have.
+ */
+function breakIntervals(startYear: number): Array<[number, number]> {
+  const y = startYear, ny = startYear + 1;
+  const U = (yr: number, m: number, d: number) => Date.UTC(yr, m, d);
+  return [
+    [U(y, 8, 1), U(y, 8, 10)],    // early September
+    [U(y, 9, 6), U(y, 9, 15)],    // early October
+    [U(y, 10, 10), U(y, 10, 19)], // mid-November
+    [U(y, 11, 22), U(ny, 0, 3)],  // Christmas → New Year (~22 Dec – 3 Jan)
+    [U(ny, 2, 23), U(ny, 2, 31)], // late March
+  ];
+}
+const inBreak = (t: number, brks: Array<[number, number]>): boolean =>
+  brks.some(([a, b]) => t >= a && t <= b);
+
+/**
+ * The real match-day dates for a league of `nRounds`, memoised per season. Games
+ * fall on weekends from the mid-August opener toward a ~24 May finale, skipping
+ * the international / Christmas break weekends. If a league has more rounds than
+ * there are free weekends (so it would otherwise overrun May), the tightest gaps
+ * absorb a few midweek (Wednesday) rounds — exactly how real fixture lists cope.
+ */
+const roundDateCache = new Map<string, number[]>();
+function seasonRoundDates(startYear: number, nRounds: number): number[] {
+  const key = `${startYear}:${nRounds}`;
+  const cached = roundDateCache.get(key);
+  if (cached) return cached;
+
+  const opener = seasonOpenDate(startYear).getTime();
+  const finale = Date.UTC(startYear + 1, 4, 24); // ~24 May
+  const brks = breakIntervals(startYear);
+
+  const weekends: number[] = [];
+  for (let t = opener; t <= finale; t += 7 * MS_DAY) {
+    if (!inBreak(t, brks)) weekends.push(t);
+  }
+
+  let dates = weekends.slice(0, Math.max(1, nRounds));
+  // Not enough weekends for every round (a 38-round league only has ~34 free
+  // weekends before overrunning May) → add a few midweek (Wednesday) rounds,
+  // evenly spaced, each sitting three days before an anchor weekend so it forms a
+  // clean weekend+midweek week. Never inside a break.
+  const midweekNeeded = nRounds - weekends.length;
+  if (midweekNeeded > 0) {
+    const extra: number[] = [];
+    const step = weekends.length / (midweekNeeded + 1);
+    for (let m = 1; m <= midweekNeeded; m++) {
+      const idx = Math.min(weekends.length - 1, Math.max(1, Math.round(step * m)));
+      const wed = weekends[idx] - 3 * MS_DAY; // Wednesday of the anchor weekend's week
+      if (!inBreak(wed, brks) && !extra.includes(wed)) extra.push(wed);
+    }
+    dates = [...weekends, ...extra].sort((a, b) => a - b);
+  }
+  dates = dates.slice(0, Math.max(1, nRounds));
+  roundDateCache.set(key, dates);
+  return dates;
+}
+
+/**
+ * Day-index → calendar date, anchored to the manager's league schedule.
  *   • [0, PRESEASON_DAYS] ramps through the off-season (early July → opener);
- *   • [PRESEASON_DAYS, maxDay] stretches the season across Aug → end of May.
- * Fixtures live in the second segment (they're shifted forward by PRESEASON_DAYS
- * at generation), so day 0 is a genuine off-season with no games.
+ *   • beyond that, the sim-day maps to a fractional league-round position and
+ *     interpolates into the real round-date list, so the season runs mid-August
+ *     to late May with break gaps, and European/cup ties interleave on the right
+ *     dates. `maxDay` is the manager league's last matchday — NOT the global max
+ *     — so a 20-club league fills the whole calendar instead of ending mid-winter.
  */
 export function dateForDay(dayIndex: number, maxDay: number, startYear: number): Date {
-  const open = seasonOpenDate(startYear);
+  const nRounds = Math.max(1, Math.round((maxDay - PRESEASON_DAYS) / CALENDAR_STRIDE) + 1);
+  const rd = seasonRoundDates(startYear, nRounds);
+  const opener = rd[0];
   if (dayIndex <= PRESEASON_DAYS) {
     const frac = PRESEASON_DAYS > 0 ? Math.min(1, Math.max(0, dayIndex / PRESEASON_DAYS)) : 1;
-    const offStart = open.getTime() - OFFSEASON_CAL_DAYS * MS_DAY;
+    const offStart = opener - OFFSEASON_CAL_DAYS * MS_DAY;
     return new Date(offStart + Math.round(frac * OFFSEASON_CAL_DAYS) * MS_DAY);
   }
-  const span = Math.max(1, maxDay - PRESEASON_DAYS);
-  const frac = Math.min(1, Math.max(0, (dayIndex - PRESEASON_DAYS) / span));
-  return new Date(open.getTime() + Math.round(frac * SEASON_SPAN_DAYS) * MS_DAY);
+  const roundPos = (dayIndex - PRESEASON_DAYS) / CALENDAR_STRIDE;
+  const lo = Math.floor(roundPos);
+  if (lo >= rd.length - 1) return new Date(rd[rd.length - 1]);
+  if (lo < 0) return new Date(rd[0]);
+  const frac = roundPos - lo;
+  return new Date(Math.round(rd[lo] + frac * (rd[lo + 1] - rd[lo])));
 }
 
 /**
@@ -133,7 +200,19 @@ export function matchDate(
   meta: Pick<SaveGame, 'domesticCups'>,
 ): Date {
   const kind = matchKind(match.competitionId, meta);
-  return snapWeekday(dateForDay(match.day, maxDay, startYear), kind, hash(match.id));
+  // The Club World Cup is a summer tournament — park it in June/July of the
+  // following off-season instead of letting it distort the Aug–May calendar.
+  if (kind === 'CWC') {
+    return new Date(Date.UTC(startYear + 1, 5, 15) + (hash(match.id) % 30) * MS_DAY);
+  }
+  const base = dateForDay(match.day, maxDay, startYear);
+  // League rounds already sit on their scheduled day. Spread a weekend round
+  // across Sat/Sun (nudge +1 for some games) but leave the occasional midweek
+  // round on its Wednesday. European/cup ties snap to their midweek nights.
+  if (kind === 'LEAGUE') {
+    return base.getUTCDay() === 6 ? new Date(base.getTime() + (hash(match.id) % 2) * MS_DAY) : base;
+  }
+  return snapWeekday(base, kind, hash(match.id));
 }
 
 // --- Formatting ------------------------------------------------------------

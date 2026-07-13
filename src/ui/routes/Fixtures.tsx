@@ -32,7 +32,7 @@ export function Fixtures() {
     [matches, managerClubId],
   );
 
-  const maxDay = matches.reduce((mx, m) => Math.max(mx, m.neutral ? 0 : m.day), 0);
+  const maxDay = useGameStore((s) => s.seasonRefMaxDay());
   const [browseComp, setBrowseComp] = useState(managerComp.id);
   const [browseIdx, setBrowseIdx] = useState(0);
 
