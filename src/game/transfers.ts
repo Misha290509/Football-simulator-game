@@ -369,6 +369,24 @@ export function runAiTransferWindow(
     }
   }
 
+  // 3) AI clubs put surplus depth and aging players up for sale, so there's a
+  //    live market of buyable, cut-price players each window (not just Bosmans).
+  for (const club of Object.values(clubs)) {
+    if (club.id === managerClubId) continue; // the manager lists their own
+    const squad = squadByClub.get(club.id) ?? [];
+    for (const p of squad) if (p.transferListed) p.transferListed = false; // refresh each window
+    if (squad.length < 21) continue; // thin squads keep everyone
+    const ranked = [...squad].sort((a, b) => b.overall - a.overall);
+    // Candidates: squad players outside the first-team core, or over-30s.
+    const surplus = ranked.filter((p, i) => (i >= 18 || year - p.born.year >= 30) && p.squadRole !== 'KEY');
+    // List a handful, weighted so deeper squads offload more.
+    const nList = Math.min(surplus.length, rng.chance(0.5) ? rng.int(1, 3) : 0);
+    for (let k = 0; k < nList; k++) {
+      const pick = surplus[rng.int(0, surplus.length - 1)];
+      pick.transferListed = true;
+    }
+  }
+
   return {
     changedPlayers: Object.values(players),
     changedClubs: clubs,

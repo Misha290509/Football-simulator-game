@@ -25,8 +25,11 @@ import { marketWage } from '../engine/finances';
 export const ACADEMY_MIN_PER_GROUP = 18;
 export const ACADEMY_MAX_PER_GROUP = 25;
 
-/** Intake-year offset that lands a generated 15–16-year-old in each age band. */
-const BAND_YEAR_OFFSET: Record<AgeGroup, number> = { U16: 0, U18: 2, U21: 4 };
+// Intake-year offset that lands a generated 15–16-year-old in each age band.
+// A prospect generated at (year − offset) with the intake's [15,16] age range is
+// (offset + 15) to (offset + 16) years old at `year`, so the offsets below keep
+// both ages inside the target band: U16 = 14–15, U18 = 16–17, U21 = 18–19.
+const BAND_YEAR_OFFSET: Record<AgeGroup, number> = { U16: -1, U18: 1, U21: 3 };
 const AGE_BANDS: AgeGroup[] = ['U16', 'U18', 'U21'];
 
 /**
@@ -411,8 +414,9 @@ export function processAcademyRollover(
     const age = nextYear - developed.born.year;
     const firstTeamAvg = firstTeamAvgByClub[club.id] ?? Math.max(50, club.reputation * 0.85);
 
-    if (age > 21) {
-      // Graduate the good ones to the first team; release the rest.
+    if (age >= 21) {
+      // Past U21 age: graduate the good ones to the first team; the rest are
+      // released and become free agents.
       const goodEnough = developed.overall >= firstTeamAvg * 0.84 || developed.potential >= firstTeamAvg + 2;
       if (goodEnough) {
         developed.contract.clubId = club.id;

@@ -233,8 +233,10 @@ export function academyPotential(stars: number, academyReputation: number, rng: 
 
 /** Map a player's age to an academy age group. */
 export function ageGroupForAge(age: number): AgeGroup {
-  if (age <= 16) return 'U16';
-  if (age <= 18) return 'U18';
+  // Age at the start of the season decides the band: 14–15 → U16, 16–17 → U18,
+  // 18–20 → U21. (At 21 a prospect leaves the academy — see the rollover.)
+  if (age <= 15) return 'U16';
+  if (age <= 17) return 'U18';
   return 'U21';
 }
 

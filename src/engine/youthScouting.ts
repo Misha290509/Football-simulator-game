@@ -13,7 +13,7 @@ import type { AcademyPlayer, ScoutAssignment, YouthProspect } from '../types/aca
 import type { NewsItem } from '../types/league';
 import { Rng, clamp, hashSeed } from './rng';
 import { generatePlayer } from './generator';
-import { rollSkewedPotential, PRODIGY_POTENTIAL } from './academy';
+import { rollSkewedPotential, PRODIGY_POTENTIAL, ageGroupForAge } from './academy';
 import { youthIndexFor } from '../data/academyData';
 
 /** A standard scouting trip length, in sim days (legacy single-trip model). */
@@ -67,8 +67,10 @@ function generateProspect(
   const baseCeil = 62 + youthIndexFor(country) * 0.12 + region * 0.06;
   const potential = rollSkewedPotential(baseCeil, (youthIndexFor(country) / 100) * 0.95, rng);
   const target = clamp(Math.min(potential, ratingCap) - rng.int(16, 30), 26, Math.min(potential, ratingCap) - 5);
+  // Scouts turn up prospects across all three academy bands — U16 (15) through
+  // U21 (18–20) — not just the youngest, so the U21 group gets recruits too.
   const player = generatePlayer({
-    rng, currentYear: year, target, position, ageRange: [15, 17], nationality: country,
+    rng, currentYear: year, target, position, ageRange: [15, 20], nationality: country,
     ratingCap, squadRole: 'PROSPECT' as SquadRole,
   });
   player.potential = Math.max(player.overall + 3, potential);
@@ -79,7 +81,7 @@ function generateProspect(
   const amb = clamp(player.hidden?.ambition ?? 50);
   const det = clamp(player.hidden?.consistency ?? 50);
   const academy: AcademyPlayer = {
-    playerId: player.id, clubId: discoveredByClubId, ageGroup: 'U16', playedUp: false, heldBack: false,
+    playerId: player.id, clubId: discoveredByClubId, ageGroup: ageGroupForAge(year - player.born.year), playedUp: false, heldBack: false,
     ageGroupPerformance: 50, readiness: 0, contractStatus: 'schoolboy', dualRegistered: false,
     personality: { determination: det, professionalism: prof, ambition: amb },
     flameOutRisk: clamp(0.5 - (prof + det + amb) / 600, 0, 0.5) as number, isProdigy: player.potential >= PRODIGY_POTENTIAL,

@@ -25,7 +25,7 @@ import {
 } from '../db/db';
 import { migrateSave } from '../db/migrations';
 import { ageGroupForAge, computeReadiness, ageOfPlayer, ACADEMY_UPGRADE_COST } from '../engine/academy';
-import { recordGraduateInAcademy, fillAcademyBands } from '../game/academy';
+import { recordGraduateInAcademy, fillAcademyBands, ACADEMY_MAX_PER_GROUP } from '../game/academy';
 import { resolveScoutAssignments, MAX_SCOUT_POSITIONS, SCOUT_MONTH_DAYS, SCOUT_CONTRACT_COST } from '../engine/youthScouting';
 import {
   createLiveMatch, kickOff, tickLiveMatch, startSecondHalf, applyManagerChange, applyTeamTalk, liveOutcome, tickShootout, takeShootoutKick,
@@ -1167,9 +1167,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     const prospect = prospects.find((p) => p.player.id === playerId);
     if (!prospect) return { ok: false, message: 'Prospect not found.' };
     const club = clubs[meta.managerClubId];
+    // Age-band squad cap: each of U16 / U18 / U21 holds at most 25 players.
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const band = ageGroupForAge(year - prospect.player.born.year);
+    const inBand = Object.values(meta.academyPlayers ?? {}).filter(
+      (a) => a.clubId === meta.managerClubId && a.ageGroup === band,
+    ).length;
+    if (inBand >= ACADEMY_MAX_PER_GROUP) {
+      return { ok: false, message: `Maximum squad size reached for ${band} — release a player before signing.` };
+    }
     // Enroll into the academy (parallel roster).
     const np: Player = { ...prospect.player, contract: { ...prospect.player.contract, clubId: null }, academyClubId: club.id, squadRole: 'PROSPECT' };
-    const academyPlayers = { ...meta.academyPlayers, [playerId]: { ...prospect.academy, clubId: club.id } };
+    const academyPlayers = { ...meta.academyPlayers, [playerId]: { ...prospect.academy, clubId: club.id, ageGroup: band } };
     const newMeta: SaveMeta = { ...meta, academyPlayers, youthProspects: prospects.filter((p) => p.player.id !== playerId) };
     set({ players: { ...players, [playerId]: np }, meta: newMeta });
     await putPlayers(meta.id, [np]);
