@@ -142,8 +142,28 @@ export function developPlayer(
   const primaryOvr = overallAt(p.attributes, p.position);
   const best = bestOverall(p.attributes, p.positions);
   p.overall = Math.min(cap, Math.max(primaryOvr, best.ovr));
-  // A young player who overachieves can lift his ceiling (never lowers it).
-  if (age <= 23 && p.overall > p.potential) p.potential = Math.min(cap, p.overall);
+
+  // Potential is a living ceiling, not a fixed number — it drifts up and down.
+  //  • A young player who overachieves lifts his ceiling.
+  //  • A young prospect who keeps underdelivering has his ceiling shaved.
+  //  • Past his peak, the headroom he never reached erodes toward his current
+  //    ability, so an aging player's potential falls year on year instead of
+  //    sitting frozen above an OVR he'll never touch again.
+  if (age <= 23 && p.overall > p.potential) {
+    p.potential = Math.min(cap, p.overall); // young overachiever raises the bar
+  } else if (age <= 21 && ps < 0.45 && p.potential > p.overall + 3 && rng.chance(0.3)) {
+    p.potential = Math.max(p.overall, p.potential - rng.int(1, 3)); // stalling prospect
+  }
+  if (age >= 28) {
+    // Reachable headroom shrinks with age: ~6 at 28, gone by ~32.
+    const cushion = Math.max(0, Math.round(6 - (age - 28) * 1.5));
+    const ceilingNow = p.overall + cushion;
+    if (p.potential > ceilingNow) {
+      // Ease down rather than snap, so the development log reads naturally.
+      p.potential = Math.max(ceilingNow, p.potential - Math.max(1, Math.round((p.potential - ceilingNow) * 0.5)));
+    }
+  }
+  p.potential = clamp(Math.round(p.potential), p.overall, cap);
 
   p.value = estimateValue(p.overall, age, p.potential);
   p.developmentLog = [...p.developmentLog, { year: toYear, ovr: p.overall, pot: p.potential }];
