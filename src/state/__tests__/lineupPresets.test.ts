@@ -60,4 +60,22 @@ describe('Lineup presets', () => {
     await s().applyLineupPreset(1);
     expect(club().lineup).toEqual(presets[1].lineup);
   });
+
+  it('captures the visible auto-selected XI when saving on Auto-Mode', async () => {
+    await freshGame();
+    const s = () => useGameStore.getState();
+    const club = () => s().managerClub()!;
+
+    // Auto-Mode on with no stored lineup: the club shows a resolved XI, but
+    // club.lineup is null. Saving must snapshot that visible XI, not an empty one.
+    await s().setAutoMode(true);
+    useGameStore.setState((st) => ({ clubs: { ...st.clubs, [club().id]: { ...club(), lineup: undefined, bench: undefined } } }));
+    expect(club().lineup).toBeUndefined();
+
+    await s().saveLineupPreset('Auto');
+    const preset = (club().lineupPresets ?? []).find((p) => p.name === 'Auto')!;
+    expect(preset).toBeTruthy();
+    expect(preset.lineup.filter(Boolean).length).toBe(11); // a full XI, not empty
+    expect(preset.bench.length).toBeGreaterThan(0);
+  });
 });

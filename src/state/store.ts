@@ -1551,11 +1551,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!trimmed) return { ok: false, message: 'Give the team sheet a name.' };
     const club = clubs[meta.managerClubId];
     const squad = get().getClubPlayers(club.id);
-    // Snapshot the effective team sheet — resolve auto-mode into concrete ids so
-    // the preset is a real XI even when the club is on auto-select.
-    const lineup = club.lineup ?? assignXI(squad, club.formation, { autoMode: true }).map((a) => a?.player.id ?? null);
-    const bench = (club.bench ?? resolveBench(squad, club.formation, { autoMode: true }).map((p) => p.id))
-      .filter((id): id is string => !!id);
+    // Snapshot the team sheet exactly as it's shown on the Tactics screen. On
+    // auto-mode that's the freshly-resolved XI (never a stale saved `lineup`);
+    // on manual mode it's the manager's own choices, resolved as a fallback.
+    const autoMode = club.autoMode ?? true;
+    const lineup = autoMode || !club.lineup
+      ? assignXI(squad, club.formation, { autoMode: true }).map((a) => a?.player.id ?? null)
+      : club.lineup;
+    const bench = (autoMode || !club.bench
+      ? resolveBench(squad, club.formation, { autoMode: true }).map((p) => p.id)
+      : club.bench).filter((id): id is string => !!id);
     const preset = { name: trimmed, formation: club.formation, lineup: [...lineup], bench: [...bench] };
     const existing = club.lineupPresets ?? [];
     const idx = existing.findIndex((p) => p.name.toLowerCase() === trimmed.toLowerCase());

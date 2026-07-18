@@ -89,8 +89,16 @@ export function Tactics() {
       void saveSquad(nl, nb);
       return;
     }
-    const T = playerAt(target); // displaced player (may be null)
-    write(target, S);
+    // Dropping onto the bench card itself (not a specific slot): drop into the
+    // first free bench slot, or the last one if the bench is full.
+    let tgt = target;
+    if (target.zone === 'bench' && target.index === undefined) {
+      const empty = nb.findIndex((x) => !x);
+      tgt = { zone: 'bench', index: empty === -1 ? nb.length - 1 : empty };
+    }
+    if (tgt.index === undefined) return; // nothing to write to
+    const T = playerAt(tgt); // displaced player (may be null)
+    write(tgt, S);
     if (source.zone !== 'reserve') write(source, T);
     void saveSquad(nl, nb);
   };
@@ -99,15 +107,24 @@ export function Tactics() {
     editable && playerId
       ? {
           draggable: true,
-          onDragStart: (e: React.DragEvent) =>
-            e.dataTransfer.setData('text/plain', JSON.stringify({ ...loc, playerId })),
+          onDragStart: (e: React.DragEvent) => {
+            e.dataTransfer.setData('text/plain', JSON.stringify({ ...loc, playerId }));
+            e.dataTransfer.effectAllowed = 'move';
+          },
         }
       : {};
   const dropProps = (loc: DragLoc) =>
     editable
       ? {
-          onDragOver: (e: React.DragEvent) => e.preventDefault(),
-          onDrop: (e: React.DragEvent) => handleDrop(loc, e.dataTransfer.getData('text/plain')),
+          onDragOver: (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; },
+          onDrop: (e: React.DragEvent) => {
+            e.preventDefault();
+            // Stop the drop from bubbling to a parent drop zone (e.g. a bench
+            // slot up to the bench card), which would otherwise re-handle the
+            // same drop against the wrong target and clobber the result.
+            e.stopPropagation();
+            handleDrop(loc, e.dataTransfer.getData('text/plain'));
+          },
         }
       : {};
 
