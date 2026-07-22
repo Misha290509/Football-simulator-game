@@ -18,7 +18,7 @@ import { makeScoutProfile, staffWage, generateStaffPool } from '../engine/staff'
 import { fillAcademyBands } from '../game/academy';
 import { injectSpecialPlayers } from '../game/specialPlayers';
 
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 
 export interface MigrationResult {
   meta: SaveMeta;
@@ -119,9 +119,20 @@ export function migrateSave(
   if (fromVersion < 5) migrateToV5(clubs, players);
   if (fromVersion < 6) migrateToV6(meta, clubs);
   if (fromVersion < 7) migrateToV7(meta, clubs, players);
+  if (fromVersion < 8) migrateToV8(meta);
 
   meta.schemaVersion = CURRENT_SCHEMA_VERSION;
   return { meta, clubs, players, changed: true };
+}
+
+/**
+ * v7 → v8: introduce Player Career mode. Every existing save is a manager
+ * career, so stamp `careerMode: 'MANAGER'` explicitly (rather than relying on
+ * the absent ⇒ MANAGER convention). Purely additive — no player-career state is
+ * created here; that only appears when a Player save is started. Idempotent.
+ */
+function migrateToV8(meta: SaveMeta): void {
+  meta.careerMode ??= 'MANAGER';
 }
 
 /**

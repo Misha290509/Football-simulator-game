@@ -425,6 +425,12 @@ export interface SaveGame {
   lastBoardRequest?: number;
   /** A press question awaiting the manager's answer. */
   pendingPress?: PendingPress | null;
+
+  // --- Player Career mode (§ Player Career) ------------------------------
+  /** Which seat the human occupies. Absent ⇒ 'MANAGER' (every existing save). */
+  careerMode?: import('./playerCareer').CareerMode;
+  /** The be-a-player career state; present only when careerMode === 'PLAYER'. */
+  playerCareer?: import('./playerCareer').PlayerCareer;
   // Clubs and players are kept in separate Dexie tables for performance,
   // but a fully-exported save inlines them (see import/export).
 }
