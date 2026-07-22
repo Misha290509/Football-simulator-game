@@ -9,6 +9,8 @@ import { MainMenu } from './ui/routes/MainMenu';
 const NewGame = lazy(() => import('./ui/routes/NewGame').then((m) => ({ default: m.NewGame })));
 const Dashboard = lazy(() => import('./ui/routes/Dashboard').then((m) => ({ default: m.Dashboard })));
 const PlayerHome = lazy(() => import('./ui/routes/PlayerHome').then((m) => ({ default: m.PlayerHome })));
+const PlayerTraining = lazy(() => import('./ui/routes/PlayerTraining').then((m) => ({ default: m.PlayerTraining })));
+const PlayerCareerScreen = lazy(() => import('./ui/routes/PlayerCareerScreen').then((m) => ({ default: m.PlayerCareerScreen })));
 const Squad = lazy(() => import('./ui/routes/Squad').then((m) => ({ default: m.Squad })));
 const Tactics = lazy(() => import('./ui/routes/Tactics').then((m) => ({ default: m.Tactics })));
 const PlayerProfile = lazy(() => import('./ui/routes/PlayerProfile').then((m) => ({ default: m.PlayerProfile })));
@@ -85,6 +87,8 @@ export default function App() {
       <Route path="/new" element={<Suspense fallback={null}><NewGame /></Suspense>} />
       <Route path="/dashboard" element={<Protected><DashboardGate /></Protected>} />
       <Route path="/my-player" element={<Protected><PlayerHome /></Protected>} />
+      <Route path="/training" element={<Protected><PlayerTraining /></Protected>} />
+      <Route path="/career" element={<Protected><PlayerCareerScreen /></Protected>} />
       <Route path="/squad" element={<Protected><Squad /></Protected>} />
       <Route path="/tactics" element={<Protected><Tactics /></Protected>} />
       <Route path="/player/:id" element={<Protected><PlayerProfile /></Protected>} />

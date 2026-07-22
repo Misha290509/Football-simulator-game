@@ -5,11 +5,14 @@
 // (playerSelectionWeight), the personal matchday loop and progression.
 // ---------------------------------------------------------------------------
 
-import type { SaveGame } from '../types/league';
+import type { SaveGame, NewsItem } from '../types/league';
 import type { Dataset } from '../types/dataset';
 import type { Player, Foot } from '../types/player';
 import type { Position } from '../types/attributes';
-import type { CareerMode, PlayerCareer, PlayerCareerOrigin, SquadStatus } from '../types/playerCareer';
+import type { Club } from '../types/club';
+import type { Competition } from '../types/competition';
+import type { Match } from '../types/match';
+import type { CareerMode, PlayerCareer, PlayerCareerOrigin, SquadStatus, AvatarMatchSummary } from '../types/playerCareer';
 import type { WorldSnapshot } from '../db/db';
 import { Rng, clamp, hashSeed } from '../engine/rng';
 import { generatePlayer } from '../engine/generator';
@@ -281,4 +284,132 @@ export function applyMatchdayToCareer(
   if (ratings.length === 0) return career;
   const avg = ratings.reduce((a, b) => a + b, 0) / ratings.length;
   return { ...career, managerTrust: trustFromMatch(career.managerTrust, avg) };
+}
+
+// --- The personal matchday loop (Tier 1 · Step 4) ---------------------------
+
+const DEBUT_PHRASE = 'senior debut';
+const FIRST_GOAL_PHRASE = 'first senior goal';
+const hasMilestone = (c: PlayerCareer, phrase: string) =>
+  c.milestones.some((m) => m.text.toLowerCase().includes(phrase));
+
+/** Sum a player's season stats (across competitions) for one season. */
+function seasonTotals(avatar: Player, seasonId: string | undefined): { apps: number; goals: number; assists: number; ratingSum: number; ratingCount: number } {
+  let apps = 0, goals = 0, assists = 0, ratingSum = 0, ratingCount = 0;
+  for (const s of avatar.stats) {
+    if (seasonId && s.seasonId !== seasonId) continue;
+    apps += s.appearances; goals += s.goals; assists += s.assists;
+    ratingSum += s.ratingSum; ratingCount += s.ratingCount;
+  }
+  return { apps, goals, assists, ratingSum, ratingCount };
+}
+
+export interface AvatarMatchdayResult {
+  career: PlayerCareer;
+  news: NewsItem[];
+}
+
+/**
+ * Fold one advance into the avatar's career: refresh season tallies, drift
+ * manager trust from the games actually played, capture the latest match as a
+ * summary, and raise personal milestones (debut, first goal) + a feed item.
+ * Pure & deterministic. `avatar` must already carry this advance's stats.
+ */
+export function applyAvatarMatchday(
+  career: PlayerCareer,
+  avatar: Player,
+  played: Match[],
+  clubs: Record<string, Club>,
+  competitions: Record<string, Competition>,
+  seasonId: string | undefined,
+  day: number,
+): AvatarMatchdayResult {
+  const clubId = avatar.contract.clubId;
+  // The avatar's appearances this advance (chronological).
+  const appearances: { m: Match; ps: NonNullable<Match['playerStats']>[number] }[] = [];
+  for (const m of played) {
+    if (m.neutral || !clubId) continue;
+    if (m.homeClubId !== clubId && m.awayClubId !== clubId) continue;
+    const ps = m.playerStats.find((s) => s.playerId === avatar.id);
+    if (ps && ps.minutes > 0) appearances.push({ m, ps });
+  }
+  appearances.sort((a, b) => a.m.day - b.m.day);
+
+  // Season tallies (auto-reset each season since they read the current season).
+  const totals = seasonTotals(avatar, seasonId);
+  const seasonAvgRating = totals.ratingCount > 0 ? Math.round((totals.ratingSum / totals.ratingCount) * 10) / 10 : 0;
+
+  let next: PlayerCareer = {
+    ...career,
+    seasonApps: totals.apps,
+    seasonGoals: totals.goals,
+    seasonAvgRating,
+  };
+  const news: NewsItem[] = [];
+
+  if (appearances.length === 0) {
+    // Didn't feature — trust untouched, tallies refreshed (0-change), no news.
+    return { career: next, news };
+  }
+
+  // Trust drifts from the games played this advance.
+  next = { ...next, managerTrust: applyMatchdayToCareer(next, appearances.map((a) => a.ps.rating)).managerTrust };
+
+  // Latest appearance → match-summary card.
+  const last = appearances[appearances.length - 1];
+  const home = last.m.homeClubId === clubId;
+  const teamGoals = home ? last.m.homeGoals : last.m.awayGoals;
+  const oppGoals = home ? last.m.awayGoals : last.m.homeGoals;
+  const oppId = home ? last.m.awayClubId : last.m.homeClubId;
+  const summary: AvatarMatchSummary = {
+    day: last.m.day,
+    opponent: clubs[oppId]?.shortName ?? 'opponent',
+    home,
+    competition: competitions[last.m.competitionId]?.name,
+    minutes: last.ps.minutes,
+    rating: last.ps.rating,
+    goals: last.ps.goals,
+    assists: last.ps.assists,
+    teamGoals, oppGoals,
+    result: teamGoals > oppGoals ? 'W' : teamGoals === oppGoals ? 'D' : 'L',
+  };
+  next = { ...next, lastMatch: summary };
+
+  // Milestones — debut & first goal (career-wide, once).
+  const milestones = [...next.milestones];
+  const advGoals = appearances.reduce((n, a) => n + a.ps.goals, 0);
+  const priorApps = totals.apps - appearances.length;
+  const priorGoals = totals.goals - advGoals;
+
+  if (priorApps <= 0 && !hasMilestone(next, DEBUT_PHRASE)) {
+    const first = appearances[0];
+    const oid = (first.m.homeClubId === clubId ? first.m.awayClubId : first.m.homeClubId);
+    milestones.push({ day: first.m.day, text: `Made his senior debut against ${clubs[oid]?.shortName ?? 'the opposition'}.` });
+    news.push(feed(`news_pc_debut_${first.m.day}`, first.m.day, 'MILESTONE', 'Senior debut!', `${nameOf(avatar)} made his first senior appearance.`));
+  }
+  if (priorGoals <= 0 && advGoals > 0 && !hasMilestone(next, FIRST_GOAL_PHRASE)) {
+    const scored = appearances.find((a) => a.ps.goals > 0)!;
+    milestones.push({ day: scored.m.day, text: 'Scored his first senior goal.' });
+    news.push(feed(`news_pc_firstgoal_${scored.m.day}`, scored.m.day, 'MILESTONE', 'First senior goal!', `${nameOf(avatar)} is off the mark.`));
+  }
+  next = { ...next, milestones };
+
+  // A personal feed line for the latest match.
+  const line = matchFeedLine(summary, advGoals, appearances.reduce((n, a) => n + a.ps.assists, 0));
+  news.push(feed(`news_pc_match_${last.m.day}`, day, 'RESULT', `${summary.result === 'W' ? 'Win' : summary.result === 'D' ? 'Draw' : 'Loss'} vs ${summary.opponent}`, line));
+
+  return { career: next, news };
+}
+
+function nameOf(p: Player): string { return `${p.name.first} ${p.name.last}`; }
+
+function matchFeedLine(s: AvatarMatchSummary, goals: number, assists: number): string {
+  const bits = [`${s.minutes}'`, `rated ${s.rating.toFixed(1)}`];
+  if (goals > 0) bits.push(`${goals} goal${goals > 1 ? 's' : ''}`);
+  if (assists > 0) bits.push(`${assists} assist${assists > 1 ? 's' : ''}`);
+  return `${s.home ? 'Home' : 'Away'} ${s.teamGoals}-${s.oppGoals} vs ${s.opponent}${s.competition ? ` (${s.competition})` : ''} — ${bits.join(', ')}.`;
+}
+
+function feed(id: string, day: number, category: NewsItem['category'], title: string, body: string): NewsItem {
+  return { id, day, category, title, body, read: false };
 }

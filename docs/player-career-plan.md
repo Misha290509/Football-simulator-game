@@ -51,15 +51,19 @@ trust, status, season tallies, milestones); later tiers fill the rest.
 
 ## Build order (tiered — vertical slice first)
 
-**Tier 1 — Playable vertical slice ("watch your career unfold"):**
-1. **Schema + migration + `careerMode`/`playerCareer`** (save/load, no UI). ← *first deliverable; pause for review.*
-2. New-game Player path → create/inherit avatar → stub dashboard.
-3. **Selection model** (`playerSelectionWeight` bias in `buildLineupProfile` +
-   trust-from-ratings). The heart — done early.
-4. Player-centric season loop + personal match summary (tallies, milestones,
-   feed each matchday) — reuses `advanceMatchday`, reads `playerStats`.
-5. My Player / Training / Career screens + nav gating. Polish, tests,
-   determinism check.
+**Tier 1 — Playable vertical slice ("watch your career unfold") — ✅ COMPLETE:**
+1. ✅ **Schema + migration + `careerMode`/`playerCareer`** (save/load).
+2. ✅ New-game Player path → create avatar (first-team-registered young player
+   with academy backstory) → lands on My Player. `buildPlayerWorld` seam lets a
+   later picker inherit an existing player.
+3. ✅ **Selection model** — `selectionBias` threaded through `simulateMatches` →
+   `buildLineupProfile` → `assignXI`; `playerSelectionWeight(trust,status)`;
+   `trustFromMatch` drifts trust from ratings.
+4. ✅ Player-centric matchday loop — `applyAvatarMatchday` refreshes season
+   tallies, drifts trust, captures the last-match summary, raises milestones
+   (debut, first goal) + a personal feed; wired into `playDays`.
+5. ✅ My Player / Training / Career screens + nav gating (`PLAYER_NAV_GROUPS`,
+   `PlayerPlayMenu`, `DashboardGate`). Manager tools hidden in Player mode.
 
 **Tier 2 — Manager relationship & development:** squad-status ladder, team
 talks/conversations, per-match objectives, positional rival, traits/perks,

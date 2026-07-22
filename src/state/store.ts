@@ -54,7 +54,7 @@ import type { AcademyPlayer } from '../types/academy';
 import type { Position } from '../types/attributes';
 import { createNewGame, type NewGameConfig } from '../game/newGame';
 import {
-  createPlayerCareerGame, playerCareerOf, playerSelectionWeight, applyMatchdayToCareer,
+  createPlayerCareerGame, playerCareerOf, playerSelectionWeight, applyAvatarMatchday,
   type NewPlayerCareerConfig,
 } from '../game/playerCareer';
 import { simulateMatches } from '../engine/simClient';
@@ -2844,17 +2844,19 @@ async function playDays(
       }));
     }
 
-    // Player Career: drift the avatar's manager trust from how they rated in the
-    // matches they actually played this advance (deeper inputs arrive in Tier 2).
+    // Player Career: fold this advance into the avatar's career — refresh season
+    // tallies, drift manager trust from the games played, capture the latest
+    // match summary and raise personal milestones + a feed item.
     let playerCareer = meta.playerCareer;
     if (careerAtStart) {
-      const ratings: number[] = [];
-      for (const m of played) {
-        if (m.neutral) continue;
-        const ps = m.playerStats.find((s) => s.playerId === careerAtStart.playerId);
-        if (ps && ps.minutes > 0) ratings.push(ps.rating);
+      const avatar = playersById[careerAtStart.playerId];
+      if (avatar) {
+        const res = applyAvatarMatchday(
+          careerAtStart, avatar, played, clubs, meta.competitions, season?.id, to,
+        );
+        playerCareer = res.career;
+        newsItems.push(...res.news);
       }
-      playerCareer = applyMatchdayToCareer(careerAtStart, ratings);
     }
 
     const newMeta: SaveMeta = {

@@ -1,8 +1,10 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useGameStore } from '../state/store';
+import { isPlayerCareer } from '../game/playerCareer';
 import { CrestBadge } from './components/Rating';
 import { PlayMenu } from './components/PlayMenu';
+import { PlayerPlayMenu } from './components/PlayerPlayMenu';
 
 // Grouped nav: daily club business first, then the market, then the wider
 // world, then the manager's own office. God Mode lives apart, by the exit.
@@ -47,6 +49,29 @@ const NAV_GROUPS: { title: string; items: { to: string; label: string }[] }[] = 
   },
 ];
 
+// Player Career gets its own navigation — no squad management, no transfers as a
+// buyer; just the player's own game plus a read-only view of the world.
+const PLAYER_NAV_GROUPS: { title: string; items: { to: string; label: string }[] }[] = [
+  {
+    title: 'Me',
+    items: [
+      { to: '/my-player', label: 'My Player' },
+      { to: '/training', label: 'Training' },
+      { to: '/career', label: 'Career' },
+    ],
+  },
+  {
+    title: 'World',
+    items: [
+      { to: '/squad', label: 'Teammates' },
+      { to: '/standings', label: 'Standings' },
+      { to: '/fixtures', label: 'Fixtures' },
+      { to: '/records', label: 'Records' },
+      { to: '/inbox', label: 'Inbox' },
+    ],
+  },
+];
+
 function NavItem({ to, label, guard }: { to: string; label: string; guard?: (e: React.MouseEvent) => void }) {
   return (
     <NavLink
@@ -79,6 +104,8 @@ export function Layout({ children }: { children: ReactNode }) {
   useEffect(() => { setNavOpen(false); }, [location.pathname]);
 
   const season = meta ? Object.values(meta.seasons).find((s) => s.current) : null;
+  const playerMode = isPlayerCareer(meta);
+  const navGroups = playerMode ? PLAYER_NAV_GROUPS : NAV_GROUPS;
 
   // While a live match is underway, leaving the screen abandons it — make that
   // an explicit choice instead of a silent loss.
@@ -110,7 +137,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <div className="font-display font-semibold uppercase tracking-wide text-lg text-white leading-tight">
               Football <span className="text-accent-400">GM</span>
             </div>
-            <div className="text-[10px] uppercase tracking-widest text-slate-500">Sporting Director</div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-500">{playerMode ? 'Player Career' : 'Sporting Director'}</div>
           </div>
           <button
             className="md:hidden text-slate-400 hover:text-white text-xl leading-none px-2"
@@ -137,7 +164,7 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
 
         <nav className="p-2 flex-1 overflow-y-auto">
-          {NAV_GROUPS.map((g) => (
+          {navGroups.map((g) => (
             <div key={g.title} className="mb-3">
               <div className="section-title px-3 pt-1 pb-1.5">{g.title}</div>
               <div className="space-y-0.5">
@@ -147,19 +174,21 @@ export function Layout({ children }: { children: ReactNode }) {
               </div>
             </div>
           ))}
-          <div className="mt-2 pt-2 border-t border-surface-600/40">
-            <NavLink
-              to="/sandbox"
-              onClick={guardLive}
-              className={({ isActive }) =>
-                `block px-3 py-2 rounded-md text-xs font-medium tracking-wide ${
-                  isActive ? 'bg-amber-500/15 text-amber-300' : 'text-slate-500 hover:text-amber-300/90 hover:bg-surface-700'
-                }`
-              }
-            >
-              ⚡ God Mode <span className="text-slate-600">· cheats</span>
-            </NavLink>
-          </div>
+          {!playerMode && (
+            <div className="mt-2 pt-2 border-t border-surface-600/40">
+              <NavLink
+                to="/sandbox"
+                onClick={guardLive}
+                className={({ isActive }) =>
+                  `block px-3 py-2 rounded-md text-xs font-medium tracking-wide ${
+                    isActive ? 'bg-amber-500/15 text-amber-300' : 'text-slate-500 hover:text-amber-300/90 hover:bg-surface-700'
+                  }`
+                }
+              >
+                ⚡ God Mode <span className="text-slate-600">· cheats</span>
+              </NavLink>
+            </div>
+          )}
         </nav>
 
         <div className="p-2 border-t border-surface-600/60 safe-b">
@@ -193,7 +222,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <span className="ml-auto text-xs text-emerald-300 whitespace-nowrap">● Match day — manage the game below</span>
           ) : (
             <div className="ml-auto min-w-0 overflow-x-auto scrollbar-thin">
-              <PlayMenu />
+              {playerMode ? <PlayerPlayMenu /> : <PlayMenu />}
             </div>
           )}
         </header>

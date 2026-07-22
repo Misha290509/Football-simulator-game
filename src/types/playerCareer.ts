@@ -53,6 +53,21 @@ export interface CareerPersonality {
   temperament: number;
 }
 
+/** A snapshot of the avatar's most recent appearance, for the match summary. */
+export interface AvatarMatchSummary {
+  day: number;
+  opponent: string;
+  home: boolean;
+  competition?: string;
+  minutes: number;
+  rating: number;
+  goals: number;
+  assists: number;
+  teamGoals: number;
+  oppGoals: number;
+  result: 'W' | 'D' | 'L';
+}
+
 /** One completed season of the avatar's career, for the timeline/legacy view. */
 export interface CareerSeasonRecord {
   season: string; // label, e.g. "2025/26"
@@ -101,4 +116,6 @@ export interface PlayerCareer {
   // --- Timeline & legacy -----------------------------------------------------
   milestones: CareerMilestone[];
   seasonHistory: CareerSeasonRecord[];
+  /** The avatar's most recent appearance (for the match-summary card). */
+  lastMatch?: AvatarMatchSummary | null;
 }
