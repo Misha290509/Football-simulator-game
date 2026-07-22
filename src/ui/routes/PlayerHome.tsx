@@ -100,6 +100,42 @@ export function PlayerHome() {
         </div>
       )}
 
+      {/* Objectives */}
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-2">This match — the gaffer wants</h2>
+          {(() => {
+            const objs = (career.matchObjectives ?? []).filter((o) => nextMatch && o.matchId === nextMatch.id);
+            if (objs.length === 0) return <p className="text-xs text-slate-500">No brief yet — set on matchday.</p>;
+            return (
+              <ul className="space-y-1">
+                {objs.map((o, i) => <li key={i} className="text-sm text-slate-300 flex gap-2"><span className="text-slate-600">▸</span>{o.text}</li>)}
+              </ul>
+            );
+          })()}
+        </div>
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-2">Season objectives</h2>
+          {(career.objectives ?? []).length === 0 ? (
+            <p className="text-xs text-slate-500">No season targets set.</p>
+          ) : (
+            <ul className="space-y-2">
+              {career.objectives.map((o, i) => (
+                <li key={i} className="text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className={o.met ? 'text-emerald-400' : 'text-slate-300'}>{o.met ? '✓ ' : ''}{o.text}</span>
+                    {o.target != null && o.kind !== 'AVG_RATING' && <span className="text-xs text-slate-500 font-mono">{Math.round(o.progress ?? 0)}/{o.target}</span>}
+                  </div>
+                  {o.target != null && o.kind !== 'AVG_RATING' && (
+                    <div className="mt-1 h-1.5 rounded bg-surface-700 overflow-hidden"><div className={`h-full ${o.met ? 'bg-emerald-500' : 'bg-accent-500/70'}`} style={{ width: `${Math.min(100, Math.round(((o.progress ?? 0) / o.target) * 100))}%` }} /></div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
       {/* Last match */}
       {career.lastMatch && <LastMatchCard s={career.lastMatch} />}
 
@@ -164,6 +200,18 @@ function LastMatchCard({ s }: { s: AvatarMatchSummary }) {
           <span className={`font-mono font-semibold ${s.rating >= 7.5 ? 'text-emerald-400' : s.rating < 6 ? 'text-rose-400' : 'text-white'}`}>{s.rating.toFixed(1)}</span>
         </div>
       </div>
+      {(s.objectives?.length || s.trustDelta != null) && (
+        <div className="mt-3 pt-3 border-t border-surface-700 flex flex-wrap items-center gap-x-3 gap-y-1">
+          {s.objectives?.map((o, i) => (
+            <span key={i} className={`text-xs ${o.met ? 'text-emerald-400' : 'text-slate-500'}`}>{o.met ? '✓' : '✗'} {o.text}</span>
+          ))}
+          {s.trustDelta != null && s.trustDelta !== 0 && (
+            <span className={`text-xs ml-auto ${s.trustDelta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              Trust {s.trustDelta > 0 ? '+' : ''}{s.trustDelta}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

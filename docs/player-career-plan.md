@@ -65,9 +65,17 @@ trust, status, season tallies, milestones); later tiers fill the rest.
 5. ✅ My Player / Training / Career screens + nav gating (`PLAYER_NAV_GROUPS`,
    `PlayerPlayMenu`, `DashboardGate`). Manager tools hidden in Player mode.
 
-**Tier 2 — Manager relationship & development:** squad-status ladder, team
-talks/conversations, per-match objectives, positional rival, traits/perks,
-injuries & form slumps, international call-ups.
+**Tier 2 — Manager relationship & development** (in progress):
+1. ✅ **Objectives** — `playerObjectives.ts`: per-match briefs (position-tailored,
+   generated pre-match, evaluated from `playerStats`) + season targets (progress
+   tracked, gate later status). Feed trust + morale; shown on My Player and in
+   the match summary. Migration v9 backfills existing Player saves.
+2. Trust deepening + squad-status ladder + status arcs.
+3. Manager conversations & team talks + promises.
+4. Positional rival + visible shirt battle.
+5. Traits/perks + deterministic `match.ts` hooks + weak-foot/skill + personality.
+6. Injuries-as-arcs + form/confidence slumps + match sharpness.
+7. International call-ups + caps/goals + tournament squads.
 
 **Tier 3 — Interactive match layer:** key-moment decisions + manager in-match
 instructions; position-specific moment sets.

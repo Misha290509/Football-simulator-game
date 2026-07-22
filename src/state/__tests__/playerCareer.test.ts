@@ -51,6 +51,18 @@ describe('Player Career — schema, migration & plumbing (Tier 1 · Step 1)', ()
     expect(res.meta.careerMode).toBe('PLAYER');
   });
 
+  it('v8→v9 backfills season objectives + match-objective list on a Player save', () => {
+    const avatar = { id: 'av', position: 'ST', positions: ['ST'], born: { year: 2007 }, contract: { clubId: 'C' } } as unknown as import('../../types/player').Player;
+    const meta = {
+      schemaVersion: 8, seed: 3, startYear: 2024, seasons: {}, careerMode: 'PLAYER',
+      playerCareer: { playerId: 'av', objectives: [], milestones: [], seasonHistory: [] },
+    } as unknown as SaveMeta;
+    const res = migrateSave(meta, {}, { av: avatar });
+    expect(res.meta.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(res.meta.playerCareer!.objectives.length).toBeGreaterThan(0);
+    expect(Array.isArray(res.meta.playerCareer!.matchObjectives)).toBe(true);
+  });
+
   it('new games default to MANAGER and carry the current schema version', async () => {
     await freshGame();
     const meta = useGameStore.getState().meta!;

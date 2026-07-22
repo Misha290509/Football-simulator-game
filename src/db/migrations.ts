@@ -17,8 +17,9 @@ import { buildAcademy, ageGroupForAge, ageOfPlayer, computeReadiness, academyPot
 import { makeScoutProfile, staffWage, generateStaffPool } from '../engine/staff';
 import { fillAcademyBands } from '../game/academy';
 import { injectSpecialPlayers } from '../game/specialPlayers';
+import { generateSeasonObjectives } from '../game/playerObjectives';
 
-export const CURRENT_SCHEMA_VERSION = 8;
+export const CURRENT_SCHEMA_VERSION = 9;
 
 export interface MigrationResult {
   meta: SaveMeta;
@@ -120,6 +121,7 @@ export function migrateSave(
   if (fromVersion < 6) migrateToV6(meta, clubs);
   if (fromVersion < 7) migrateToV7(meta, clubs, players);
   if (fromVersion < 8) migrateToV8(meta);
+  if (fromVersion < 9) migrateToV9(meta, players);
 
   meta.schemaVersion = CURRENT_SCHEMA_VERSION;
   return { meta, clubs, players, changed: true };
@@ -133,6 +135,21 @@ export function migrateSave(
  */
 function migrateToV8(meta: SaveMeta): void {
   meta.careerMode ??= 'MANAGER';
+}
+
+/**
+ * v8 → v9: player-career objectives (Tier 2). Backfill season objectives and an
+ * (empty) match-objective list on existing Player saves so the objectives loop
+ * has state to work with. Manager saves are untouched. Deterministic.
+ */
+function migrateToV9(meta: SaveMeta, players: Record<string, Player>): void {
+  if (meta.careerMode !== 'PLAYER' || !meta.playerCareer) return;
+  const pc = meta.playerCareer;
+  const avatar = players[pc.playerId];
+  pc.matchObjectives = pc.matchObjectives ?? [];
+  if (avatar && (!pc.objectives || pc.objectives.length === 0)) {
+    pc.objectives = generateSeasonObjectives(avatar, meta.seed);
+  }
 }
 
 /**

@@ -17,6 +17,9 @@ import type { WorldSnapshot } from '../db/db';
 import { Rng, clamp, hashSeed } from '../engine/rng';
 import { generatePlayer } from '../engine/generator';
 import { createNewGame } from './newGame';
+import {
+  generateSeasonObjectives, generateMatchObjectives, evaluateMatchObjectives, updateSeasonObjectives,
+} from './playerObjectives';
 
 /** The career mode of a save. Absent flag ⇒ 'MANAGER' (every legacy save). */
 export function careerModeOf(meta: Pick<SaveGame, 'careerMode'> | null | undefined): CareerMode {
@@ -155,6 +158,7 @@ export function initialPlayerCareer(
   origin: PlayerCareerOrigin,
   archetype: string,
   clubName: string,
+  seed = 0,
   startDay = 0,
 ): PlayerCareer {
   return {
@@ -169,7 +173,8 @@ export function initialPlayerCareer(
     seasonGoals: 0,
     seasonApps: 0,
     seasonAvgRating: 0,
-    objectives: [],
+    objectives: generateSeasonObjectives(avatar, seed),
+    matchObjectives: [],
     traits: [],
     personality: {
       professionalism: avatar.hidden?.professionalism ?? 55,
@@ -220,7 +225,13 @@ export function createPlayerCareerGame(config: NewPlayerCareerConfig): WorldSnap
   const name = displayName(avatar);
   snapshot.meta.careerMode = 'PLAYER';
   snapshot.meta.managerName = name;
-  snapshot.meta.playerCareer = initialPlayerCareer(avatar, config.origin, config.archetype ?? 'Academy Graduate', club?.name ?? 'your club');
+  let career = initialPlayerCareer(avatar, config.origin, config.archetype ?? 'Academy Graduate', club?.name ?? 'your club', snapshot.meta.seed);
+  // Seed objectives for the avatar's opening fixture so they show from day one.
+  const firstMatch = Object.values(snapshot.matches)
+    .filter((m) => !m.neutral && (m.homeClubId === config.clubId || m.awayClubId === config.clubId))
+    .sort((a, b) => a.day - b.day)[0];
+  if (firstMatch) career = ensureAdvanceObjectives(career, avatar, [firstMatch], snapshot.meta.seed);
+  snapshot.meta.playerCareer = career;
   snapshot.meta.news = [
     {
       id: 'news_welcome_player',
@@ -304,9 +315,39 @@ function seasonTotals(avatar: Player, seasonId: string | undefined): { apps: num
   return { apps, goals, assists, ratingSum, ratingCount };
 }
 
+/**
+ * Ensure the avatar has objectives for this advance: season targets (generated
+ * once if missing) and pre-match objectives for each of their club's upcoming
+ * fixtures that doesn't have them yet. Deterministic. Call before simulating.
+ */
+export function ensureAdvanceObjectives(
+  career: PlayerCareer,
+  avatar: Player | undefined,
+  upcoming: Match[],
+  seed: number,
+): PlayerCareer {
+  if (!avatar) return career;
+  const clubId = avatar.contract.clubId;
+  let objectives = career.objectives ?? [];
+  if (objectives.length === 0) objectives = generateSeasonObjectives(avatar, seed);
+
+  const matchObjectives = [...(career.matchObjectives ?? [])];
+  const have = new Set(matchObjectives.map((o) => o.matchId));
+  for (const m of upcoming) {
+    if (m.neutral || !clubId) continue;
+    if (m.homeClubId !== clubId && m.awayClubId !== clubId) continue;
+    if (have.has(m.id)) continue;
+    matchObjectives.push(...generateMatchObjectives(avatar, m, seed));
+    have.add(m.id);
+  }
+  return { ...career, objectives, matchObjectives };
+}
+
 export interface AvatarMatchdayResult {
   career: PlayerCareer;
   news: NewsItem[];
+  /** Morale change to apply to the avatar Player (objective outcomes). */
+  moraleDelta: number;
 }
 
 /**
@@ -339,21 +380,52 @@ export function applyAvatarMatchday(
   const totals = seasonTotals(avatar, seasonId);
   const seasonAvgRating = totals.ratingCount > 0 ? Math.round((totals.ratingSum / totals.ratingCount) * 10) / 10 : 0;
 
+  const trustStart = career.managerTrust;
+  const playedIds = new Set(played.map((m) => m.id));
+  const seasonTotalsForObj = { apps: totals.apps, goals: totals.goals, assists: totals.assists, avgRating: seasonAvgRating };
+
   let next: PlayerCareer = {
     ...career,
     seasonApps: totals.apps,
     seasonGoals: totals.goals,
     seasonAvgRating,
+    objectives: updateSeasonObjectives(career.objectives ?? [], seasonTotalsForObj),
+    // Drop objectives for matches now played (kept upcoming ones for display).
+    matchObjectives: (career.matchObjectives ?? []).filter((o) => !playedIds.has(o.matchId)),
   };
   const news: NewsItem[] = [];
 
+  // Newly-completed season objectives raise a small feed item.
+  for (let i = 0; i < next.objectives.length; i++) {
+    if (next.objectives[i].met && !(career.objectives?.[i]?.met)) {
+      news.push(feed(`news_pc_sobj_${day}_${i}`, day, 'MILESTONE', 'Season objective met', `${next.objectives[i].text} — done.`));
+    }
+  }
+
   if (appearances.length === 0) {
-    // Didn't feature — trust untouched, tallies refreshed (0-change), no news.
-    return { career: next, news };
+    // Didn't feature — trust untouched; tallies/objectives refreshed only.
+    return { career: next, news, moraleDelta: 0 };
   }
 
   // Trust drifts from the games played this advance.
   next = { ...next, managerTrust: applyMatchdayToCareer(next, appearances.map((a) => a.ps.rating)).managerTrust };
+
+  // Per-match objectives: evaluate each appearance's objectives against how the
+  // avatar actually played, folding the outcome into trust + morale.
+  let objTrust = 0, moraleDelta = 0;
+  const lastObjectives: { text: string; met: boolean }[] = [];
+  for (const a of appearances) {
+    const objs = (career.matchObjectives ?? []).filter((o) => o.matchId === a.m.id);
+    if (objs.length === 0) continue;
+    const h = a.m.homeClubId === clubId;
+    const out = evaluateMatchObjectives(objs, a.ps, h ? a.m.homeGoals : a.m.awayGoals, h ? a.m.awayGoals : a.m.homeGoals);
+    objTrust += out.trustDelta;
+    moraleDelta += out.moraleDelta;
+    if (a.m.id === appearances[appearances.length - 1].m.id) {
+      lastObjectives.push(...out.objectives.map((o) => ({ text: o.text, met: !!o.met })));
+    }
+  }
+  next = { ...next, managerTrust: clamp(Math.round((next.managerTrust + objTrust) * 10) / 10, 0, 100) as number };
 
   // Latest appearance → match-summary card.
   const last = appearances[appearances.length - 1];
@@ -372,6 +444,8 @@ export function applyAvatarMatchday(
     assists: last.ps.assists,
     teamGoals, oppGoals,
     result: teamGoals > oppGoals ? 'W' : teamGoals === oppGoals ? 'D' : 'L',
+    objectives: lastObjectives.length ? lastObjectives : undefined,
+    trustDelta: Math.round((next.managerTrust - trustStart) * 10) / 10,
   };
   next = { ...next, lastMatch: summary };
 
@@ -398,7 +472,7 @@ export function applyAvatarMatchday(
   const line = matchFeedLine(summary, advGoals, appearances.reduce((n, a) => n + a.ps.assists, 0));
   news.push(feed(`news_pc_match_${last.m.day}`, day, 'RESULT', `${summary.result === 'W' ? 'Win' : summary.result === 'D' ? 'Draw' : 'Loss'} vs ${summary.opponent}`, line));
 
-  return { career: next, news };
+  return { career: next, news, moraleDelta };
 }
 
 function nameOf(p: Player): string { return `${p.name.first} ${p.name.last}`; }

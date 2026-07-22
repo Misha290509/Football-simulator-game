@@ -55,8 +55,9 @@ import type { Position } from '../types/attributes';
 import { createNewGame, type NewGameConfig } from '../game/newGame';
 import {
   createPlayerCareerGame, playerCareerOf, playerSelectionWeight, applyAvatarMatchday,
-  type NewPlayerCareerConfig,
+  ensureAdvanceObjectives, type NewPlayerCareerConfig,
 } from '../game/playerCareer';
+import { generateSeasonObjectives } from '../game/playerObjectives';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -1899,6 +1900,28 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       }
 
+      // Player Career: roll the avatar's season — archive the year into their
+      // history, hand them fresh season objectives, and clear per-match state.
+      if (newMeta.careerMode === 'PLAYER' && newMeta.playerCareer) {
+        const pc = newMeta.playerCareer;
+        const avatar = result.players[pc.playerId];
+        const finished = get().currentSeason();
+        const clubName = avatar?.contract.clubId ? (result.clubs[avatar.contract.clubId]?.name ?? '') : '';
+        let assists = 0;
+        if (avatar && finished) for (const s of avatar.stats) if (s.seasonId === finished.id) assists += s.assists;
+        newMeta.playerCareer = {
+          ...pc,
+          seasonHistory: [...pc.seasonHistory, {
+            season: finished?.label ?? String(meta.startYear), club: clubName,
+            apps: pc.seasonApps, goals: pc.seasonGoals, assists, avgRating: pc.seasonAvgRating, honours: [],
+          }],
+          seasonApps: 0, seasonGoals: 0, seasonAvgRating: 0,
+          objectives: avatar ? generateSeasonObjectives(avatar, (meta.seed ^ result.newSeason.year) >>> 0) : [],
+          matchObjectives: [],
+          lastMatch: null,
+        };
+      }
+
       // Persist playoff/cup/continental (history) + new fixtures + squads.
       await putMatches(meta.id, result.playoffMatches);
       await putMatches(meta.id, result.extraMatches ?? []);
@@ -2466,10 +2489,14 @@ async function playDays(
       ctxByMatch[m.id] = { kind: 'league', runIn };
     }
 
-    // Player Career: the avatar's manager trust biases their club's team
-    // selection, so form/trust decide whether they start (only their club is
+    // Player Career: set this advance's objectives for the avatar's fixtures,
+    // then bias their club's selection by manager trust (only their club is
     // affected — the bias map holds just the avatar).
-    const careerAtStart = playerCareerOf(meta);
+    const careerBeforeObj = playerCareerOf(meta);
+    const avatarAtStart = careerBeforeObj ? get().players[careerBeforeObj.playerId] : undefined;
+    const careerAtStart = careerBeforeObj
+      ? ensureAdvanceObjectives(careerBeforeObj, avatarAtStart, toPlay, meta.seed)
+      : null;
     const selectionBias = careerAtStart
       ? { [careerAtStart.playerId]: playerSelectionWeight(careerAtStart) }
       : undefined;
@@ -2856,6 +2883,18 @@ async function playDays(
         );
         playerCareer = res.career;
         newsItems.push(...res.news);
+        // Objective outcomes nudge the avatar's morale (which feeds selection).
+        if (res.moraleDelta !== 0) {
+          playersById = { ...playersById };
+          playersById[avatar.id] = { ...avatar, morale: clamp(avatar.morale + res.moraleDelta) as number };
+          changedIds.add(avatar.id);
+        }
+        // Pre-set objectives for the next fixture so they show before kickoff.
+        const cid = avatar.contract.clubId;
+        const nextM = Object.values(matches)
+          .filter((m) => !m.played && !m.neutral && cid && (m.homeClubId === cid || m.awayClubId === cid))
+          .sort((a, b) => a.day - b.day)[0];
+        if (nextM) playerCareer = ensureAdvanceObjectives(playerCareer!, playersById[avatar.id], [nextM], meta.seed);
       }
     }
 

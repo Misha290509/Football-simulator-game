@@ -25,10 +25,32 @@ export interface CareerMilestone {
   text: string;
 }
 
-/** A per-match or per-season objective set by the club/manager. */
+/** Season-objective kinds — all evaluable from accumulated season stats. */
+export type SeasonObjectiveKind = 'GOALS' | 'ASSISTS' | 'APPS' | 'AVG_RATING';
+
+/** A season-long objective set by the club/manager (gates status, feeds
+ *  contract leverage in later tiers). Legacy Tier-1 saves may carry only
+ *  `text`/`met`; the kind/target/progress fields are optional for that reason. */
 export interface CareerObjective {
   text: string;
+  kind?: SeasonObjectiveKind;
+  target?: number;
+  progress?: number;
   met: boolean;
+}
+
+/** Per-match objective kinds — all evaluable from a single match's playerStats
+ *  plus the scoreline (no data we don't already record). */
+export type MatchObjectiveKind =
+  | 'GOAL' | 'ASSIST' | 'SHOTS' | 'RATING' | 'CLEAN_SHEET' | 'SAVES' | 'WIN' | 'MINUTES';
+
+/** A pre-match objective the manager sets for the avatar; evaluated afterwards. */
+export interface MatchObjective {
+  matchId: string;
+  text: string;
+  kind: MatchObjectiveKind;
+  target: number;
+  met?: boolean;
 }
 
 /** A boot/brand deal (Tier 4). */
@@ -66,6 +88,10 @@ export interface AvatarMatchSummary {
   teamGoals: number;
   oppGoals: number;
   result: 'W' | 'D' | 'L';
+  /** How the manager's pre-match objectives for this game turned out. */
+  objectives?: { text: string; met: boolean }[];
+  /** Net manager-trust change from this match (rating + objectives). */
+  trustDelta?: number;
 }
 
 /** One completed season of the avatar's career, for the timeline/legacy view. */
@@ -104,7 +130,9 @@ export interface PlayerCareer {
   seasonAvgRating: number;
 
   // --- Development & standing ------------------------------------------------
-  objectives: CareerObjective[];
+  objectives: CareerObjective[]; // season-long objectives
+  /** Pre-match objectives for the avatar's upcoming/most-recent fixtures. */
+  matchObjectives?: MatchObjective[];
   traits: string[]; // earned perks (Tier 2+)
   personality: CareerPersonality;
 
