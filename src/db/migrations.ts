@@ -19,7 +19,7 @@ import { fillAcademyBands } from '../game/academy';
 import { injectSpecialPlayers } from '../game/specialPlayers';
 import { generateSeasonObjectives } from '../game/playerObjectives';
 
-export const CURRENT_SCHEMA_VERSION = 9;
+export const CURRENT_SCHEMA_VERSION = 10;
 
 export interface MigrationResult {
   meta: SaveMeta;
@@ -122,9 +122,28 @@ export function migrateSave(
   if (fromVersion < 7) migrateToV7(meta, clubs, players);
   if (fromVersion < 8) migrateToV8(meta);
   if (fromVersion < 9) migrateToV9(meta, players);
+  if (fromVersion < 10) migrateToV10(meta);
 
   meta.schemaVersion = CURRENT_SCHEMA_VERSION;
   return { meta, clubs, players, changed: true };
+}
+
+/**
+ * v9 → v10: Tier-2 manager-relationship fields. Backfill defaults on existing
+ * Player saves (status ladder history, promises, conversations, rival,
+ * confidence/sharpness, international extras). Manager saves untouched.
+ */
+function migrateToV10(meta: SaveMeta): void {
+  if (meta.careerMode !== 'PLAYER' || !meta.playerCareer) return;
+  const pc = meta.playerCareer;
+  pc.statusHistory = pc.statusHistory ?? [];
+  pc.promises = pc.promises ?? [];
+  pc.pendingConversations = pc.pendingConversations ?? [];
+  pc.rival = pc.rival ?? null;
+  pc.confidence = pc.confidence ?? 60;
+  pc.matchSharpness = pc.matchSharpness ?? 100;
+  pc.tournamentSquads = pc.tournamentSquads ?? [];
+  pc.traitProgress = pc.traitProgress ?? {};
 }
 
 /**

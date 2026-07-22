@@ -14,6 +14,8 @@ export function PlayerHome() {
   const clubs = useGameStore((s) => s.clubs);
   const season = useGameStore((s) => s.currentSeason());
   const nextMatch = useGameStore((s) => s.managerNextMatch());
+  const answerConversation = useGameStore((s) => s.answerConversation);
+  const requestMeeting = useGameStore((s) => s.requestMeeting);
   const career = playerCareerOf(meta);
   const currentYear = season?.year ?? meta?.startYear ?? new Date().getFullYear();
 
@@ -67,6 +69,22 @@ export function PlayerHome() {
         </div>
       </div>
 
+      {/* Manager conversation (choice-driven) */}
+      {(career.pendingConversations ?? []).length > 0 && (() => {
+        const conv = career.pendingConversations![0];
+        return (
+          <div className="card p-4 border border-accent/30 bg-accent/5">
+            <div className="text-xs uppercase tracking-wide text-accent-400 mb-1">Manager wants a word</div>
+            <p className="text-sm text-slate-200 mb-3">{conv.prompt}</p>
+            <div className="flex flex-col gap-2">
+              {conv.choices.map((c, i) => (
+                <button key={i} className="btn-ghost text-left text-sm" onClick={() => void answerConversation(conv.id, i)}>“{c.text}”</button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Selection read + next fixture */}
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="card p-4">
@@ -83,7 +101,7 @@ export function PlayerHome() {
         <div className="card p-4">
           <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">Manager trust</div>
           <TrustBar trust={career.managerTrust} />
-          <div className="text-xs text-slate-500 mt-1">Play well and start regularly to earn the gaffer’s faith.</div>
+          <button className="btn-ghost text-xs mt-2 w-full" onClick={() => void requestMeeting()}>Ask for more minutes</button>
         </div>
       </div>
 
@@ -131,6 +149,48 @@ export function PlayerHome() {
                   )}
                 </li>
               ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {/* Standing: confidence, sharpness, rival + promises */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Stat label="Confidence" value={`${Math.round(career.confidence ?? 60)}`} tone={(career.confidence ?? 60) >= 60 ? 'good' : (career.confidence ?? 60) < 35 ? 'bad' : 'neutral'} />
+        <Stat label="Match sharpness" value={`${Math.round(career.matchSharpness ?? 100)}%`} tone={(career.matchSharpness ?? 100) >= 85 ? 'good' : (career.matchSharpness ?? 100) < 70 ? 'bad' : 'neutral'} />
+        <Stat label="Season avg" value={career.seasonAvgRating ? career.seasonAvgRating.toFixed(1) : '—'} />
+        <Stat label="Caps" value={career.international.capped ? `${career.international.caps}` : '—'} />
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        {/* Rival for the shirt */}
+        {career.rival && players[career.rival.playerId] && (() => {
+          const r = players[career.rival!.playerId];
+          const ahead = p.overall >= r.overall;
+          return (
+            <div className="card p-4">
+              <h2 className="text-sm font-semibold text-slate-400 mb-2">Battle for the shirt</h2>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-accent-300">You <span className="text-slate-500">({p.position})</span></span>
+                <span className="font-mono">{p.overall} OVR · form {p.form > 0 ? '+' : ''}{Math.round(p.form / 10)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm mt-1">
+                <span className="text-slate-300 truncate">{fullName(r)} <span className="text-slate-500">({r.position})</span></span>
+                <span className="font-mono text-slate-400">{r.overall} OVR · form {r.form > 0 ? '+' : ''}{Math.round(r.form / 10)}</span>
+              </div>
+              <div className={`text-xs mt-2 ${ahead ? 'text-emerald-400' : 'text-amber-400'}`}>{ahead ? 'You’re ahead in the pecking order — keep it up.' : 'He’s the one to dislodge. Force the manager’s hand.'}</div>
+            </div>
+          );
+        })()}
+
+        {/* Promises */}
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-2">Manager’s promises</h2>
+          {(career.promises ?? []).length === 0 ? (
+            <p className="text-xs text-slate-500">No outstanding promises.</p>
+          ) : (
+            <ul className="space-y-1">
+              {career.promises!.map((pr, i) => <li key={i} className="text-sm text-slate-300 flex gap-2"><span className="text-slate-600">•</span>{pr.text}</li>)}
             </ul>
           )}
         </div>

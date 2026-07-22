@@ -58,6 +58,10 @@ import {
   ensureAdvanceObjectives, type NewPlayerCareerConfig,
 } from '../game/playerCareer';
 import { generateSeasonObjectives } from '../game/playerObjectives';
+import { progressPlayerCareer, statusRank } from '../game/playerProgression';
+import {
+  postDropConversation, evaluatePromises, resolveConversation, requestMinutesOutcome, roleMeetingConversation,
+} from '../game/playerConversations';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -159,6 +163,8 @@ interface GameState {
   refreshSavesList: () => Promise<void>;
   newGame: (config: NewGameConfig) => Promise<string>;
   newPlayerCareer: (config: NewPlayerCareerConfig) => Promise<string>;
+  answerConversation: (id: string, choiceIdx: number) => Promise<void>;
+  requestMeeting: () => Promise<string>;
   load: (saveId: string) => Promise<boolean>;
   remove: (saveId: string) => Promise<void>;
   persist: () => Promise<void>;
@@ -368,6 +374,40 @@ export const useGameStore = create<GameState>((set, get) => ({
     rememberLastSave(snapshot.meta.id);
     await get().refreshSavesList();
     return snapshot.meta.id;
+  },
+
+  answerConversation: async (id, choiceIdx) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const conv = (pc.pendingConversations ?? []).find((c) => c.id === id);
+    if (!conv) return;
+    const res = resolveConversation(pc, conv, choiceIdx, meta.currentDay);
+    const avatar = players[pc.playerId];
+    let newPlayers = players;
+    if (avatar && res.moraleDelta !== 0) {
+      const np: Player = { ...avatar, morale: clamp(avatar.morale + res.moraleDelta) as number };
+      newPlayers = { ...players, [pc.playerId]: np };
+      await putPlayers(meta.id, [np]);
+    }
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta, players: newPlayers });
+    await persistMeta(newMeta);
+  },
+
+  requestMeeting: async () => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar) return 'No player.';
+    const res = requestMinutesOutcome(pc, avatar, meta.currentDay);
+    const np: Player = { ...avatar, morale: clamp(avatar.morale + res.moraleDelta) as number };
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta, players: { ...players, [pc.playerId]: np } });
+    await putPlayers(meta.id, [np]);
+    await persistMeta(newMeta);
+    return res.news[0]?.body ?? 'You spoke with the manager.';
   },
 
   load: async (saveId) => {
@@ -1909,6 +1949,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         const clubName = avatar?.contract.clubId ? (result.clubs[avatar.contract.clubId]?.name ?? '') : '';
         let assists = 0;
         if (avatar && finished) for (const s of avatar.stats) if (s.seasonId === finished.id) assists += s.assists;
+        // International: accrue a season of caps/goals + any tournament squad.
+        let international = pc.international;
+        let tournamentSquads = pc.tournamentSquads ?? [];
+        const intlNews: NewsItem[] = [];
+        if (pc.international.capped) {
+          const capsAdd = pc.status === 'STAR' || pc.status === 'CAPTAIN' ? 8 : pc.status === 'KEY' ? 5 : 3;
+          const goalsAdd = Math.round(pc.seasonGoals * 0.18);
+          international = { capped: true, caps: pc.international.caps + capsAdd, intlGoals: pc.international.intlGoals + goalsAdd };
+          if ((result.tournaments?.length ?? 0) > 0 || result.worldCup) {
+            const compName = result.worldCup ? 'World Cup' : (result.tournaments?.[0]?.name ?? 'international tournament');
+            tournamentSquads = [...tournamentSquads, { competition: compName, season: finished?.label ?? '' }];
+            intlNews.push({ id: `news_pc_tsquad_${result.newSeason.year}`, day: 0, category: 'MILESTONE', title: 'Named in a tournament squad', body: `${avatar ? `${avatar.name.first} ${avatar.name.last}` : 'You'} made the squad for the ${compName}.`, read: false });
+          }
+        }
+        newMeta.news = [...newMeta.news, ...intlNews];
         newMeta.playerCareer = {
           ...pc,
           seasonHistory: [...pc.seasonHistory, {
@@ -1919,6 +1974,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           objectives: avatar ? generateSeasonObjectives(avatar, (meta.seed ^ result.newSeason.year) >>> 0) : [],
           matchObjectives: [],
           lastMatch: null,
+          international, tournamentSquads,
+          confidence: 60, matchSharpness: 100,
+          pendingConversations: [...(pc.pendingConversations ?? []), roleMeetingConversation(0)],
         };
       }
 
@@ -2878,23 +2936,47 @@ async function playDays(
     if (careerAtStart) {
       const avatar = playersById[careerAtStart.playerId];
       if (avatar) {
+        // 1) Objectives + trust + summary + milestones.
         const res = applyAvatarMatchday(
           careerAtStart, avatar, played, clubs, meta.competitions, season?.id, to,
         );
-        playerCareer = res.career;
+        let pc = res.career;
+        let moraleDelta = res.moraleDelta;
         newsItems.push(...res.news);
-        // Objective outcomes nudge the avatar's morale (which feeds selection).
-        if (res.moraleDelta !== 0) {
+
+        // 2) Progression: status ladder, rival, traits, adversity, call-up.
+        const cid = avatar.contract.clubId;
+        const squad = Object.values(playersById).filter((pl) => pl.contract.clubId === cid);
+        const prevInjured = !!avatarAtStart?.injury;
+        const prog = progressPlayerCareer(pc, avatar, squad, toYear, to, prevInjured);
+        pc = prog.career; newsItems.push(...prog.news);
+
+        // 3) A demotion this advance triggers a manager sit-down.
+        if (statusRank(pc.status) < statusRank(careerAtStart.status) &&
+            !(pc.pendingConversations ?? []).some((c) => c.trigger === 'DROPPED')) {
+          pc = { ...pc, pendingConversations: [...(pc.pendingConversations ?? []), postDropConversation(pc.status, to)] };
+        }
+
+        // 4) Promises falling due.
+        const prom = evaluatePromises(pc, avatar, to);
+        pc = prom.career; newsItems.push(...prom.news); moraleDelta += prom.moraleDelta;
+
+        // Apply the avatar's form + morale nudges.
+        const newForm = clamp(avatar.form + prog.formDelta) as number;
+        const newMorale = clamp(avatar.morale + moraleDelta) as number;
+        if (newForm !== avatar.form || newMorale !== avatar.morale) {
           playersById = { ...playersById };
-          playersById[avatar.id] = { ...avatar, morale: clamp(avatar.morale + res.moraleDelta) as number };
+          playersById[avatar.id] = { ...playersById[avatar.id], form: newForm, morale: newMorale };
           changedIds.add(avatar.id);
         }
+
         // Pre-set objectives for the next fixture so they show before kickoff.
-        const cid = avatar.contract.clubId;
         const nextM = Object.values(matches)
           .filter((m) => !m.played && !m.neutral && cid && (m.homeClubId === cid || m.awayClubId === cid))
           .sort((a, b) => a.day - b.day)[0];
-        if (nextM) playerCareer = ensureAdvanceObjectives(playerCareer!, playersById[avatar.id], [nextM], meta.seed);
+        if (nextM) pc = ensureAdvanceObjectives(pc, playersById[avatar.id], [nextM], meta.seed);
+
+        playerCareer = pc;
       }
     }
 

@@ -65,17 +65,27 @@ trust, status, season tallies, milestones); later tiers fill the rest.
 5. ✅ My Player / Training / Career screens + nav gating (`PLAYER_NAV_GROUPS`,
    `PlayerPlayMenu`, `DashboardGate`). Manager tools hidden in Player mode.
 
-**Tier 2 — Manager relationship & development** (in progress):
-1. ✅ **Objectives** — `playerObjectives.ts`: per-match briefs (position-tailored,
-   generated pre-match, evaluated from `playerStats`) + season targets (progress
-   tracked, gate later status). Feed trust + morale; shown on My Player and in
-   the match summary. Migration v9 backfills existing Player saves.
-2. Trust deepening + squad-status ladder + status arcs.
-3. Manager conversations & team talks + promises.
-4. Positional rival + visible shirt battle.
-5. Traits/perks + deterministic `match.ts` hooks + weak-foot/skill + personality.
-6. Injuries-as-arcs + form/confidence slumps + match sharpness.
-7. International call-ups + caps/goals + tournament squads.
+**Tier 2 — Manager relationship & development — ✅ COMPLETE:**
+1. ✅ **Objectives** — `playerObjectives.ts`: per-match briefs + season targets,
+   evaluated from `playerStats`, feeding trust + morale. Migration v9.
+2. ✅ **Trust deepening + squad-status ladder** — big-game weighting + discipline
+   in the trust drift; `deriveSquadStatus` (trust+apps+ability+form) drives a
+   `YOUTH→…→CAPTAIN` ladder with narrative promotion/demotion arcs + history;
+   status feeds the selection bump.
+3. ✅ **Conversations & promises** — `playerConversations.ts`: choice-driven
+   role meeting / post-drop dialogs + player-initiated "ask for minutes"; some
+   choices lock a promise that's kept/broken at a deadline.
+4. ✅ **Positional rival** — best same-position teammate, shirt-battle widget.
+5. ✅ **Traits & personality** — reuses the existing attribute-derived
+   `traitsOf`/`traitSimBoost` (already deterministic in the sim); detects newly
+   earned traits, shows progress to the next, + personality panel.
+6. ✅ **Adversity** — injury arcs, match sharpness (drops on injury, recovers),
+   a confidence/slump dimension nudging form (always escapable).
+7. ✅ **International** — first call-up on threshold; caps/goals + tournament
+   squads accrue at the rollover.
+
+All in `playerProgression.ts` (orchestrated per advance) + the season rollover.
+Migration v10 backfills Tier-2 fields on existing Player saves.
 
 **Tier 3 — Interactive match layer:** key-moment decisions + manager in-match
 instructions; position-specific moment sets.

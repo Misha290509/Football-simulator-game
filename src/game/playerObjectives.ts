@@ -93,12 +93,14 @@ export function evaluateMatchObjectives(
       case 'WIN': met = teamGoals > oppGoals; break;
       case 'MINUTES': met = ps.minutes >= o.target; break;
     }
-    trust += met ? 0.8 : -0.5;
+    // Meeting a brief is rewarded more than missing one is punished — not every
+    // striker scores every week, so a miss shouldn't tank the relationship.
+    trust += met ? 0.8 : -0.3;
     morale += met ? 2 : -1;
     return { ...o, met };
   });
   // Cap the per-match swing so a single game never dominates the relationship.
-  return { objectives: evaluated, trustDelta: clamp(trust, -3, 3), moraleDelta: clamp(morale, -6, 6) };
+  return { objectives: evaluated, trustDelta: clamp(trust, -2.5, 3), moraleDelta: clamp(morale, -6, 6) };
 }
 
 // --- Season objectives ------------------------------------------------------

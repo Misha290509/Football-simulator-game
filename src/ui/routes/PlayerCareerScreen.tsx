@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 import { playerCareerOf } from '../../game/playerCareer';
 import { awardMeta } from '../../game/awardMeta';
+import { traitsOf, TRAIT_LABEL, type PlayerTrait } from '../../engine/traits';
 import { fullName, formatMoney } from '../format';
 
 export function PlayerCareerScreen() {
@@ -22,7 +23,11 @@ export function PlayerCareerScreen() {
   }
 
   const club = p.contract.clubId ? clubs[p.contract.clubId] : undefined;
-  const milestones = [...career.milestones].sort((a, b) => b.day - a.day);
+  const statusItems = (career.statusHistory ?? []).map((s) => ({
+    day: s.day,
+    text: `${statusRank(s.to) > statusRank(s.from) ? 'Promoted' : 'Dropped'} to ${cap(s.to)} (from ${cap(s.from)}).`,
+  }));
+  const milestones = [...career.milestones, ...statusItems].sort((a, b) => b.day - a.day);
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
@@ -46,11 +51,43 @@ export function PlayerCareerScreen() {
         </div>
       </div>
 
+      {/* Development / traits */}
+      <div className="card p-4">
+        <h2 className="text-sm font-semibold text-slate-400 mb-2">Traits &amp; development</h2>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {traitsOf(p).length === 0 ? <span className="text-xs text-slate-500">No signature traits yet — train to develop them.</span> :
+            traitsOf(p).map((t) => <span key={t} className="bg-accent/10 text-accent-300 rounded px-2 py-1 text-xs">{TRAIT_LABEL[t as PlayerTrait]}</span>)}
+        </div>
+        {Object.keys(career.traitProgress ?? {}).length > 0 && (
+          <div className="space-y-1.5">
+            <div className="text-xs text-slate-500">Closest to unlocking</div>
+            {Object.entries(career.traitProgress ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id, pct]) => (
+              <div key={id}>
+                <div className="flex justify-between text-xs"><span className="text-slate-400">{TRAIT_LABEL[id as PlayerTrait] ?? id}</span><span className="text-slate-500">{pct}%</span></div>
+                <div className="h-1.5 rounded bg-surface-700 overflow-hidden"><div className="h-full bg-accent-500/70" style={{ width: `${pct}%` }} /></div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-3 pt-3 border-t border-surface-700 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          {(['professionalism', 'ambition', 'loyalty', 'temperament'] as const).map((k) => (
+            <div key={k}><span className="text-slate-500 capitalize">{k}</span><div className="font-mono text-slate-300">{Math.round(career.personality[k])}</div></div>
+          ))}
+        </div>
+      </div>
+
       {/* International */}
       <div className="card p-4">
         <h2 className="text-sm font-semibold text-slate-400 mb-2">International</h2>
         {career.international.capped ? (
-          <div className="text-sm text-slate-300">{career.international.caps} caps · {career.international.intlGoals} goals</div>
+          <>
+            <div className="text-sm text-slate-300">{career.international.caps} caps · {career.international.intlGoals} goals</div>
+            {(career.tournamentSquads ?? []).length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {career.tournamentSquads!.map((t, i) => <span key={i} className="bg-surface-700 rounded px-2 py-1 text-xs">🌍 {t.competition} ({t.season})</span>)}
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-sm text-slate-500">Uncapped — keep performing to force your way into the national-team reckoning.</div>
         )}
@@ -109,6 +146,10 @@ export function PlayerCareerScreen() {
     </div>
   );
 }
+
+function cap(s: string): string { return s.charAt(0) + s.slice(1).toLowerCase(); }
+const STATUS_ORD = ['YOUTH', 'PROSPECT', 'ROTATION', 'KEY', 'STAR', 'CAPTAIN'];
+const statusRank = (s: string) => STATUS_ORD.indexOf(s);
 
 function Row({ label, value }: { label: string; value: string }) {
   return (

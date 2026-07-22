@@ -94,6 +94,49 @@ export interface AvatarMatchSummary {
   trustDelta?: number;
 }
 
+/** A squad-status transition, for the arc/timeline. */
+export interface StatusChange {
+  day: number;
+  from: SquadStatus;
+  to: SquadStatus;
+  reason: string;
+}
+
+/** A promise the manager made to the avatar in a conversation. */
+export interface CareerPromise {
+  text: string;
+  kind: 'PLAYING_TIME' | 'NATURAL_POSITION' | 'CAPTAINCY' | 'NEW_DEAL';
+  deadline: number; // sim day by which it must be honoured
+  kept?: boolean; // set once evaluated
+}
+
+/** A pending choice-driven manager conversation surfaced in the feed. */
+export interface ConversationChoice {
+  text: string;
+  trust?: number;
+  morale?: number;
+  relationship?: number;
+  promise?: CareerPromise['kind'];
+}
+export interface Conversation {
+  id: string;
+  trigger: string;
+  prompt: string;
+  choices: ConversationChoice[];
+}
+
+/** The avatar's rival for the starting shirt at their position. */
+export interface CareerRival {
+  playerId: string;
+  relationship: number; // −100 bitter … +100 friendly
+}
+
+/** A tournament the avatar was named in a national squad for. */
+export interface TournamentSquad {
+  competition: string;
+  season: string;
+}
+
 /** One completed season of the avatar's career, for the timeline/legacy view. */
 export interface CareerSeasonRecord {
   season: string; // label, e.g. "2025/26"
@@ -140,6 +183,31 @@ export interface PlayerCareer {
   agentId?: string;
   sponsorships: Sponsorship[];
   international: InternationalRecord;
+
+  // --- Manager relationship & standing (Tier 2) ------------------------------
+  /** Optional breakdown of what's driving trust, for the UI. */
+  trustFactors?: { ratings: number; objectives: number; talks: number; discipline: number; form: number };
+  /** Squad-status transitions over the career. */
+  statusHistory?: StatusChange[];
+  /** Live promises the manager has made. */
+  promises?: CareerPromise[];
+  /** Choice-driven conversations awaiting the player's answer. */
+  pendingConversations?: Conversation[];
+
+  // --- The shirt battle (Tier 2) ---------------------------------------------
+  rival?: CareerRival | null;
+
+  // --- Adversity (Tier 2) ----------------------------------------------------
+  confidence?: number; // 0–100 slump mechanic
+  matchSharpness?: number; // 0–100, drops after an injury, recovers with minutes
+
+  // --- International (Tier 2) ------------------------------------------------
+  intlManagerTrust?: number;
+  tournamentSquads?: TournamentSquad[];
+
+  // --- Development (Tier 2) --------------------------------------------------
+  /** Progress 0–100 toward the nearest not-yet-earned trait. */
+  traitProgress?: Record<string, number>;
 
   // --- Timeline & legacy -----------------------------------------------------
   milestones: CareerMilestone[];

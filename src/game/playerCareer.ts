@@ -20,6 +20,7 @@ import { createNewGame } from './newGame';
 import {
   generateSeasonObjectives, generateMatchObjectives, evaluateMatchObjectives, updateSeasonObjectives,
 } from './playerObjectives';
+import { roleMeetingConversation } from './playerConversations';
 
 /** The career mode of a save. Absent flag ⇒ 'MANAGER' (every legacy save). */
 export function careerModeOf(meta: Pick<SaveGame, 'careerMode'> | null | undefined): CareerMode {
@@ -184,6 +185,13 @@ export function initialPlayerCareer(
     },
     sponsorships: [],
     international: { capped: false, caps: 0, intlGoals: 0 },
+    statusHistory: [],
+    promises: [],
+    pendingConversations: [roleMeetingConversation(startDay)],
+    rival: null,
+    confidence: 60,
+    matchSharpness: 100,
+    traitProgress: {},
     milestones: [{ day: startDay, text: originMilestone(origin, clubName) }],
     seasonHistory: [],
   };
@@ -407,8 +415,17 @@ export function applyAvatarMatchday(
     return { career: next, news, moraleDelta: 0 };
   }
 
-  // Trust drifts from the games played this advance.
-  next = { ...next, managerTrust: applyMatchdayToCareer(next, appearances.map((a) => a.ps.rating)).managerTrust };
+  // Trust drifts from the games played this advance — big games (cup/continental,
+  // which aren't in the league competitions map) weigh a little heavier, and a
+  // sending-off dents the relationship.
+  let wSum = 0, wTot = 0, discipline = 0;
+  for (const a of appearances) {
+    const w = competitions[a.m.competitionId] ? 1 : 1.3;
+    wSum += a.ps.rating * w; wTot += w;
+    if (a.ps.red) discipline -= 1.5;
+  }
+  const weightedRating = wTot > 0 ? wSum / wTot : PAR_MATCH_RATING;
+  next = { ...next, managerTrust: clamp(trustFromMatch(next.managerTrust, weightedRating) + discipline, 0, 100) as number };
 
   // Per-match objectives: evaluate each appearance's objectives against how the
   // avatar actually played, folding the outcome into trust + morale.
