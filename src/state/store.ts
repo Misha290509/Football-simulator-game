@@ -53,7 +53,10 @@ import { marketWage } from '../engine/finances';
 import type { AcademyPlayer } from '../types/academy';
 import type { Position } from '../types/attributes';
 import { createNewGame, type NewGameConfig } from '../game/newGame';
-import { createPlayerCareerGame, type NewPlayerCareerConfig } from '../game/playerCareer';
+import {
+  createPlayerCareerGame, playerCareerOf, playerSelectionWeight, applyMatchdayToCareer,
+  type NewPlayerCareerConfig,
+} from '../game/playerCareer';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -2463,8 +2466,16 @@ async function playDays(
       ctxByMatch[m.id] = { kind: 'league', runIn };
     }
 
+    // Player Career: the avatar's manager trust biases their club's team
+    // selection, so form/trust decide whether they start (only their club is
+    // affected — the bias map holds just the avatar).
+    const careerAtStart = playerCareerOf(meta);
+    const selectionBias = careerAtStart
+      ? { [careerAtStart.playerId]: playerSelectionWeight(careerAtStart) }
+      : undefined;
+
     // Simulate the whole range in one worker dispatch…
-    const simulated = await simulateMatches(toPlay, clubs, get().players, ctxByMatch);
+    const simulated = await simulateMatches(toPlay, clubs, get().players, ctxByMatch, selectionBias);
     // Fold in any already-played (live) matches so their aftermath ticks too.
     const played = [...simulated, ...extraPlayed];
 
@@ -2833,12 +2844,25 @@ async function playDays(
       }));
     }
 
+    // Player Career: drift the avatar's manager trust from how they rated in the
+    // matches they actually played this advance (deeper inputs arrive in Tier 2).
+    let playerCareer = meta.playerCareer;
+    if (careerAtStart) {
+      const ratings: number[] = [];
+      for (const m of played) {
+        if (m.neutral) continue;
+        const ps = m.playerStats.find((s) => s.playerId === careerAtStart.playerId);
+        if (ps && ps.minutes > 0) ratings.push(ps.rating);
+      }
+      playerCareer = applyMatchdayToCareer(careerAtStart, ratings);
+    }
+
     const newMeta: SaveMeta = {
       ...meta, currentDay: to, news: newsItems, scouting, pendingOffers, board,
       scoutAssignments: scoutRes.assignments, youthProspects, pendingPress,
       scoutReports, playerScoutAssignments: remainingAssignments,
       pendingGala, history, managerStyle, pendingArrivals, storylines, ballonDor,
-      clubRelations,
+      clubRelations, playerCareer,
     };
     set({ matches, players: playersById, clubs: clubsAfter, meta: newMeta });
 

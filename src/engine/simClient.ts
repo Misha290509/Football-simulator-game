@@ -46,6 +46,7 @@ function buildProfiles(
   matches: Match[],
   clubs: Record<string, Club>,
   players: Record<string, Player>,
+  selectionBias?: Record<string, number>,
 ): Record<string, LineupProfile> {
   const needed = new Set<string>();
   for (const m of matches) {
@@ -67,6 +68,7 @@ function buildProfiles(
       {
         tactics: club?.tactics, lineup: club?.lineup, bench: club?.bench, autoMode: club?.autoMode,
         setPieces: { penaltyTakerId: club?.penaltyTakerId, freeKickTakerId: club?.freeKickTakerId, cornerTakerId: club?.cornerTakerId },
+        selectionBias,
       },
     );
   }
@@ -85,9 +87,11 @@ export async function simulateMatches(
   clubs: Record<string, Club>,
   players: Record<string, Player>,
   contextByMatch?: Record<string, MatchContext>,
+  /** Player Career: per-player selection nudges for the avatar (manager trust). */
+  selectionBias?: Record<string, number>,
 ): Promise<Match[]> {
   if (matches.length === 0) return [];
-  const profiles = buildProfiles(matches, clubs, players);
+  const profiles = buildProfiles(matches, clubs, players, selectionBias);
   const reqMatches: SimMatchRequest[] = matches.map((m) => {
     const ctx = contextByMatch?.[m.id];
     return {

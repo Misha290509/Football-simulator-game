@@ -69,6 +69,13 @@ function fitScore(p: Player, slot: Position): number {
 export interface SelectOptions {
   lineup?: (string | null)[];
   autoMode?: boolean;
+  /**
+   * Per-player additive nudge to the auto-selection score, keyed by playerId
+   * (Player Career: a manager who trusts the avatar pushes them up the pecking
+   * order; distrust pushes them down). Small — it flips borderline calls, it
+   * doesn't let a raw prospect leapfrog a clearly better player.
+   */
+  selectionBias?: Record<string, number>;
 }
 
 export type SlotAssignment = { slot: Position; player: Player } | null;
@@ -100,6 +107,7 @@ export function assignXI(
     });
   }
 
+  const bias = opts.selectionBias;
   const available = players.filter(isAvailable);
   slots.forEach((slot, i) => {
     if (result[i]) return;
@@ -107,7 +115,7 @@ export function assignXI(
     let bestScore = -Infinity;
     for (const p of available) {
       if (used.has(p.id)) continue;
-      const score = fitScore(p, slot);
+      const score = fitScore(p, slot) + (bias?.[p.id] ?? 0);
       if (score > bestScore) { bestScore = score; best = p; }
     }
     if (best) { used.add(best.id); result[i] = { slot, player: best }; }

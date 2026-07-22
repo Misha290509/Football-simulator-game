@@ -9,7 +9,7 @@ import type { SaveGame } from '../types/league';
 import type { Dataset } from '../types/dataset';
 import type { Player, Foot } from '../types/player';
 import type { Position } from '../types/attributes';
-import type { CareerMode, PlayerCareer, PlayerCareerOrigin } from '../types/playerCareer';
+import type { CareerMode, PlayerCareer, PlayerCareerOrigin, SquadStatus } from '../types/playerCareer';
 import type { WorldSnapshot } from '../db/db';
 import { Rng, clamp, hashSeed } from '../engine/rng';
 import { generatePlayer } from '../engine/generator';
@@ -234,4 +234,51 @@ export function createPlayerCareerGame(config: NewPlayerCareerConfig): WorldSnap
 function avatarAgeLabel(avatar: Player, year: number): string {
   const age = year - avatar.born.year;
   return `${age}-year-old`;
+}
+
+// --- Selection model & trust (Tier 1 · Step 3) ------------------------------
+
+/** A small squad-status floor on selection priority (grows in Tier 2). */
+const STATUS_SELECTION_BUMP: Record<SquadStatus, number> = {
+  YOUTH: 0, PROSPECT: 0.5, ROTATION: 1, KEY: 2.5, STAR: 3.5, CAPTAIN: 4,
+};
+
+/**
+ * How much the avatar's manager relationship nudges their auto-selection score.
+ * Centred on 50 trust (no nudge); trusted players get a positive push, distrusted
+ * ones a negative one. Deliberately small (~±8 at the extremes) so trust flips
+ * borderline calls — it never lets a raw prospect leapfrog a clearly better pro.
+ * The real route into the side is developing enough ability to be a close call.
+ */
+export function playerSelectionWeight(career: Pick<PlayerCareer, 'managerTrust' | 'status'>): number {
+  const fromTrust = (clamp(career.managerTrust, 0, 100) - 50) * 0.16; // ±8
+  return fromTrust + (STATUS_SELECTION_BUMP[career.status] ?? 0);
+}
+
+/** Average match rating that leaves trust unchanged (a par performance). */
+export const PAR_MATCH_RATING = 6.7;
+
+/**
+ * Drift manager trust from a match performance. A par game (~6.7) barely moves
+ * it; a strong display climbs it, a poor one dents it. Per-match swing is capped
+ * so no single game makes or breaks the relationship, and trust always stays in
+ * [0,100] — a slump is recoverable, never a death spiral.
+ */
+export function trustFromMatch(trust: number, rating: number): number {
+  const delta = clamp((rating - PAR_MATCH_RATING) * 1.8, -3.5, 3.5);
+  return clamp(Math.round((clamp(trust, 0, 100) + delta) * 10) / 10, 0, 100) as number;
+}
+
+/**
+ * Apply an advance's worth of the avatar's appearances to their career: drift
+ * trust from the mean match rating across games actually played. Returns an
+ * updated career block (or the same one if the avatar didn't feature). Pure.
+ */
+export function applyMatchdayToCareer(
+  career: PlayerCareer,
+  ratings: number[],
+): PlayerCareer {
+  if (ratings.length === 0) return career;
+  const avg = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+  return { ...career, managerTrust: trustFromMatch(career.managerTrust, avg) };
 }
