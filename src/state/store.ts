@@ -53,6 +53,7 @@ import { marketWage } from '../engine/finances';
 import type { AcademyPlayer } from '../types/academy';
 import type { Position } from '../types/attributes';
 import { createNewGame, type NewGameConfig } from '../game/newGame';
+import { createPlayerCareerGame, type NewPlayerCareerConfig } from '../game/playerCareer';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -153,6 +154,7 @@ interface GameState {
 
   refreshSavesList: () => Promise<void>;
   newGame: (config: NewGameConfig) => Promise<string>;
+  newPlayerCareer: (config: NewPlayerCareerConfig) => Promise<string>;
   load: (saveId: string) => Promise<boolean>;
   remove: (saveId: string) => Promise<void>;
   persist: () => Promise<void>;
@@ -336,6 +338,21 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   newGame: async (config) => {
     const snapshot = createNewGame(config);
+    await createSave(snapshot);
+    set({
+      loaded: true,
+      meta: snapshot.meta,
+      clubs: snapshot.clubs,
+      players: snapshot.players,
+      matches: snapshot.matches,
+    });
+    rememberLastSave(snapshot.meta.id);
+    await get().refreshSavesList();
+    return snapshot.meta.id;
+  },
+
+  newPlayerCareer: async (config) => {
+    const snapshot = createPlayerCareerGame(config);
     await createSave(snapshot);
     set({
       loaded: true,

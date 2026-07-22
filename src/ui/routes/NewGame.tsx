@@ -3,16 +3,25 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 import { getActiveDataset, isRealDataset } from '../../data/activeDataset';
 import type { Dataset } from '../../types/dataset';
+import type { Position } from '../../types/attributes';
+import type { Foot } from '../../types/player';
 import { CrestBadge } from '../components/Rating';
 import { CHALLENGES, challengeById, pickChallengeClub } from '../../game/challenges';
+import { PLAYER_ARCHETYPES } from '../../game/playerCareer';
+import { YOUTH_POSITIONS } from '../../engine/academy';
+import { POSITION_LABEL } from '../../engine/lineup';
 
 const START_YEAR = 2025;
 const SEASON_LABEL = `${START_YEAR}/${((START_YEAR + 1) % 100).toString().padStart(2, '0')}`;
 
+type Mode = 'MANAGER' | 'PLAYER';
+
 export function NewGame() {
   const navigate = useNavigate();
   const newGame = useGameStore((s) => s.newGame);
+  const newPlayerCareer = useGameStore((s) => s.newPlayerCareer);
 
+  const [mode, setMode] = useState<Mode>('MANAGER');
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [countryId, setCountryId] = useState<string>('');
   const [managerName, setManagerName] = useState('');
@@ -21,6 +30,13 @@ export function NewGame() {
   const [difficulty, setDifficulty] = useState<'RELAXED' | 'NORMAL' | 'HARD'>('NORMAL');
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Player-mode identity.
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [position, setPosition] = useState<Position>('ST');
+  const [foot, setFoot] = useState<Foot>('R');
+  const [archetype, setArchetype] = useState<string>(PLAYER_ARCHETYPES[0].id);
 
   useEffect(() => {
     void getActiveDataset().then((d) => {
@@ -38,30 +54,51 @@ export function NewGame() {
     return <div className="p-6 text-slate-400">Loading dataset…</div>;
   }
 
-  // A picked challenge pins country, club and difficulty.
-  const challenge = challengeById(challengeId ?? undefined);
+  const isPlayer = mode === 'PLAYER';
+
+  // A picked challenge (manager mode only) pins country, club and difficulty.
+  const challenge = !isPlayer ? challengeById(challengeId ?? undefined) : undefined;
   const challengeClub = challenge ? pickChallengeClub(challenge, dataset) : null;
   const effAbbrev = challenge ? challengeClub?.abbrev ?? null : selectedClub;
   const effCountryId = challenge ? challenge.countryId : countryId;
 
-  const canStart = managerName.trim().length > 0 && effAbbrev !== null && !busy;
+  const canStart = isPlayer
+    ? firstName.trim().length > 0 && lastName.trim().length > 0 && effAbbrev !== null && !busy
+    : managerName.trim().length > 0 && effAbbrev !== null && !busy;
 
   const start = async () => {
     if (!canStart || !effAbbrev) return;
     setBusy(true);
     try {
       const seed = seedText.trim() ? Number(seedText) || hashStr(seedText) : undefined;
-      await newGame({
-        saveName: `${managerName.trim()} — ${effAbbrev}`,
-        managerName: managerName.trim(),
-        dataset,
-        managerClubId: `club_${effCountryId}_${effAbbrev}`,
-        startYear: START_YEAR,
-        seed,
-        difficulty: challenge ? challenge.difficulty : difficulty,
-        challengeId: challenge?.id,
-      });
-      navigate('/dashboard');
+      const clubId = `club_${effCountryId}_${effAbbrev}`;
+      if (isPlayer) {
+        await newPlayerCareer({
+          saveName: `${firstName.trim()} ${lastName.trim()} — ${effAbbrev}`,
+          dataset,
+          clubId,
+          startYear: START_YEAR,
+          seed,
+          origin: 'CREATED',
+          playerName: { first: firstName.trim(), last: lastName.trim() },
+          position,
+          preferredFoot: foot,
+          archetype,
+        });
+        navigate('/my-player');
+      } else {
+        await newGame({
+          saveName: `${managerName.trim()} — ${effAbbrev}`,
+          managerName: managerName.trim(),
+          dataset,
+          managerClubId: clubId,
+          startYear: START_YEAR,
+          seed,
+          difficulty: challenge ? challenge.difficulty : difficulty,
+          challengeId: challenge?.id,
+        });
+        navigate('/dashboard');
+      }
     } finally {
       setBusy(false);
     }
@@ -74,90 +111,146 @@ export function NewGame() {
         <button className="btn-ghost" onClick={() => navigate('/')}>Cancel</button>
       </div>
 
+      {/* Career mode */}
       <div className="card p-4">
-        <h2 className="section-title mb-1">Challenges</h2>
-        <p className="text-xs text-slate-500 mb-3">
-          Pre determined challanges to make it more exciting.
-        </p>
+        <h2 className="section-title mb-1">Career mode</h2>
+        <p className="text-xs text-slate-500 mb-3">Run a club as manager, or live the career of a single player.</p>
         <div className="grid sm:grid-cols-2 gap-2">
-          {CHALLENGES.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setChallengeId(challengeId === c.id ? null : c.id)}
-              className={`text-left p-3 rounded-lg border transition-colors ${
-                challengeId === c.id ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'
-              }`}
-            >
-              <div className="font-display font-semibold uppercase tracking-wide text-white">{c.name}</div>
-              <div className="text-xs text-accent-400 mb-1">{c.tagline}</div>
-              <div className="text-xs text-slate-400">{c.brief}</div>
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 mt-1.5">
-                {c.difficulty.toLowerCase()} · {c.seasons} season{c.seasons > 1 ? 's' : ''}{c.rule === 'NO_SIGNINGS' ? ' · no signings' : ''}
-              </div>
-            </button>
-          ))}
+          <button
+            type="button"
+            onClick={() => setMode('MANAGER')}
+            className={`text-left p-3 rounded-lg border transition-colors ${mode === 'MANAGER' ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}
+          >
+            <div className="font-display font-semibold uppercase tracking-wide text-white">Manager</div>
+            <div className="text-xs text-slate-400">Pick squads, sign players, chase trophies.</div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('PLAYER')}
+            className={`text-left p-3 rounded-lg border transition-colors ${mode === 'PLAYER' ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}
+          >
+            <div className="font-display font-semibold uppercase tracking-wide text-white">Player</div>
+            <div className="text-xs text-slate-400">Create a footballer and make your name.</div>
+          </button>
         </div>
       </div>
 
+      {/* Challenges — manager mode only */}
+      {!isPlayer && (
+        <div className="card p-4">
+          <h2 className="section-title mb-1">Challenges</h2>
+          <p className="text-xs text-slate-500 mb-3">Pre determined challanges to make it more exciting.</p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {CHALLENGES.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setChallengeId(challengeId === c.id ? null : c.id)}
+                className={`text-left p-3 rounded-lg border transition-colors ${challengeId === c.id ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}
+              >
+                <div className="font-display font-semibold uppercase tracking-wide text-white">{c.name}</div>
+                <div className="text-xs text-accent-400 mb-1">{c.tagline}</div>
+                <div className="text-xs text-slate-400">{c.brief}</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mt-1.5">
+                  {c.difficulty.toLowerCase()} · {c.seasons} season{c.seasons > 1 ? 's' : ''}{c.rule === 'NO_SIGNINGS' ? ' · no signings' : ''}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="card p-4 space-y-3">
-        <label className="block text-sm">
-          <span className="text-slate-400">Manager name</span>
-          <input
-            className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm"
-            value={managerName}
-            onChange={(e) => setManagerName(e.target.value)}
-            placeholder="e.g. Alex Hunter"
-          />
-        </label>
+        {isPlayer ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="text-slate-400">First name</span>
+                <input className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Alex" />
+              </label>
+              <label className="block text-sm">
+                <span className="text-slate-400">Last name</span>
+                <input className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Hunter" />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="text-slate-400">Position</span>
+                <select className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm" value={position} onChange={(e) => setPosition(e.target.value as Position)}>
+                  {YOUTH_POSITIONS.map((p) => <option key={p} value={p}>{POSITION_LABEL[p] ?? p}</option>)}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="text-slate-400">Preferred foot</span>
+                <select className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm" value={foot} onChange={(e) => setFoot(e.target.value as Foot)}>
+                  <option value="R">Right</option>
+                  <option value="L">Left</option>
+                  <option value="B">Both</option>
+                </select>
+              </label>
+            </div>
+            <div className="block text-sm">
+              <span className="text-slate-400">Archetype</span>
+              <div className="mt-1 grid sm:grid-cols-2 gap-2">
+                {PLAYER_ARCHETYPES.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setArchetype(a.id)}
+                    className={`text-left p-2 rounded-md border text-sm ${archetype === a.id ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}
+                  >
+                    <div className="font-medium text-white">{a.id}</div>
+                    <div className="text-xs text-slate-400">{a.blurb}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <label className="block text-sm">
+            <span className="text-slate-400">Manager name</span>
+            <input className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm" value={managerName} onChange={(e) => setManagerName(e.target.value)} placeholder="e.g. Alex Hunter" />
+          </label>
+        )}
+
         {challenge && (
           <div className="rounded-lg border border-accent/40 bg-accent/5 p-3 text-sm flex items-center gap-3">
             {challengeClub && <CrestBadge abbrev={challengeClub.abbrev} color={challengeClub.primaryColor ?? '#3ba776'} size={30} />}
             <div>
               <div className="font-semibold text-white">{challenge.name} — {challengeClub?.name ?? '…'}</div>
-              <div className="text-xs text-slate-400">
-                Club, country and difficulty are set by the challenge ({challenge.difficulty.toLowerCase()}).
-              </div>
+              <div className="text-xs text-slate-400">Club, country and difficulty are set by the challenge ({challenge.difficulty.toLowerCase()}).</div>
             </div>
           </div>
         )}
-        {!challenge && <label className="block text-sm">
-          <span className="text-slate-400">Country</span>
-          <select
-            className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm"
-            value={countryId}
-            onChange={(e) => { setCountryId(e.target.value); setSelectedClub(null); }}
-          >
-            {dataset.countries.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </label>}
-        {!challenge && <div className="block text-sm">
-          <span className="text-slate-400">Difficulty</span>
-          <div className="mt-1 flex gap-2">
-            {(['RELAXED', 'NORMAL', 'HARD'] as const).map((d) => (
-              <button
-                key={d}
-                type="button"
-                className={difficulty === d ? 'btn-primary flex-1 capitalize' : 'btn-ghost flex-1 capitalize'}
-                onClick={() => setDifficulty(d)}
-              >{d.toLowerCase()}</button>
-            ))}
+        {!challenge && (
+          <label className="block text-sm">
+            <span className="text-slate-400">Country</span>
+            <select
+              className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm"
+              value={countryId}
+              onChange={(e) => { setCountryId(e.target.value); setSelectedClub(null); }}
+            >
+              {dataset.countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+        )}
+        {!challenge && !isPlayer && (
+          <div className="block text-sm">
+            <span className="text-slate-400">Difficulty</span>
+            <div className="mt-1 flex gap-2">
+              {(['RELAXED', 'NORMAL', 'HARD'] as const).map((d) => (
+                <button key={d} type="button" className={difficulty === d ? 'btn-primary flex-1 capitalize' : 'btn-ghost flex-1 capitalize'} onClick={() => setDifficulty(d)}>{d.toLowerCase()}</button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              {difficulty === 'RELAXED' ? 'Bigger starting budget and a patient board.'
+                : difficulty === 'HARD' ? 'Tighter budget and a demanding board — sackings come quicker.'
+                : 'A balanced start.'}
+            </p>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            {difficulty === 'RELAXED' ? 'Bigger starting budget and a patient board.'
-              : difficulty === 'HARD' ? 'Tighter budget and a demanding board — sackings come quicker.'
-              : 'A balanced start.'}
-          </p>
-        </div>}
+        )}
         <label className="block text-sm">
           <span className="text-slate-400">Seed (optional, for reproducible worlds)</span>
-          <input
-            className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm font-mono"
-            value={seedText}
-            onChange={(e) => setSeedText(e.target.value)}
-            placeholder="leave blank for random"
-          />
+          <input className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm font-mono" value={seedText} onChange={(e) => setSeedText(e.target.value)} placeholder="leave blank for random" />
         </label>
         <div className="text-xs text-slate-500">
           Dataset: <strong>{dataset.name}</strong> · Season {SEASON_LABEL}
@@ -165,33 +258,34 @@ export function NewGame() {
         </div>
       </div>
 
-      {!challenge && <div className="card p-4">
-        <h2 className="text-sm font-semibold text-slate-400 mb-3">Choose your club — {country.name}</h2>
-        {country.leagues.map((lg) => (
-          <div key={lg.tier} className="mb-4">
-            <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">{lg.name}</div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {lg.clubs.map((c) => (
-                <button
-                  key={c.abbrev}
-                  onClick={() => setSelectedClub(c.abbrev)}
-                  className={`flex items-center gap-2 px-2 py-2 rounded-md border text-left ${
-                    selectedClub === c.abbrev
-                      ? 'border-accent bg-accent/10'
-                      : 'border-surface-600 hover:bg-surface-700'
-                  }`}
-                >
-                  <CrestBadge abbrev={c.abbrev} color={c.primaryColor ?? '#3ba776'} size={24} />
-                  <span className="text-sm truncate">{c.name}</span>
-                </button>
-              ))}
+      {!challenge && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-3">
+            {isPlayer ? `Choose your club — ${country.name}` : `Choose your club — ${country.name}`}
+          </h2>
+          {isPlayer && <p className="text-xs text-slate-500 mb-3">You’ll start in this club’s academy, fighting for a place in the first team.</p>}
+          {country.leagues.map((lg) => (
+            <div key={lg.tier} className="mb-4">
+              <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">{lg.name}</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {lg.clubs.map((c) => (
+                  <button
+                    key={c.abbrev}
+                    onClick={() => setSelectedClub(c.abbrev)}
+                    className={`flex items-center gap-2 px-2 py-2 rounded-md border text-left ${selectedClub === c.abbrev ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}
+                  >
+                    <CrestBadge abbrev={c.abbrev} color={c.primaryColor ?? '#3ba776'} size={24} />
+                    <span className="text-sm truncate">{c.name}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>}
+          ))}
+        </div>
+      )}
 
       <button className="btn-primary w-full py-3" disabled={!canStart} onClick={start}>
-        {busy ? 'Building world…' : challenge ? `Start Challenge: ${challenge.name}` : 'Start Career'}
+        {busy ? 'Building world…' : isPlayer ? 'Start Player Career' : challenge ? `Start Challenge: ${challenge.name}` : 'Start Career'}
       </button>
     </div>
   );

@@ -1,12 +1,14 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useGameStore, lastSaveId } from './state/store';
+import { isPlayerCareer } from './game/playerCareer';
 import { Layout } from './ui/Layout';
 import { MainMenu } from './ui/routes/MainMenu';
 
 // Route-level code splitting keeps the initial bundle small (charts, etc.).
 const NewGame = lazy(() => import('./ui/routes/NewGame').then((m) => ({ default: m.NewGame })));
 const Dashboard = lazy(() => import('./ui/routes/Dashboard').then((m) => ({ default: m.Dashboard })));
+const PlayerHome = lazy(() => import('./ui/routes/PlayerHome').then((m) => ({ default: m.PlayerHome })));
 const Squad = lazy(() => import('./ui/routes/Squad').then((m) => ({ default: m.Squad })));
 const Tactics = lazy(() => import('./ui/routes/Tactics').then((m) => ({ default: m.Tactics })));
 const PlayerProfile = lazy(() => import('./ui/routes/PlayerProfile').then((m) => ({ default: m.PlayerProfile })));
@@ -28,6 +30,13 @@ const Continental = lazy(() => import('./ui/routes/Continental').then((m) => ({ 
 const Records = lazy(() => import('./ui/routes/Records').then((m) => ({ default: m.Records })));
 const History = lazy(() => import('./ui/routes/History').then((m) => ({ default: m.History })));
 const Sandbox = lazy(() => import('./ui/routes/Sandbox').then((m) => ({ default: m.Sandbox })));
+
+/** In Player-career saves the manager dashboard is meaningless — send the human
+ *  to their My Player home instead (covers resume + any /dashboard link). */
+function DashboardGate() {
+  const isPlayer = useGameStore((s) => isPlayerCareer(s.meta));
+  return isPlayer ? <Navigate to="/my-player" replace /> : <Dashboard />;
+}
 
 function Protected({ children }: { children: React.ReactNode }) {
   const loaded = useGameStore((s) => s.loaded);
@@ -74,7 +83,8 @@ export default function App() {
     <Routes>
       <Route path="/" element={<MainMenu />} />
       <Route path="/new" element={<Suspense fallback={null}><NewGame /></Suspense>} />
-      <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
+      <Route path="/dashboard" element={<Protected><DashboardGate /></Protected>} />
+      <Route path="/my-player" element={<Protected><PlayerHome /></Protected>} />
       <Route path="/squad" element={<Protected><Squad /></Protected>} />
       <Route path="/tactics" element={<Protected><Tactics /></Protected>} />
       <Route path="/player/:id" element={<Protected><PlayerProfile /></Protected>} />
