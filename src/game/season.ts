@@ -20,7 +20,7 @@ import { Rng } from '../engine/rng';
 import { developPlayer, shouldRetire, type SeasonPerf } from '../engine/development';
 import { computeSeasonFinances, deriveBudgets } from '../engine/finances';
 import { coachingFactor, trainingBias } from '../engine/staff';
-import { evaluateObjective, setObjective, SACK_THRESHOLD } from './board';
+import { evaluateObjective, setObjective, SACK_THRESHOLD, fanConfidenceOf } from './board';
 import type { BoardState } from '../types/staff';
 import { runAiTransferWindow, weeklyWageBill } from './transfers';
 import { runAiToAiTransfers } from './aiTransfers';
@@ -642,8 +642,11 @@ export async function resolveAndRollover(
     if (where) {
       const outcome = evaluateObjective(where.pos, meta.board);
       const confidence = Math.max(0, Math.min(100, meta.board.confidence + outcome.confidenceDelta));
+      // Supporters judge the campaign too, a touch more sharply than the board,
+      // and carry that mood into the new season (§ #42).
+      const fanConfidence = Math.max(0, Math.min(100, fanConfidenceOf(meta.board) + Math.round(outcome.confidenceDelta * 1.1)));
       news.push(mkNews(meta.currentDay, 'BOARD', `Season review: objective ${outcome.verdict}`,
-        `${outcome.summary} Finished ${where.pos} (target ${meta.board.targetPosition}). Board confidence: ${confidence}%.`));
+        `${outcome.summary} Finished ${where.pos} (target ${meta.board.targetPosition}). Board confidence: ${confidence}%, supporters ${fanConfidence}%.`));
       if (confidence < SACK_THRESHOLD) {
         sacked = true;
         news.push(mkNews(meta.currentDay, 'BOARD', 'You have been dismissed',
@@ -653,8 +656,8 @@ export async function resolveAndRollover(
         const managerComp = Object.values(competitions).find((c) =>
           c.clubIds.includes(meta.managerClubId));
         board = managerComp
-          ? { ...setObjective(finalClubs[meta.managerClubId] ?? clubs[meta.managerClubId], managerComp), confidence }
-          : { ...meta.board, confidence };
+          ? { ...setObjective(finalClubs[meta.managerClubId] ?? clubs[meta.managerClubId], managerComp), confidence, fanConfidence }
+          : { ...meta.board, confidence, fanConfidence };
       }
     }
   }

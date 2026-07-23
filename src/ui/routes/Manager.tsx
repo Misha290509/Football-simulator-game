@@ -102,9 +102,30 @@ export function Manager() {
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-slate-400">Boardroom</h2>
-            <span className="text-xs text-slate-500">Board confidence: <span className="font-mono text-slate-300">{meta.board?.confidence ?? 50}%</span></span>
           </div>
-          <p className="text-xs text-slate-500 mb-3">The board back you based on their confidence and your reputation. You can ask again after a while.</p>
+          {(() => {
+            const boardConf = meta.board?.confidence ?? 50;
+            const fanConf = meta.board?.fanConfidence ?? 60;
+            const Meter = ({ label, v }: { label: string; v: number }) => {
+              const color = v < 20 ? 'bg-rose-500' : v < 40 ? 'bg-amber-500' : 'bg-emerald-500';
+              return (
+                <div className="flex-1 min-w-[8rem]">
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-slate-400">{label}</span>
+                    <span className="font-mono text-slate-300">{v}%</span>
+                  </div>
+                  <div className="h-2 rounded bg-surface-700 overflow-hidden"><div className={`h-full ${color}`} style={{ width: `${v}%` }} /></div>
+                </div>
+              );
+            };
+            return (
+              <div className="flex gap-4 mb-3">
+                <Meter label="🏛️ Board confidence" v={boardConf} />
+                <Meter label="📣 Supporter confidence" v={fanConf} />
+              </div>
+            );
+          })()}
+          <p className="text-xs text-slate-500 mb-3">The board judge you on results and expectations; the supporters also want entertaining football and marquee signings — and a mutinous crowd erodes the board's patience.</p>
           <div className="flex flex-wrap gap-2">
             {(['TRANSFER_BUDGET', 'WAGE_BUDGET', 'FACILITIES'] as BoardRequestKind[]).map((k) => (
               <button key={k} className="btn-ghost text-sm" onClick={async () => flash((await requestFromBoard(k)).message)}>

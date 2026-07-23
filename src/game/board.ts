@@ -5,8 +5,10 @@
 // ---------------------------------------------------------------------------
 
 import type { BoardState } from '../types/staff';
-import type { Club } from '../types/club';
+import type { Club, Tactics } from '../types/club';
 import type { Competition } from '../types/competition';
+
+const clamp01to100 = (n: number) => Math.min(100, Math.max(0, Math.round(n)));
 
 /** The continental competition a given league finish qualifies for. */
 function continentalTarget(comp: Competition, target: number): string {
@@ -34,7 +36,54 @@ export function setObjective(club: Club, comp: Competition): BoardState {
   else if (rep >= 65) { target = Math.round(n * 0.45); text = 'Finish comfortably in the top half'; }
   else if (rep >= 55) { target = Math.round(n * 0.65); text = 'Achieve a solid mid-table finish'; }
   else { target = Math.max(1, n - (comp.promotion?.autoRelegate ?? 3) - 2); text = 'Avoid relegation'; }
-  return { targetPosition: target, objectiveText: text, confidence: 60 };
+  return { targetPosition: target, objectiveText: text, confidence: 60, fanConfidence: 60 };
+}
+
+/** Read the current fan confidence (defaulting older saves to a neutral 60). */
+export const fanConfidenceOf = (board: BoardState): number => board.fanConfidence ?? 60;
+
+/** How attacking the crowd perceives the side to be, 0 (dour) … 1 (cavalier),
+ *  from the chosen tactics. Fans reward adventure and punish negativity. */
+export function attackingScore(tactics?: Tactics): number {
+  if (!tactics) return 0.5;
+  const off = tactics.offensive === 'DIRECT' ? 0.75 : tactics.offensive === 'COUNTER' ? 0.4 : 0.55;
+  const def = tactics.defensive === 'PRESSING' ? 0.75 : tactics.defensive === 'DEEP' ? 0.3 : 0.55;
+  const tempo = ((tactics.tempo ?? 50) - 50) / 100; // −0.5 … +0.5
+  const press = ((tactics.pressing ?? 50) - 50) / 100;
+  return Math.min(1, Math.max(0, (off + def) / 2 + tempo * 0.3 + press * 0.2));
+}
+
+/**
+ * In-season supporter-confidence movement (§ #42). Fans are more volatile and
+ * less patient than the boardroom: they swing harder on results, and they also
+ * judge entertainment — goals scored and an adventurous approach lift the mood,
+ * dour football drains it.
+ */
+export function tickFanConfidence(
+  board: BoardState, position: number, wins: number, draws: number, losses: number,
+  ctx: { attacking: number; goalsFor: number; games: number },
+): number {
+  let f = fanConfidenceOf(board) + wins * 1.9 + draws * 0.1 - losses * 2.0;
+  const gap = board.targetPosition - position;
+  f += gap >= 2 ? 1.2 : gap >= 0 ? 0.3 : gap >= -3 ? -1.3 : -2.6;
+  if (ctx.games > 0) f += (ctx.goalsFor / ctx.games - 1.3) * 0.9; // goals please the crowd
+  f += (ctx.attacking - 0.5) * 1.6;                                // adventure vs negativity
+  return clamp01to100(f);
+}
+
+/** Fan mood band (0 behind you · 1 restless · 2 turning on you). */
+export function fanBand(fan: number): 0 | 1 | 2 {
+  return fan < 20 ? 2 : fan < 38 ? 1 : 0;
+}
+
+/**
+ * Supporter pressure on the boardroom: a mutinous crowd erodes the board's
+ * patience, a jubilant one buys the manager a little extra rope. Small, so the
+ * board stays the primary arbiter of the manager's job.
+ */
+export function applyFanPressure(boardConfidence: number, fan: number): number {
+  const delta = fan < 20 ? -1.2 : fan < 35 ? -0.5 : fan > 80 ? +0.6 : 0;
+  return clamp01to100(boardConfidence + delta);
 }
 
 export interface ObjectiveOutcome {

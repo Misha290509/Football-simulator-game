@@ -33,7 +33,7 @@ import {
 } from '../engine/liveMatch';
 import { evaluateInteraction, egoOf, type TalkTone, type InteractKind } from '../engine/morale';
 import { switchClub, fallbackJobOffers } from '../game/careers';
-import { setObjective, tickBoardConfidence, confidenceBand } from '../game/board';
+import { setObjective, tickBoardConfidence, confidenceBand, tickFanConfidence, fanBand, fanConfidenceOf, attackingScore, applyFanPressure } from '../game/board';
 import { evaluateBoardRequest, generatePressQuestion, evaluatePressAnswer, type BoardRequestKind } from '../game/boardroom';
 import { areRivals, derbyResultBonus } from '../game/rivalries';
 import { generateNarratives } from '../game/narratives';
@@ -149,6 +149,12 @@ function godScale(p: Player, delta: number): Player {
 // floor and climbs FAMILIARITY_GAIN per match played in it until fully drilled.
 const FAMILIARITY_FLOOR = 0.35;
 const FAMILIARITY_GAIN = 0.08; // ~8 matches from the floor to full fluency
+
+/** Nudge supporter confidence on the board state (§ #42), clamped 0–100. */
+function bumpFan<T extends { fanConfidence?: number } | undefined>(board: T, delta: number): T {
+  if (!board) return board;
+  return { ...board, fanConfidence: Math.min(100, Math.max(0, Math.round((board.fanConfidence ?? 60) + delta))) };
+}
 
 /** Scale a lineup profile's strength by a Club-DNA multiplier (matches simWorker). */
 function scaleProfile(p: LineupProfile, mod: number): LineupProfile {
@@ -1293,8 +1299,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     };
     // Clear any scout report/assignment now that he's ours.
     const reports = { ...(meta.scoutReports ?? {}) }; delete reports[playerId];
+    // A marquee arrival lifts the supporters (§ #42) — the bigger the name, the
+    // bigger the buzz.
+    const board = bumpFan(meta.board, Math.min(8, Math.max(0, (player.overall - 74) * 0.9)));
     const newMeta: SaveMeta = {
-      ...meta, news: [...meta.news, news], scoutReports: reports,
+      ...meta, board, news: [...meta.news, news], scoutReports: reports,
       installments: [...(meta.installments ?? []), ...staged],
       playerScoutAssignments: (meta.playerScoutAssignments ?? []).filter((a) => a.playerId !== playerId),
     };
@@ -1563,7 +1572,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       body = `Loaned ${player.name.first} ${player.name.last} to ${aiClub.shortName} until ${offer.loanUntilYear}.`;
     }
     const newsItem = { id: `news_offer_${offerId}`, day: meta.currentDay, category: 'TRANSFER' as const, title: 'Deal completed', body, read: false };
-    const newMeta: SaveMeta = { ...meta, academies, pendingOffers: (meta.pendingOffers ?? []).filter((o) => o.id !== offerId), news: [...meta.news, newsItem, ...extraNews] };
+    // Selling a prized player sours the supporters (§ #42); a loan or a fringe
+    // sale barely registers.
+    const fanDrop = offer.type === 'BUY'
+      ? (player.squadRole === 'KEY' ? 7 : player.squadRole === 'FIRST' ? 4 : 0) + Math.max(0, (player.overall - 80) * 0.6)
+      : 0;
+    const board = fanDrop > 0 ? bumpFan(meta.board, -fanDrop) : meta.board;
+    const newMeta: SaveMeta = { ...meta, board, academies, pendingOffers: (meta.pendingOffers ?? []).filter((o) => o.id !== offerId), news: [...meta.news, newsItem, ...extraNews] };
     set({ clubs: newClubs, players: newPlayers, meta: newMeta });
     await putClubs(meta.id, Object.values(newClubs).filter((c) => c.id === aiClub.id || c.id === managerClub.id));
     await putPlayers(meta.id, [newPlayers[player.id]]);
@@ -3534,7 +3549,7 @@ async function playDays(
     {
       const mgrComp = Object.values(meta.competitions).find((c) => c.clubIds.includes(meta.managerClubId));
       if (board && mgrComp) {
-        let w = 0, d = 0, l = 0;
+        let w = 0, d = 0, l = 0, gfSum = 0;
         for (const m of playedMerged) {
           if (m.competitionId !== mgrComp.id) continue;
           const isH = m.homeClubId === meta.managerClubId;
@@ -3542,6 +3557,7 @@ async function playDays(
           if (!isH && !isA) continue;
           const gf = isH ? m.homeGoals : m.awayGoals;
           const ga = isH ? m.awayGoals : m.homeGoals;
+          gfSum += gf;
           if (gf > ga) w++; else if (gf === ga) d++; else l++;
         }
         if (w + d + l > 0) {
@@ -3549,7 +3565,13 @@ async function playDays(
           const pos = rows.findIndex((r) => r.clubId === meta.managerClubId) + 1;
           if (pos > 0) {
             const before = confidenceBand(board.confidence);
-            board = { ...board, confidence: tickBoardConfidence(board, pos, w, d, l) };
+            const fanBefore = fanBand(fanConfidenceOf(board));
+            // Fans react first, then their mood presses on the boardroom.
+            const attacking = attackingScore(clubs[meta.managerClubId]?.tactics);
+            const fan = tickFanConfidence(board, pos, w, d, l, { attacking, goalsFor: gfSum, games: w + d + l });
+            let conf = tickBoardConfidence(board, pos, w, d, l);
+            conf = applyFanPressure(conf, fan);
+            board = { ...board, confidence: conf, fanConfidence: fan };
             const after = confidenceBand(board.confidence);
             if (after > before) {
               newsItems.push({
@@ -3558,6 +3580,17 @@ async function playDays(
                 body: after === 2
                   ? 'Results have the board weighing your future — a turnaround is needed, and quickly.'
                   : "The board aren't happy with the recent run and expect an improvement.",
+                read: false,
+              });
+            }
+            const fanAfter = fanBand(fan);
+            if (fanAfter > fanBefore) {
+              newsItems.push({
+                id: `news_fanmood_${to}`, day: to, category: 'BOARD',
+                title: fanAfter === 2 ? 'The supporters are turning' : 'Restless supporters',
+                body: fanAfter === 2
+                  ? 'The terraces have run out of patience — discontent is spilling over and the board have noticed.'
+                  : 'The fans are grumbling about results and the football on offer.',
                 read: false,
               });
             }

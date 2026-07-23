@@ -35,5 +35,9 @@ export interface Facilities {
 export interface BoardState {
   targetPosition: number; // expected league finish
   objectiveText: string;
-  confidence: number; // 0–100 job security
+  confidence: number; // 0–100 job security (the boardroom)
+  /** Supporter confidence, 0–100 (§ #42). Reacts to results, entertainment,
+   *  signings and sales; sustained fan unrest drags the board down. Absent ⇒
+   *  treated as 60 (neutral) so existing saves migrate cleanly. */
+  fanConfidence?: number;
 }
