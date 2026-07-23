@@ -4,6 +4,8 @@ import { CrestBadge } from '../components/Rating';
 import { ratingColor, fullName } from '../format';
 import type { MatchEvent } from '../../types/match';
 
+const WEATHER_ICON: Record<string, string> = { CLEAR: '☀️', RAIN: '🌧️', WIND: '💨', SNOW: '❄️', HOT: '🔥' };
+
 const EVENT_ICON: Record<string, string> = {
   GOAL: '⚽',
   YELLOW: '🟨',
@@ -60,6 +62,12 @@ export function MatchDetail() {
             <div className="text-xs text-slate-500 mt-1">
               xG {match.homeXg.toFixed(2)} – {match.awayXg.toFixed(2)}
             </div>
+            {(match.weather || match.referee) && (
+              <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-center gap-2">
+                {match.weather && <span title="Weather">{WEATHER_ICON[match.weather]} {match.weather.charAt(0) + match.weather.slice(1).toLowerCase()}</span>}
+                {match.referee && <span title="Referee">· 🧑‍⚖️ {match.referee}</span>}
+              </div>
+            )}
           </div>
           <div className="flex-1 flex items-center gap-3">
             <CrestBadge abbrev={away.abbrev} color={away.primaryColor} size={40} />

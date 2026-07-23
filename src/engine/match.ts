@@ -20,9 +20,49 @@ export interface MatchOutcome {
   awayXg: number;
   events: MatchEvent[];
   playerStats: PlayerMatchStat[];
+  weather?: Weather;
+  referee?: string;
 }
 
 const HOME_ADVANTAGE = 9; // added to home attack quality
+
+// --- Match environment: weather + referee (§ Match realism) ----------------
+// Derived from a sub-seed so it doesn't perturb the base match RNG stream, then
+// applied as small, symmetric modifiers. Deterministic and returned for display.
+
+export type Weather = 'CLEAR' | 'RAIN' | 'WIND' | 'SNOW' | 'HOT';
+
+export interface MatchEnv {
+  weather: Weather;
+  referee: string;
+  strictness: number; // card-frequency multiplier
+  shotVol: number;    // team shot-volume multiplier
+  chanceQual: number; // chance-quality multiplier
+}
+
+const WEATHER_MODS: Record<Weather, { shotVol: number; chanceQual: number }> = {
+  CLEAR: { shotVol: 1.0, chanceQual: 1.0 },
+  RAIN: { shotVol: 1.02, chanceQual: 0.97 },
+  WIND: { shotVol: 1.0, chanceQual: 0.96 },
+  SNOW: { shotVol: 0.97, chanceQual: 0.95 },
+  HOT: { shotVol: 0.97, chanceQual: 1.0 },
+};
+
+const REFEREE_NAMES = [
+  'Referee Vega', 'Referee Björk', 'Referee Costa', 'Referee Almeida', 'Referee Novák',
+  'Referee Marsh', 'Referee Ozan', 'Referee Diallo', 'Referee Renner', 'Referee Sato',
+];
+
+/** Roll the (deterministic) weather + referee for a match from its seed. */
+export function rollMatchEnv(seed: number): MatchEnv {
+  const r = new Rng((seed ^ 0x5eed_c0de) >>> 0);
+  const w = r.next();
+  const weather: Weather = w < 0.62 ? 'CLEAR' : w < 0.78 ? 'RAIN' : w < 0.88 ? 'WIND' : w < 0.94 ? 'HOT' : 'SNOW';
+  const referee = REFEREE_NAMES[r.int(0, REFEREE_NAMES.length - 1)];
+  const strictness = 0.72 + r.float(0, 0.62); // 0.72 … 1.34
+  const wm = WEATHER_MODS[weather];
+  return { weather, referee, strictness, shotVol: wm.shotVol, chanceQual: wm.chanceQual };
+}
 
 interface Sub { minute: number; offId: string; onId: string }
 type Pool = { playerId: string; weight: number }[];
@@ -93,6 +133,7 @@ function simulateSide(
   opp: SideContext,
   events: MatchEvent[],
   statMap: Map<string, PlayerMatchStat>,
+  env: MatchEnv,
 ): void {
   const homeBonus = side.isHome ? HOME_ADVANTAGE : 0;
   const attackQuality = side.profile.attack + 0.35 * side.profile.midfield + homeBonus;
@@ -101,9 +142,10 @@ function simulateSide(
 
   const diff = attackQuality - defQuality;
   // A wider spread on squad strength so the better side dominates the chances —
-  // upsets still happen, but weak teams shouldn't win leagues.
+  // upsets still happen, but weak teams shouldn't win leagues. Weather nudges
+  // the volume/quality of chances.
   const shotsLambda =
-    Math.max(2.0, Math.min(22, 9.6 + diff * 0.30)) * side.profile.shotVolumeMod;
+    Math.max(2.0, Math.min(22, 9.6 + diff * 0.30)) * side.profile.shotVolumeMod * env.shotVol;
   const numShots = poisson(rng, shotsLambda);
 
   const sideKey: 'home' | 'away' = side.isHome ? 'home' : 'away';
@@ -117,7 +159,7 @@ function simulateSide(
         ? rng.float(0.28, 0.55)
         : roll > 0.68
           ? rng.float(0.1, 0.28)
-          : rng.float(0.02, 0.1)) * side.profile.chanceQualityMod;
+          : rng.float(0.02, 0.1)) * side.profile.chanceQualityMod * env.chanceQual;
     side.xg += xq;
 
     const minute = rng.int(1, 90);
@@ -169,8 +211,9 @@ function simulateCards(
   sideKey: 'home' | 'away',
   events: MatchEvent[],
   statMap: Map<string, PlayerMatchStat>,
+  strictness: number,
 ): void {
-  const yellowLambda = 1.4 + (profile.aggression - 50) / 40;
+  const yellowLambda = (1.4 + (profile.aggression - 50) / 40) * strictness;
   const yellows = poisson(rng, Math.max(0.3, yellowLambda));
   for (let i = 0; i < yellows; i++) {
     const pid = weightedPick(rng, profile.starters.map((id) => ({ playerId: id, weight: 1 })));
@@ -245,6 +288,7 @@ export function simulateMatch(
   seed: number,
 ): MatchOutcome {
   const rng = new Rng(seed);
+  const env = rollMatchEnv(seed);
   const homeSubs = planSubs(rng, homeProfile);
   const awaySubs = planSubs(rng, awayProfile);
   const hb = benchMaps(homeProfile);
@@ -258,10 +302,10 @@ export function simulateMatch(
 
   events.push({ minute: 0, type: 'KICKOFF', side: 'home', description: 'Kick-off' });
 
-  simulateSide(rng, home, away, events, statMap);
-  simulateSide(rng, away, home, events, statMap);
-  simulateCards(rng, homeProfile, 'home', events, statMap);
-  simulateCards(rng, awayProfile, 'away', events, statMap);
+  simulateSide(rng, home, away, events, statMap, env);
+  simulateSide(rng, away, home, events, statMap, env);
+  simulateCards(rng, homeProfile, 'home', events, statMap, env.strictness);
+  simulateCards(rng, awayProfile, 'away', events, statMap, env.strictness);
 
   for (const s of homeSubs) events.push({ minute: s.minute, type: 'SUB', side: 'home', playerId: s.onId, assistPlayerId: s.offId, description: 'Substitution' });
   for (const s of awaySubs) events.push({ minute: s.minute, type: 'SUB', side: 'away', playerId: s.onId, assistPlayerId: s.offId, description: 'Substitution' });
@@ -279,6 +323,8 @@ export function simulateMatch(
     awayXg: Math.round(away.xg * 100) / 100,
     events,
     playerStats: [...statMap.values()],
+    weather: env.weather,
+    referee: env.referee,
   };
 }
 

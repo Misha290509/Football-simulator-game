@@ -59,6 +59,10 @@ export interface Match {
   neutral?: boolean;
   /** Display label for continental rounds (e.g. "League Phase", "Quarter-final"). */
   stageLabel?: string;
+  /** Match-day weather (§ Match realism) — cosmetic + small sim effect. */
+  weather?: 'CLEAR' | 'RAIN' | 'WIND' | 'SNOW' | 'HOT';
+  /** The match referee (§ Match realism). */
+  referee?: string;
 }
 
 /**

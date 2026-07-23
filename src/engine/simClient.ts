@@ -137,6 +137,8 @@ export async function simulateMatches(
       awayXg: outcome.awayXg,
       events: outcome.events,
       playerStats: outcome.playerStats,
+      weather: outcome.weather,
+      referee: outcome.referee,
     };
   });
 }
