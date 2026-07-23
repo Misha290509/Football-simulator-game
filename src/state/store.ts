@@ -106,6 +106,7 @@ import {
   type BidResult,
 } from '../game/transfers';
 import { advanceRumours } from '../game/rumours';
+import { buildDeadlineFeed } from '../game/deadlineDay';
 import { agentDemands, evaluateContractOffer, applyContractOffer, leaveWillingness, type ContractOffer, type NegotiationResult } from '../game/contracts';
 import { transferFloor, overpricedAsk, respondToTransferOffer, type FeeOffer } from '../game/feeNegotiation';
 import type { TransferTalk, InstalmentPayment } from '../types/league';
@@ -3709,6 +3710,33 @@ async function playDays(
       await putClubs(meta.id, Object.values(clubsAfter));
     }
 
+    // Deadline day (§ Living market): the window just slammed shut this advance.
+    // Run a small burst of last-minute AI business and format the theatre.
+    let deadlineFeed = meta.deadlineFeed;
+    if (wasOpen && !nowOpen) {
+      const closingKind = windowOnDate(currentDate({ ...meta, currentDay: from }, maxDayW));
+      const burst = runAiToAiTransfers(clubsAfter, playersById, meta.managerClubId, toYear,
+        new Rng((meta.seed ^ (to * 0x0dead1e5)) >>> 0), { maxDeals: 8, day: to });
+      if (burst.deals.length > 0) {
+        playersById = burst.players;
+        clubsAfter = burst.clubs;
+        for (const d of burst.deals) changedIds.add(d.playerId);
+        await putClubs(meta.id, Object.values(clubsAfter));
+      }
+      // The manager's own late business folded into the same feed.
+      const managerMoves = newsItems
+        .filter((n) => n.day === to && n.category === 'TRANSFER' && /completes his move|Signed |Sold /.test(n.title + n.body))
+        .slice(-4)
+        .map((n) => ({ playerName: n.title, text: n.title }));
+      deadlineFeed = buildDeadlineFeed(burst.deals, managerMoves, playersById, clubsAfter, closingKind === 'WINTER' ? 'Winter' : 'Summer', to);
+      newsItems.push({
+        id: `news_deadline_${to}`, day: to, category: 'TRANSFER',
+        title: `⏰ ${deadlineFeed.windowLabel} deadline day`,
+        body: `The window slams shut — ${burst.deals.length} late deal${burst.deals.length === 1 ? '' : 's'} across the leagues. See the deadline feed on the Inbox.`,
+        read: false,
+      });
+    }
+
     // Autumn awards gala — the Ballon d'Or et al., announced in late October of
     // the new season honouring the prior campaign. Fires once its day arrives.
     let pendingGala = meta.pendingGala ?? null;
@@ -3886,7 +3914,7 @@ async function playDays(
       scoutAssignments: scoutRes.assignments, youthProspects, pendingPress,
       scoutReports, playerScoutAssignments: remainingAssignments,
       pendingGala, history, managerStyle, pendingArrivals, storylines, ballonDor,
-      clubRelations, playerCareer, managerClubId, rumours,
+      clubRelations, playerCareer, managerClubId, rumours, deadlineFeed,
     };
     set({ matches, players: playersById, clubs: clubsAfter, meta: newMeta });
 

@@ -164,6 +164,14 @@ export interface Rumour {
   valuation?: number;
 }
 
+/** A deadline-day feed (§ Living market, #31): the burst of last-minute business
+ *  when a window slams shut, presented as a ticking chronological list. */
+export interface DeadlineFeed {
+  windowLabel: string; // "Summer" | "Winter"
+  day: number;
+  items: { time: string; text: string; big?: boolean; mine?: boolean }[];
+}
+
 export interface TransferOffer {
   id: string;
   type: 'BUY' | 'LOAN';
@@ -340,6 +348,8 @@ export interface SaveGame {
   pendingOffers?: TransferOffer[];
   /** Live transfer rumours (§ Living market, #30). */
   rumours?: Rumour[];
+  /** The most recent deadline-day feed (§ Living market, #31). */
+  deadlineFeed?: DeadlineFeed;
 
   // --- Academy system (§ Academy) ----------------------------------------
   /** Per-club youth academies, keyed by clubId. */
