@@ -152,6 +152,43 @@ export function evaluateBid(
   return { ok: true, message: 'Transfer agreed!' };
 }
 
+export interface SwapEval {
+  ok: boolean;
+  message: string;
+  /** The offered player's worth to the seller, and the cash shortfall if any. */
+  offeredWorth: number;
+  shortfall: number;
+}
+
+/**
+ * Evaluate a part-exchange (§ Living market, #32): cash + one of the manager's
+ * players for a target. The seller credits the offered player at his market
+ * value, discounted if he is clearly below their level (they can't use him),
+ * and accepts when cash + that worth clears the asking price and terms are met.
+ */
+export function evaluateSwap(
+  target: Player,
+  seller: Club,
+  offered: Player,
+  cash: number,
+  wageOffer: number,
+  buyer: Club,
+  buyerWageBill: number,
+  year?: number,
+): SwapEval {
+  const ask = askingPrice(target, year);
+  const fit = offered.overall >= seller.reputation - 12 ? 1 : offered.overall >= seller.reputation - 20 ? 0.7 : 0.45;
+  const offeredWorth = Math.round(offered.value * fit);
+  const total = cash + offeredWorth;
+  const need = target.squadRole === 'KEY' && !target.transferListed ? Math.round(ask * 1.1) : ask;
+  if (cash > buyer.finances.transferBudget) return { ok: false, message: 'The cash element exceeds your transfer budget.', offeredWorth, shortfall: 0 };
+  if (total < need) return { ok: false, message: `${seller.shortName} value ${target.name.last} at ${need.toLocaleString()}; your package is worth about ${total.toLocaleString()}.`, offeredWorth, shortfall: need - total };
+  const demand = wageDemand(target);
+  if (wageOffer < demand) return { ok: false, message: `${target.name.last} wants ${demand.toLocaleString()}/wk.`, offeredWorth, shortfall: 0 };
+  if (buyerWageBill - offered.contract.wage + wageOffer > buyer.finances.wageBudget) return { ok: false, message: 'That wage would breach your wage budget.', offeredWorth, shortfall: 0 };
+  return { ok: true, message: `${seller.shortName} accept the part-exchange!`, offeredWorth, shortfall: 0 };
+}
+
 /** Produce the updated buyer/seller/player after an agreed transfer. */
 export function applyTransfer(
   buyer: Club,

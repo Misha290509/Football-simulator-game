@@ -102,6 +102,7 @@ import {
   loanFee,
   generateOffers,
   canAgreePreContract,
+  evaluateSwap,
   type BidResult,
 } from '../game/transfers';
 import { advanceRumours } from '../game/rumours';
@@ -269,6 +270,8 @@ interface GameState {
   acceptOffer: (offerId: string, buyBack?: { price: number; years: number }) => Promise<void>;
   /** Re-sign a player under a buy-back clause the manager holds (fixed fee). */
   triggerBuyBack: (playerId: string, offer: ContractOffer) => Promise<BidResult>;
+  /** Propose a part-exchange: cash + one of your players for a target (§ #32). */
+  proposeSwap: (targetId: string, offeredId: string, cash: number, offer: ContractOffer) => Promise<BidResult>;
   rejectOffer: (offerId: string) => Promise<void>;
   /** Counter an incoming transfer bid with a higher fee; the AI accepts, improves or walks. */
   counterOffer: (offerId: string, counterFee: number) => Promise<string>;
@@ -1608,6 +1611,60 @@ export const useGameStore = create<GameState>((set, get) => ({
     await putPlayers(meta.id, [signed]);
     await persistMeta(newMeta);
     return { ok: true, message: `${player.name.last} is back!` };
+  },
+
+  proposeSwap: async (targetId, offeredId, cash, offer) => {
+    const { meta, clubs, players } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    if (challengeBansSignings(meta)) return { ok: false, message: 'Challenge rule: no incoming transfers — build from within.' };
+    if (meta.ffp?.embargo) return { ok: false, message: 'Under an FFP transfer embargo — you cannot sign players.' };
+    if (!get().transferWindow().open) return { ok: false, message: 'The transfer window is shut — swaps can only be arranged when it is open.' };
+    const target = players[targetId];
+    const offered = players[offeredId];
+    const buyer = clubs[meta.managerClubId];
+    if (!target || !offered) return { ok: false, message: 'Player not found.' };
+    if (offered.contract.clubId !== buyer.id) return { ok: false, message: 'You can only offer your own players.' };
+    if (offered.loan || target.loan) return { ok: false, message: 'Loaned players cannot be part of a swap.' };
+    const seller = target.contract.clubId ? clubs[target.contract.clubId] ?? null : null;
+    if (!seller || seller.id === buyer.id) return { ok: false, message: 'That player is not available for a swap.' };
+    const cashAmt = Math.max(0, Math.round(cash));
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const buyerBill = weeklyWageBill(get().getClubPlayers(buyer.id));
+    const evalRes = evaluateSwap(target, seller, offered, cashAmt, offer.wage, buyer, buyerBill, year);
+    if (!evalRes.ok) return { ok: false, message: evalRes.message };
+
+    // Cash flows to the seller; the two players change hands.
+    const newBuyer: Club = {
+      ...buyer,
+      playerIds: buyer.playerIds.filter((id) => id !== offeredId).concat(targetId),
+      captainId: buyer.captainId === offeredId ? null : buyer.captainId,
+      finances: { ...buyer.finances, balance: buyer.finances.balance - cashAmt, transferBudget: buyer.finances.transferBudget - cashAmt },
+    };
+    const newSeller: Club = {
+      ...seller,
+      playerIds: seller.playerIds.filter((id) => id !== targetId).concat(offeredId),
+      captainId: seller.captainId === targetId ? null : seller.captainId,
+      finances: { ...seller.finances, balance: seller.finances.balance + cashAmt, transferBudget: seller.finances.transferBudget + Math.round(cashAmt * 0.6) },
+    };
+    const signedTarget = applyContractOffer({ ...target, contract: { ...target.contract, clubId: buyer.id }, loan: null, transferListed: false, transferRequested: false }, offer, year);
+    const movedOffered: Player = { ...offered, contract: { ...offered.contract, clubId: seller.id }, squadRole: 'ROTATION', transferListed: false, transferRequested: false, loan: null };
+    const news = {
+      id: `news_swap_${targetId}_${Date.now().toString(36)}`, day: meta.currentDay, category: 'TRANSFER' as const,
+      title: `Part-exchange: ${target.name.last} in, ${offered.name.last} out`,
+      body: `Signed ${target.name.first} ${target.name.last} from ${seller.shortName}${cashAmt > 0 ? ` for ${cashAmt.toLocaleString()} plus ` : ' in exchange for '}${offered.name.first} ${offered.name.last}.`,
+      read: false,
+    };
+    const reports = { ...(meta.scoutReports ?? {}) }; delete reports[targetId];
+    const newMeta: SaveMeta = { ...meta, news: [...meta.news, news], scoutReports: reports };
+    set({
+      clubs: { ...clubs, [newBuyer.id]: newBuyer, [newSeller.id]: newSeller },
+      players: { ...players, [targetId]: signedTarget, [offeredId]: movedOffered },
+      meta: newMeta,
+    });
+    await putClubs(meta.id, [newBuyer, newSeller]);
+    await putPlayers(meta.id, [signedTarget, movedOffered]);
+    await persistMeta(newMeta);
+    return { ok: true, message: `Swap agreed — ${target.name.last} joins, ${offered.name.last} moves the other way.` };
   },
 
   counterOffer: async (offerId, counterFee) => {

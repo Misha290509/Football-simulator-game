@@ -7,7 +7,7 @@ import { MoneyInput } from '../components/MoneyInput';
 import { ageOf, fullName, formatMoney, formatWage } from '../format';
 import { marketView, eliteKnownIds, scoutStars, clubScoutRating, departmentStars, type MarketView } from '../../engine/marketScout';
 import { clubValuation, type FeeOffer } from '../../game/feeNegotiation';
-import { loanFee, canAgreePreContract } from '../../game/transfers';
+import { loanFee, canAgreePreContract, evaluateSwap, weeklyWageBill } from '../../game/transfers';
 import { rumourLine } from '../../game/rumours';
 import { agentDemands, evaluateContractOffer, type ContractOffer } from '../../game/contracts';
 import type { Player, SquadRole } from '../../types/player';
@@ -57,6 +57,7 @@ export function TransferMarket() {
   };
   const [target, setTarget] = useState<Player | null>(null);
   const [preTarget, setPreTarget] = useState<Player | null>(null);
+  const [swapTarget, setSwapTarget] = useState<Player | null>(null);
   const [buyBackTarget, setBuyBackTarget] = useState<Player | null>(null);
   const [scoutFor, setScoutFor] = useState<Player | null>(null);
   const [loanTarget, setLoanTarget] = useState<Player | null>(null);
@@ -196,6 +197,9 @@ export function TransferMarket() {
               <button className="btn-ghost py-0.5 px-2 text-xs text-emerald-300" title="Agree a free transfer for next summer (Bosman)" onClick={() => setPreTarget(p)}>Pre-sign</button>
             )}
             {p.preContract && <span className="text-[10px] text-emerald-400/80 px-1" title="Pre-contract agreed">✓ pre-signed</span>}
+            {p.contract.clubId && p.contract.clubId !== meta.managerClubId && !talksOff(p.id) && (
+              <button className="btn-ghost py-0.5 px-2 text-xs" title="Offer cash plus one of your players" onClick={() => setSwapTarget(p)}>Swap</button>
+            )}
             {p.contract.clubId && (v.ovr ?? 0) < 74 && (
               <button className="btn-ghost py-0.5 px-2 text-xs" onClick={() => setLoanTarget(p)}>Loan</button>
             )}
@@ -460,6 +464,13 @@ export function TransferMarket() {
           onBreakOff={() => setBuyBackTarget(null)} buyBack />
       )}
 
+      {swapTarget && (
+        <SwapModal target={swapTarget} buyer={managerClub}
+          seller={swapTarget.contract.clubId ? clubs[swapTarget.contract.clubId] ?? null : null}
+          mySquad={Object.values(players).filter((p) => p.contract.clubId === meta.managerClubId && !p.loan)}
+          year={year} onClose={() => setSwapTarget(null)} flash={flash} />
+      )}
+
       {loanTarget && (
         <LoanModal player={loanTarget} onClose={() => setLoanTarget(null)}
           onLoan={async (years, wageSplitParent, optionToBuy) => { const r = await loanIn(loanTarget.id, years, wageSplitParent, optionToBuy); flash(r.message); if (r.ok) setLoanTarget(null); }} />
@@ -667,6 +678,52 @@ function LoanModal({ player, onClose, onLoan }: {
       <label className="flex items-center gap-2 text-sm mb-2"><input type="checkbox" checked={withOption} onChange={(e) => setWithOption(e.target.checked)} /><span className="text-slate-300">Negotiate an option to buy</span></label>
       {withOption && <div className="mb-4"><MoneyInput value={option} onChange={setOption} /><span className="text-xs text-slate-500">His market value is ~{player.value.toLocaleString()}; a generous option unlocks a bigger wage share.</span></div>}
       <div className="flex justify-end gap-2"><button className="btn-ghost" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={() => onLoan(years, parentPct / 100, withOption ? option : null)}>Request loan</button></div>
+    </Modal>
+  );
+}
+
+// --- Part-exchange ---------------------------------------------------------
+function SwapModal({ target, buyer, seller, mySquad, year, onClose, flash }: {
+  target: Player; buyer: import('../../types/club').Club; seller: import('../../types/club').Club | null;
+  mySquad: Player[]; year: number; onClose: () => void; flash: (m: string) => void;
+}) {
+  const proposeSwap = useGameStore((s) => s.proposeSwap);
+  const [offeredId, setOfferedId] = useState('');
+  const [cash, setCash] = useState(0);
+  const offered = mySquad.find((p) => p.id === offeredId) ?? null;
+  const demands = useMemo(() => agentDemands(target, buyer, year), [target, buyer, year]);
+  const buyerBill = useMemo(() => weeklyWageBill(mySquad), [mySquad]);
+  const evalRes = seller && offered ? evaluateSwap(target, seller, offered, cash, demands.wage, buyer, buyerBill, year) : null;
+  const roster = useMemo(() => [...mySquad].sort((a, b) => b.overall - a.overall), [mySquad]);
+
+  return (
+    <Modal onClose={onClose} title={`Part-exchange for ${fullName(target)}`}>
+      <p className="text-sm text-slate-400 mb-3">
+        {target.position} · {seller?.name ?? 'their club'} · offer cash plus one of your players. He'll want {formatWage(demands.wage)}.
+      </p>
+      <label className="block text-sm mb-3">
+        <span className="text-slate-400">Player to offer</span>
+        <select className="mt-1 w-full bg-surface-700 border border-surface-600 rounded px-2 py-1.5" value={offeredId} onChange={(e) => setOfferedId(e.target.value)}>
+          <option value="">— choose a player —</option>
+          {roster.map((p) => <option key={p.id} value={p.id}>{p.name.first[0]}. {p.name.last} ({p.position} {p.overall}) · ~{formatMoney(p.value)}</option>)}
+        </select>
+      </label>
+      <label className="block text-sm mb-3"><span className="text-slate-400">Plus cash</span><MoneyInput value={cash} onChange={setCash} /></label>
+      {evalRes && (
+        <div className={`rounded px-3 py-2 text-xs mb-3 ${evalRes.ok ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-200' : 'bg-surface-700 text-amber-300/90'}`}>
+          {evalRes.ok ? '✓ ' : '⚠ '}{evalRes.message}
+          {offered && <span className="block text-slate-500 mt-1">They rate {offered.name.last} as worth ~{formatMoney(evalRes.offeredWorth)} to them.</span>}
+        </div>
+      )}
+      <div className="flex justify-end gap-2">
+        <button className="btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn-primary disabled:opacity-40" disabled={!offered} onClick={async () => {
+          if (!offered) return;
+          const r = await proposeSwap(target.id, offered.id, cash, demands);
+          flash(r.message);
+          if (r.ok) onClose();
+        }}>Propose swap</button>
+      </div>
     </Modal>
   );
 }
