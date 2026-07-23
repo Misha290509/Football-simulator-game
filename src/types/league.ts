@@ -146,6 +146,24 @@ export interface SeasonHistory {
   awards: Award[];
 }
 
+/**
+ * A transfer rumour (§ Living market, #30). Seeded gossip that escalates from
+ * idle interest to a valuation to a looming bid; a hot rumour about one of the
+ * manager's own players turns into a real, unsolicited offer.
+ */
+export interface Rumour {
+  id: string;
+  playerId: string;
+  fromClubId: string; // the club linked with a move
+  day: number; // last updated
+  heat: number; // 0–100
+  stage: 'INTEREST' | 'PRICE' | 'BID_LOOMING';
+  /** True when the target plays for the manager's club (can escalate to a bid). */
+  aboutManagerPlayer: boolean;
+  /** Speculated valuation, filled once the rumour reaches the PRICE stage. */
+  valuation?: number;
+}
+
 export interface TransferOffer {
   id: string;
   type: 'BUY' | 'LOAN';
@@ -320,6 +338,8 @@ export interface SaveGame {
   sacked?: boolean;
   /** Incoming AI offers for the manager's transfer/loan-listed players. */
   pendingOffers?: TransferOffer[];
+  /** Live transfer rumours (§ Living market, #30). */
+  rumours?: Rumour[];
 
   // --- Academy system (§ Academy) ----------------------------------------
   /** Per-club youth academies, keyed by clubId. */

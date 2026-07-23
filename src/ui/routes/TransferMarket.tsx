@@ -8,6 +8,7 @@ import { ageOf, fullName, formatMoney, formatWage } from '../format';
 import { marketView, eliteKnownIds, scoutStars, clubScoutRating, departmentStars, type MarketView } from '../../engine/marketScout';
 import { clubValuation, type FeeOffer } from '../../game/feeNegotiation';
 import { loanFee } from '../../game/transfers';
+import { rumourLine } from '../../game/rumours';
 import { agentDemands, evaluateContractOffer, type ContractOffer } from '../../game/contracts';
 import type { Player, SquadRole } from '../../types/player';
 import type { Staff } from '../../types/staff';
@@ -236,6 +237,29 @@ export function TransferMarket() {
             ))}
           </div>
           <p className="text-xs text-slate-500 mt-2">Lowball bids raise tension; at breaking point a club freezes you out for about two weeks before cooling off.</p>
+        </div>
+      )}
+
+      {(meta.rumours?.length ?? 0) > 0 && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-2">🗞️ Rumour mill</h2>
+          <div className="space-y-1.5">
+            {[...(meta.rumours ?? [])]
+              .sort((a, b) => Number(b.aboutManagerPlayer) - Number(a.aboutManagerPlayer) || b.heat - a.heat)
+              .slice(0, 8)
+              .map((r) => {
+                const stageColor = r.stage === 'BID_LOOMING' ? 'bg-red-500' : r.stage === 'PRICE' ? 'bg-amber-500' : 'bg-slate-500';
+                return (
+                  <div key={r.id} className="flex items-center gap-2 text-sm">
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${stageColor}`} title={r.stage} />
+                    <span className={r.aboutManagerPlayer ? 'text-amber-200' : 'text-slate-300'}>
+                      {rumourLine(r, players, clubs)}
+                      {r.aboutManagerPlayer && <span className="text-[10px] text-amber-400/80 ml-1">(your player)</span>}
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
         </div>
       )}
 

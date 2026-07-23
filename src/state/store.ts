@@ -103,6 +103,7 @@ import {
   generateOffers,
   type BidResult,
 } from '../game/transfers';
+import { advanceRumours } from '../game/rumours';
 import { agentDemands, evaluateContractOffer, applyContractOffer, leaveWillingness, type ContractOffer, type NegotiationResult } from '../game/contracts';
 import { transferFloor, overpricedAsk, respondToTransferOffer, type FeeOffer } from '../game/feeNegotiation';
 import type { TransferTalk, InstalmentPayment } from '../types/league';
@@ -3289,7 +3290,18 @@ async function playDays(
         read: false,
       });
     }
-    const pendingOffers = [...(meta.pendingOffers ?? []), ...newOffers].slice(-25);
+    let pendingOffers = [...(meta.pendingOffers ?? []), ...newOffers].slice(-25);
+
+    // Rumour mill (§ Living market): idle gossip that escalates from interest to
+    // a valuation to a looming bid, and boils over into a real offer for one of
+    // the manager's stars. Runs off its own sub-seed so it stays deterministic.
+    const rumourRes = advanceRumours(
+      meta.managerClubId, clubs, playersById, meta.rumours ?? [], pendingOffers,
+      meta.seed, to, from, toYear,
+    );
+    newsItems.push(...rumourRes.news);
+    if (rumourRes.bids.length) pendingOffers = [...pendingOffers, ...rumourRes.bids].slice(-25);
+    const rumours = rumourRes.rumours;
 
     // Resolve active youth scouting contracts → monthly prospect reports (§ Academy).
     const scoutsById: Record<string, import('../types/staff').Staff> = {};
@@ -3718,7 +3730,7 @@ async function playDays(
       scoutAssignments: scoutRes.assignments, youthProspects, pendingPress,
       scoutReports, playerScoutAssignments: remainingAssignments,
       pendingGala, history, managerStyle, pendingArrivals, storylines, ballonDor,
-      clubRelations, playerCareer, managerClubId,
+      clubRelations, playerCareer, managerClubId, rumours,
     };
     set({ matches, players: playersById, clubs: clubsAfter, meta: newMeta });
 
