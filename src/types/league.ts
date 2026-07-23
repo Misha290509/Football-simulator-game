@@ -312,6 +312,8 @@ export interface SaveGame {
   history?: SeasonHistory[];
   /** Hall of Fame inductees (§8, M6). */
   hallOfFame?: HallOfFameEntry[];
+  /** Retired shirt numbers honouring player-career legends (Tier 5), by club. */
+  retiredShirts?: { clubId: string; number: number; playerId: string; playerName: string; year: number }[];
   /** Board objective & job security for the manager's club (§8, M5). */
   board?: BoardState;
   /** Set true when the manager is dismissed. */

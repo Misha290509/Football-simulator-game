@@ -71,6 +71,15 @@ import {
 } from '../game/playerOffPitch';
 import type { SquadStatus } from '../types/playerCareer';
 import {
+  updateAmbitions, updateDecline, earnedVeteranTraits, roleEvolutionOf, VETERAN_TRAITS,
+  computeLegacy, careerTotals, managerRepSeed,
+} from '../game/playerLegacy';
+import {
+  lateCareerOffers, forcedRetirement, retirementAvailable, buildSendOff, buildTestimonial,
+  managerStartClub,
+} from '../game/playerEndgame';
+import { IDENTITY_LABEL } from '../types/playerLegacy';
+import {
   postDropConversation, evaluatePromises, resolveConversation, requestMinutesOutcome, roleMeetingConversation,
 } from '../game/playerConversations';
 import { simulateMatches } from '../engine/simClient';
@@ -214,6 +223,13 @@ interface GameState {
   requestTransfer: () => Promise<void>;
   cancelTransferRequest: () => Promise<void>;
   setLifestyle: (routine: Record<string, number>, autoManage: boolean) => Promise<void>;
+  // --- Legacy & endgame (Tier 5) ---
+  setDreamClub: (clubId: string | null) => Promise<void>;
+  retrainAvatarPosition: (pos: import('../types/attributes').Position | null) => Promise<void>;
+  becomeMentor: (menteeId: string) => Promise<string>;
+  announceRetirement: (endOfSeason: boolean) => Promise<void>;
+  announceInternationalRetirement: () => Promise<void>;
+  chooseContinuation: (choice: 'END' | 'MANAGER' | 'AMBASSADOR') => Promise<string>;
   load: (saveId: string) => Promise<boolean>;
   remove: (saveId: string) => Promise<void>;
   persist: () => Promise<void>;
@@ -771,6 +787,146 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, lifestyle: { routine: r, autoManage } } };
     set({ meta: newMeta });
     await persistMeta(newMeta);
+  },
+
+  // --- Legacy & endgame (Tier 5) -----------------------------------------
+  setDreamClub: async (clubId) => {
+    const { meta, players, clubs } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const avatar = players[pc.playerId];
+    let ambitions = pc.ambitions ?? [];
+    // Keep a single dream-move ambition in sync with the nomination.
+    ambitions = ambitions.filter((a) => a.kind !== 'DREAM_MOVE');
+    if (clubId && clubs[clubId] && avatar) {
+      ambitions = [...ambitions, { id: 'amb_dream', text: `Play for ${clubs[clubId].name}`, kind: 'DREAM_MOVE', clubId, achieved: avatar.contract.clubId === clubId }];
+    }
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, dreamClubId: clubId ?? undefined, ambitions } };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  retrainAvatarPosition: async (pos) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const avatar = players[pc.playerId];
+    if (!avatar) return;
+    const prev = avatar.training ?? {};
+    const np: Player = {
+      ...avatar,
+      training: { ...prev, retrainPosition: pos, retrainProgress: pos !== prev.retrainPosition ? 0 : prev.retrainProgress ?? 0 },
+    };
+    let career = pc;
+    if (pos) career = { ...pc, decline: { ...(pc.decline ?? { started: false, peakOvr: avatar.overall }), retrainedFrom: avatar.position } };
+    const newMeta: SaveMeta = { ...meta, playerCareer: career };
+    set({ meta: newMeta, players: { ...players, [avatar.id]: np } });
+    await putPlayers(meta.id, [np]);
+    await persistMeta(newMeta);
+  },
+
+  becomeMentor: async (menteeId) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No career.';
+    const mentee = players[menteeId];
+    const avatar = players[pc.playerId];
+    if (!mentee || !avatar) return 'Player not found.';
+    if ((pc.mentorships ?? []).some((m) => m.menteeId === menteeId)) return 'Already mentoring him.';
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const bonus = clamp(0.4 + (avatar.hidden?.professionalism ?? 55) / 200, 0.4, 1) as number;
+    const mentorships = [...(pc.mentorships ?? []), { menteeId, since: year, developmentBonus: bonus }];
+    const news: NewsItem[] = [{ id: `news_pc_mentor_${menteeId}_${meta.currentDay}`, day: meta.currentDay, category: 'GENERAL', title: 'Taking a young player under your wing', body: `${avatar.name.last} will mentor ${mentee.name.first} ${mentee.name.last} — passing on the hard-won lessons of a long career.`, read: false }];
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, mentorships, clubRelationship: clamp((pc.clubRelationship ?? 55) + 4, 0, 100) as number }, news: [...meta.news, ...news] };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return `You are now mentoring ${mentee.name.first} ${mentee.name.last}.`;
+  },
+
+  announceRetirement: async (endOfSeason) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const avatar = players[pc.playerId];
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    if (!avatar || !retirementAvailable(pc, avatar, year)) return;
+    if (endOfSeason) {
+      // A farewell tour — the world knows this is the last dance.
+      const retirement = { announced: true, announcedDay: meta.currentDay, finalSeason: year, forced: false, reason: 'CHOICE' as const };
+      const news: NewsItem[] = [{ id: `news_pc_farewell_${meta.currentDay}`, day: meta.currentDay, category: 'MILESTONE', title: `${avatar.name.first} ${avatar.name.last} to retire at season's end`, body: `A legend announces this will be his final season. Expect guards of honour and tributes at every ground.`, read: false }];
+      const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, retirement }, news: [...meta.news, ...news] };
+      set({ meta: newMeta });
+      await persistMeta(newMeta);
+    } else {
+      await retireAvatarNow(get, set, 'CHOICE');
+    }
+  },
+
+  announceInternationalRetirement: async () => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc || !pc.international.capped) return;
+    const avatar = players[pc.playerId];
+    const retirement = { ...(pc.retirement ?? { announced: false, forced: false }), internationalRetiredDay: meta.currentDay };
+    const news: NewsItem[] = [{ id: `news_pc_intlret_${meta.currentDay}`, day: meta.currentDay, category: 'MILESTONE', title: 'International retirement', body: `${avatar ? `${avatar.name.first} ${avatar.name.last}` : 'You'} steps away from the national team to focus on club football — ${pc.international.caps} caps, ${pc.international.intlGoals} goals.`, read: false }];
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, retirement, intlManagerTrust: undefined }, news: [...meta.news, ...news] };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  chooseContinuation: async (choice) => {
+    const { meta, players, clubs } = get();
+    const pc = playerCareerOf(meta) ?? meta?.playerCareer; // may already be past-retirement
+    if (!meta || !pc) return 'No career.';
+    if (choice === 'END' || choice === 'AMBASSADOR') {
+      const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, continuation: { choice } } };
+      set({ meta: newMeta });
+      await persistMeta(newMeta);
+      return choice === 'AMBASSADOR'
+        ? 'You stay on as a club ambassador — watching the world you shaped.'
+        : 'Your playing career is complete.';
+    }
+    // MANAGER: flip the same save to manager mode, seeded from the legacy.
+    const avatar = players[pc.playerId];
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const totals = careerTotals(pc, avatar ?? ({ stats: [], awards: [], developmentLog: [], born: { year } } as unknown as Player), avatar?.born.year ?? year - 30);
+    const repSeed = managerRepSeed(pc.legacy, totals);
+    const start = managerStartClub(pc, clubs, repSeed);
+    if (!start) return 'No club is available to appoint you right now.';
+    const managerComp = Object.values(meta.competitions).find((c) => c.clubIds.includes(start.club.id));
+    const board = managerComp ? setObjective(start.club, managerComp) : meta.board;
+    const stints = [{ clubId: start.club.id, clubName: start.club.name, fromYear: year, seasons: 0, trophies: 0 }];
+    // Fill the new club's academy so the ex-player inherits a full youth setup.
+    const nextPlayers = { ...players };
+    const academyPlayers = { ...(meta.academyPlayers ?? {}) };
+    const academy = meta.academies?.[start.club.id];
+    let addedIds: string[] = [];
+    if (academy) {
+      addedIds = fillAcademyBands(start.club, academy, nextPlayers, academyPlayers, year, meta.ratingCap ?? 90, new Rng((meta.seed ^ hashSeed(`mgr_${start.club.id}`)) >>> 0));
+    }
+    const news: NewsItem[] = [{
+      id: `news_pc_mgr_start_${meta.currentDay}`, day: meta.currentDay, category: 'BOARD',
+      title: `${meta.managerName} takes charge of ${start.club.shortName}`,
+      body: `${start.reason} From the pitch to the dugout — a new chapter begins, with your playing record still in the books.`, read: false,
+    }];
+    const newMeta: SaveMeta = {
+      ...meta,
+      careerMode: 'MANAGER',
+      managerClubId: start.club.id,
+      managerReputation: repSeed,
+      managerStints: stints,
+      board,
+      sacked: false,
+      jobOffers: [],
+      declinedJobClubIds: [],
+      academyPlayers,
+      playerCareer: { ...pc, continuation: { choice: 'MANAGER', managerRepSeed: repSeed } },
+      news: [...meta.news, ...news],
+    };
+    set({ meta: newMeta, players: nextPlayers });
+    if (addedIds.length) await putPlayers(meta.id, addedIds.map((id) => nextPlayers[id]));
+    await persistMeta(newMeta);
+    return `You are the new manager of ${start.club.name}.`;
   },
 
   load: async (saveId) => {
@@ -2345,11 +2501,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         const survivingSponsors = (pc.sponsorships ?? []).filter((s) => s.until >= result.newSeason.year);
 
+        // Honours the avatar earned this finished season (trophies + individual
+        // awards), for the season-by-season table + club-legend recording.
+        const seasonHonours = avatar && finished
+          ? avatar.awards.filter((a) => a.seasonId === finished.id).map((a) => a.label ?? a.awardId)
+          : [];
         newMeta.playerCareer = {
           ...pc,
           seasonHistory: [...pc.seasonHistory, {
             season: finished?.label ?? String(meta.startYear), club: clubName,
-            apps: pc.seasonApps, goals: pc.seasonGoals, assists, avgRating: pc.seasonAvgRating, honours: [],
+            apps: pc.seasonApps, goals: pc.seasonGoals, assists, avgRating: pc.seasonAvgRating, honours: seasonHonours,
           }],
           seasonApps: 0, seasonGoals: 0, seasonAvgRating: 0,
           objectives: avatar ? generateSeasonObjectives(avatar, (meta.seed ^ result.newSeason.year) >>> 0) : [],
@@ -2383,6 +2544,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         players: result.players,
         clubs: result.clubs,
       });
+
+      // A farewell season that has now finished executes the retirement — the
+      // send-off, testimonial and Hall of Fame — on top of the fresh state.
+      const rc = newMeta.playerCareer;
+      if (newMeta.careerMode === 'PLAYER' && rc?.retirement?.announced && rc.retirement.retiredDay == null
+          && rc.retirement.finalSeason != null && (result.newSeason.year - 1) >= rc.retirement.finalSeason) {
+        await retireAvatarNow(get, set, rc.retirement.reason ?? 'CHOICE');
+      }
     } finally {
       set({ simming: false });
     }
@@ -3235,7 +3404,10 @@ async function playDays(
     // of training (~120 days to master it), then gain the position permanently.
     for (const p of Object.values(playersById)) {
       const t = p.training;
-      if (!t?.retrainPosition || p.contract.clubId !== meta.managerClubId) continue;
+      // Manager's club players retrain; in Player mode the avatar retrains too,
+      // wherever he's contracted (a genuine late-career second act, Tier 5).
+      if (!t?.retrainPosition) continue;
+      if (p.contract.clubId !== meta.managerClubId && p.id !== careerAtStart?.playerId) continue;
       const progress = (t.retrainProgress ?? 0) + daysAdvanced * (100 / 120);
       if (progress >= 100) {
         const pos = t.retrainPosition;
@@ -3377,6 +3549,42 @@ async function playDays(
           await putClubs(meta.id, Object.values(off.clubPatches));
         }
 
+        // 6) Legacy & endgame (Tier 5): ambitions, decline, veteran traits, role
+        //    arc, live legacy, twilight offers, forced-retirement detection.
+        {
+          const ambRes = updateAmbitions(pc.ambitions ?? [], pc, avatar, to, clubsAfter);
+          pc = { ...pc, ambitions: ambRes.ambitions };
+          for (const a of ambRes.achieved) {
+            newsItems.push({ id: `news_pc_amb_${a.id}_${to}`, day: to, category: 'MILESTONE', title: 'Ambition achieved', body: `${a.text} — done. A goal you set out to reach, reached.`, read: false });
+          }
+          const decline = updateDecline(pc, avatar, toYear);
+          if (decline.started && !(pc.decline?.started)) {
+            newsItems.push({ id: `news_pc_decline_${to}`, day: to, category: 'GENERAL', title: 'A new phase', body: `The legs aren't quite what they were — time to lean on experience, guile and a smarter game.`, read: false });
+          }
+          const newVet = earnedVeteranTraits(avatar, toYear).filter((v) => !(pc.veteranTraits ?? []).includes(v));
+          const veteranTraits = [...(pc.veteranTraits ?? []), ...newVet];
+          for (const v of newVet) {
+            newsItems.push({ id: `news_pc_vet_${v}_${to}`, day: to, category: 'MILESTONE', title: `Veteran trait: ${VETERAN_TRAITS[v]?.label ?? v}`, body: VETERAN_TRAITS[v]?.blurb ?? '', read: false });
+          }
+          pc = { ...pc, decline, veteranTraits, roleEvolution: roleEvolutionOf({ ...pc, decline }, avatar, toYear) };
+          // A veteran leader firms up morale/confidence — mental game compensates.
+          if (newVet.includes('LEADER') || newVet.includes('COMPOSED')) pc = { ...pc, confidence: clamp((pc.confidence ?? 60) + 5, 0, 100) as number };
+
+          // Twilight paths surface through the agent (as flagged contract offers).
+          const late = lateCareerOffers(pc, avatar, clubsAfter, toYear, to, meta.seed);
+          if (late.offers.length) { pc = { ...pc, contractOffers: [...(pc.contractOffers ?? []), ...late.offers] }; newsItems.push(...late.news); }
+
+          // Forced retirement (career-ending injury / no club) — surfaced as a
+          // dignified prompt, never an abrupt cutoff (the human still confirms).
+          if (!pc.retirement?.announced && pc.retirement?.retiredDay == null) {
+            const fr = forcedRetirement(pc, avatar, toYear);
+            if (fr.forced) {
+              pc = { ...pc, retirement: { announced: true, announcedDay: to, finalSeason: toYear, forced: true, reason: fr.reason } };
+              newsItems.push({ id: `news_pc_forced_${to}`, day: to, category: 'GENERAL', title: fr.reason === 'INJURY' ? 'A cruel blow' : 'The end of the road', body: fr.reason === 'INJURY' ? `A serious injury looks to have ended ${avatar.name.first} ${avatar.name.last}'s playing days. A farewell awaits — confirm your retirement when you're ready.` : `No club has come in for ${avatar.name.first} ${avatar.name.last}. It may be time to bow out with your head held high — announce your retirement in your own time.`, read: false });
+            }
+          }
+        }
+
         // Apply the avatar's form + morale nudges (+ any off-pitch player patch).
         const newForm = clamp(avatar.form + prog.formDelta) as number;
         const newMorale = clamp(avatar.morale + moraleDelta) as number;
@@ -3412,6 +3620,88 @@ async function playDays(
   } finally {
     set({ simming: false });
   }
+}
+
+/**
+ * Retire the player-career avatar now (Tier 5). Computes the final legacy,
+ * assembles the send-off (club-legend recording, shirt retirements, Hall of Fame
+ * induction), stages a testimonial for one-club legends, and steps the avatar
+ * out of the active squad — keeping his record in the world for the retrospective
+ * and any manager-mode continuation. Pure world edits; then persists.
+ */
+async function retireAvatarNow(
+  get: () => GameState,
+  set: (partial: Partial<GameState>) => void,
+  reason: 'AGE' | 'INJURY' | 'NO_CLUB' | 'CHOICE',
+): Promise<void> {
+  const { meta, players, clubs } = get();
+  const pc = playerCareerOf(meta);
+  if (!meta || !pc) return;
+  const avatar = players[pc.playerId];
+  if (!avatar) return;
+  const year = get().currentSeason()?.year ?? meta.startYear;
+  const day = meta.currentDay;
+
+  // Final legacy + send-off.
+  const legacy = computeLegacy(pc, avatar, clubs, players, year);
+  const sendOff = buildSendOff(pc, avatar, clubs, year, day, legacy);
+  let career = sendOff.career;
+  const news: NewsItem[] = [...sendOff.news];
+
+  // Testimonial for a club legend — a celebratory exhibition, resolved
+  // deterministically (a fun, high-scoring send-off with the avatar on the mark).
+  let matchesPatch: Record<string, Match> | undefined;
+  const testi = buildTestimonial(career, avatar, clubs, get().currentSeason()?.id ?? 'season', day);
+  if (testi && legacy.legendAtClubs.length > 0) {
+    const r = new Rng((meta.seed ^ hashSeed(`testi_${avatar.id}`)) >>> 0);
+    const hg = r.int(2, 4), ag = r.int(1, 3);
+    const played: Match = {
+      ...testi.match, played: true, homeGoals: hg, awayGoals: ag, homeXg: hg, awayXg: ag,
+      playerStats: [{ playerId: avatar.id, minutes: 60, goals: 1, assists: 1, shots: 3, rating: 8.5, yellow: false, red: false }],
+      events: [{ minute: 0, type: 'KICKOFF', side: 'home', description: 'Kick-off' }],
+    };
+    matchesPatch = { [played.id]: played };
+    await putMatches(meta.id, [played]);
+    career = { ...career, retirement: { ...(career.retirement ?? { announced: true, forced: false }), testimonialMatchId: played.id } };
+    news.push({ id: `news_pc_testi_played_${day}`, day, category: 'MILESTONE', title: 'A fitting send-off', body: `${clubs[testi.match.homeClubId]?.shortName ?? 'The club'} win the testimonial ${hg}–${ag} — and of course, the guest of honour got on the scoresheet.`, read: false });
+  }
+
+  // Finalise the retirement record.
+  career = {
+    ...career,
+    retirement: {
+      ...(career.retirement ?? { announced: true, forced: reason !== 'CHOICE' }),
+      announced: true, retiredDay: day, forced: reason !== 'CHOICE', reason,
+      finalSeason: career.retirement?.finalSeason ?? year,
+    },
+    milestones: [...career.milestones, { day, text: `Retired from professional football (${year}).` }],
+  };
+  news.push({ id: `news_pc_retire_${day}`, day, category: 'MILESTONE', title: `${avatar.name.first} ${avatar.name.last} retires`, body: `After a career to remember, the boots are hung up. Legacy score: ${legacy.score}. ${legacy.identities.length ? `Remembered as: ${legacy.identities.map((i) => IDENTITY_LABEL[i]).join(', ')}.` : ''}`, read: false });
+
+  // Step the avatar out of his club squad (his record stays in the world).
+  const nextPlayers = { ...players };
+  const clubsPatch = { ...clubs };
+  const cid = avatar.contract.clubId;
+  nextPlayers[avatar.id] = { ...avatar, contract: { ...avatar.contract, clubId: '' }, loan: null, injury: null };
+  if (cid && clubsPatch[cid]) clubsPatch[cid] = { ...clubsPatch[cid], playerIds: clubsPatch[cid].playerIds.filter((id) => id !== avatar.id) };
+
+  // World records: Hall of Fame + retired shirts persist in the save.
+  const hallOfFame = sendOff.hallOfFameAdd ? [...(meta.hallOfFame ?? []), sendOff.hallOfFameAdd] : meta.hallOfFame;
+  const retiredShirts = [
+    ...(meta.retiredShirts ?? []),
+    ...(career.retirement?.shirtRetiredAt ?? []).map((s) => ({ clubId: s.clubId, number: s.number, playerId: avatar.id, playerName: `${avatar.name.first} ${avatar.name.last}`, year })),
+  ];
+
+  const newMeta: SaveMeta = {
+    ...meta, playerCareer: career, news: [...meta.news, ...news], hallOfFame, retiredShirts,
+  };
+  set({
+    meta: newMeta, players: nextPlayers, clubs: clubsPatch,
+    ...(matchesPatch ? { matches: { ...get().matches, ...matchesPatch } } : {}),
+  });
+  await putPlayers(meta.id, [nextPlayers[avatar.id]]);
+  if (cid && clubsPatch[cid]) await putClubs(meta.id, [clubsPatch[cid]]);
+  await persistMeta(newMeta);
 }
 
 /** Highest domestic (league) matchday across the current season. */

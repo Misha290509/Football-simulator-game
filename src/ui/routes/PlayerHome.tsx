@@ -86,6 +86,17 @@ export function PlayerHome() {
         );
       })()}
 
+      {/* Retirement / farewell banner (Tier 5) */}
+      {career.retirement?.retiredDay != null ? (
+        <button className="card p-4 w-full text-left border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 transition-colors" onClick={() => navigate('/retrospective')}>
+          <span className="text-sm text-amber-200">🎬 Your playing career is over. View your career retrospective and choose what comes next →</span>
+        </button>
+      ) : career.retirement?.announced ? (
+        <div className="card p-3 border border-amber-500/30 bg-amber-500/5 text-sm text-amber-200">
+          🙌 {career.retirement.forced ? 'The end is near.' : `Farewell season — retiring at the end of ${career.retirement.finalSeason}.`} <button className="underline" onClick={() => navigate('/legacy')}>Manage your send-off →</button>
+        </div>
+      ) : null}
+
       {/* Press prompt (event-driven media moment) */}
       {(career.pendingPress ?? []).length > 0 && (() => {
         const pr = career.pendingPress![0];

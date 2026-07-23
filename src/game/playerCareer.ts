@@ -23,6 +23,7 @@ import {
 import { roleMeetingConversation } from './playerConversations';
 import { DEFAULT_CAREER_SETTINGS, EMPTY_MOMENT_STATS } from '../types/interactiveMatch';
 import { DEFAULT_LIFESTYLE, DEFAULT_PUBLIC_IMAGE } from '../types/playerOffPitch';
+import { defaultAmbitions } from './playerLegacy';
 
 /** The career mode of a save. Absent flag ⇒ 'MANAGER' (every legacy save). */
 export function careerModeOf(meta: Pick<SaveGame, 'careerMode'> | null | undefined): CareerMode {
@@ -209,6 +210,12 @@ export function initialPlayerCareer(
     pendingSponsorOffers: [],
     lifestyle: { routine: { ...DEFAULT_LIFESTYLE.routine }, autoManage: true },
     careerEarnings: 0,
+    // Legacy & endgame (Tier 5) — ambitions from day one; the rest accrues.
+    ambitions: defaultAmbitions(avatar),
+    decline: { started: false, peakOvr: avatar.overall },
+    veteranTraits: [],
+    roleEvolution: 'PRIME',
+    mentorships: [],
     milestones: [{ day: startDay, text: originMilestone(origin, clubName) }],
     seasonHistory: [],
   };

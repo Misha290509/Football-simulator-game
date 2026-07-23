@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 import { playerCareerOf } from '../../game/playerCareer';
 import { AGENT_ROSTER } from '../../game/playerOffPitch';
+import { lateKindOf, lateLabel } from '../../game/playerEndgame';
 import { formatMoney } from '../format';
 import type { SquadStatus } from '../../types/playerCareer';
 
@@ -71,12 +72,14 @@ export function OffPitch() {
           <h2 className="text-sm font-semibold text-accent-300">On the table</h2>
           {offers.map((o) => {
             const club = clubs[o.clubId];
+            const late = lateKindOf(o);
             return (
               <div key={o.id} className="rounded-lg bg-surface-800/60 p-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm text-white font-medium">{o.kind === 'RENEWAL' ? 'Contract renewal' : `Move to ${club?.name ?? 'a new club'}`}</div>
-                  {o.kind === 'TRANSFER' && o.fee != null && <span className="text-xs text-slate-400">Fee €{(o.fee / 1_000_000).toFixed(1)}M</span>}
+                  <div className="text-sm text-white font-medium">{late ? `${lateLabel(late)}: ${club?.shortName ?? 'a club'}` : o.kind === 'RENEWAL' ? 'Contract renewal' : `Move to ${club?.name ?? 'a new club'}`}</div>
+                  {o.kind === 'TRANSFER' && o.fee != null && o.fee > 0 && <span className="text-xs text-slate-400">Fee €{(o.fee / 1_000_000).toFixed(1)}M</span>}
                 </div>
+                {late && <div className="text-[11px] text-accent-300/80 mb-1">{(o.note ?? '').replace(/^\[[A-Z_]+\]\s*/, '')}</div>}
                 <div className="text-xs text-slate-400 mt-1">
                   {formatMoney(o.wage)}/wk · {o.length}yr · {cap(o.rolePromise)} role · sign-on {formatMoney(o.signingBonus)}
                   {o.releaseClause != null && ` · release €${(o.releaseClause / 1_000_000).toFixed(0)}M`}

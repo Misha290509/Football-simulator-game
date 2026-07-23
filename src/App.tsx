@@ -12,6 +12,8 @@ const PlayerHome = lazy(() => import('./ui/routes/PlayerHome').then((m) => ({ de
 const PlayerTraining = lazy(() => import('./ui/routes/PlayerTraining').then((m) => ({ default: m.PlayerTraining })));
 const PlayerCareerScreen = lazy(() => import('./ui/routes/PlayerCareerScreen').then((m) => ({ default: m.PlayerCareerScreen })));
 const OffPitch = lazy(() => import('./ui/routes/OffPitch').then((m) => ({ default: m.OffPitch })));
+const Legacy = lazy(() => import('./ui/routes/Legacy').then((m) => ({ default: m.Legacy })));
+const Retrospective = lazy(() => import('./ui/routes/Retrospective').then((m) => ({ default: m.Retrospective })));
 const InteractiveMatch = lazy(() => import('./ui/routes/InteractiveMatch').then((m) => ({ default: m.InteractiveMatch })));
 const Squad = lazy(() => import('./ui/routes/Squad').then((m) => ({ default: m.Squad })));
 const Tactics = lazy(() => import('./ui/routes/Tactics').then((m) => ({ default: m.Tactics })));
@@ -92,6 +94,8 @@ export default function App() {
       <Route path="/training" element={<Protected><PlayerTraining /></Protected>} />
       <Route path="/career" element={<Protected><PlayerCareerScreen /></Protected>} />
       <Route path="/off-pitch" element={<Protected><OffPitch /></Protected>} />
+      <Route path="/legacy" element={<Protected><Legacy /></Protected>} />
+      <Route path="/retrospective" element={<Protected><Retrospective /></Protected>} />
       <Route path="/play-match" element={<Protected><InteractiveMatch /></Protected>} />
       <Route path="/squad" element={<Protected><Squad /></Protected>} />
       <Route path="/tactics" element={<Protected><Tactics /></Protected>} />

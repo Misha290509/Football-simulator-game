@@ -405,6 +405,10 @@ export async function resolveAndRollover(
   const ratingCap = meta.ratingCap ?? 90;
   const hallOfFameAdds: HallOfFameEntry[] = [];
 
+  // The player-career avatar never auto-retires or gets culled by the world sim —
+  // his ending is always the human's choice (Tier 5), handled in the store.
+  const avatarId = meta.careerMode === 'PLAYER' ? meta.playerCareer?.playerId : undefined;
+
   const updatedPlayers: Record<string, Player> = {};
   const retiredIds: string[] = [];
   // Parallel-roster academy players (owned via academyClubId, no first-team
@@ -445,7 +449,7 @@ export async function resolveAndRollover(
       ...base,
       stats: [...base.stats.filter((s) => s.seasonId !== sid), ...(stats.get(base.id) ?? [])],
     };
-    if (shouldRetire(withStats, nextYear, rng)) {
+    if (base.id !== avatarId && shouldRetire(withStats, nextYear, rng)) {
       retiredIds.push(base.id);
       const peakOvr = Math.max(base.overall, ...base.developmentLog.map((d) => d.ovr));
       const awards = awardCount.get(base.id) ?? 0;
@@ -528,6 +532,7 @@ export async function resolveAndRollover(
     if (squad.length <= MAX_SQUAD) continue;
     squad.sort((a, b) => b.overall + b.potential * 0.3 - (a.overall + a.potential * 0.3));
     for (const p of squad.splice(MAX_SQUAD)) {
+      if (p.id === avatarId) continue; // the avatar is never culled
       delete updatedPlayers[p.id];
       retiredIds.push(p.id);
     }

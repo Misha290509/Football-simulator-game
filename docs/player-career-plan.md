@@ -132,9 +132,37 @@ auto-manage, and ignores every menu with a coherent career. Engine in
   commission + sponsorships).
 Migration v12 backfills every field on existing Player saves; MANAGER untouched.
 
-**Tier 5 — Legacy & endgame:** dream-club moves, trophies, Ballon-d'Or,
-retirement + testimonial + Hall of Fame, optional player→manager transition
-(continue the same save in MANAGER mode).
+**Tier 5 — Legacy & endgame — ✅ COMPLETE:**
+The payoff. Decline is poignant, not punishing — every ending is a meaningful
+next chapter, and the human always chooses when to walk away. Engines in
+`game/playerLegacy.ts` (ambitions, legacy, identity, decline, veteran traits)
+and `game/playerEndgame.ts` (twilight paths, retirement, send-off, transition),
+folded into `playDays` + the season rollover.
+- **Ambitions & legacy** — a living ambitions checklist + dream club; a
+  transparent legacy score (goals, apps, trophies, awards, international, peak,
+  loyalty-or-breadth, reputation) with the full breakdown surfaced; a career
+  identity derived from the *shape* (One-Club Legend … Country's Greatest);
+  club-legend status + peer rank. All pure, from real Tier 1–4 data.
+- **Decline with dignity** — reuses `developPlayer`'s physical-first decline;
+  position retraining for the avatar (a real second act), late-unlocked veteran
+  traits (Leader / Reads the Game / Composed …), and a squad-role arc.
+- **Twilight paths** — Saudi/MLS twilight-abroad, homecoming, drop-down, the
+  chase — surfaced through the Tier-4 agent as tagged contract offers.
+- **Retirement** — the human's choice whenever available (announce a farewell
+  season or retire now); forced only for career-ending injury / no club, and
+  still given a dignified arc. International retirement is separate + earlier.
+  The avatar is guarded from the world sim's auto-retire + squad cull.
+- **Send-off** — testimonial fixture, shirt retirement + club-legend recording
+  (persisted in the save via `meta.retiredShirts`), Hall of Fame induction on
+  clearing the bar.
+- **Career Retrospective** — the showpiece: hero, generated narrative, trophy
+  cabinet, awards, international, standout moments, season table, timeline,
+  legacy + identities.
+- **Player → Manager** — flips `careerMode` on the same save, seeds manager
+  reputation from the legacy, and hands a fitting club (a former legend club for
+  a great, a lower rung for a journeyman). Ambassador / end alternatives.
+Migration v13 backfills ambitions + decline on existing Player saves; MANAGER
+mode after transition is the normal manager game, unchanged.
 
 ## Origin & creation (Tier 1–2)
 

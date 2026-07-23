@@ -51,6 +51,8 @@ export interface ContractOffer {
   rolePromise: SquadStatus;
   deadline: number;
   fee?: number; // transfer fee agreed with the selling club (TRANSFER only)
+  /** Optional flavour tag, e.g. a Tier-5 late-career route "[TWILIGHT_ABROAD] …". */
+  note?: string;
 }
 
 export interface LoanSpell {

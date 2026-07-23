@@ -18,8 +18,9 @@ import { makeScoutProfile, staffWage, generateStaffPool } from '../engine/staff'
 import { fillAcademyBands } from '../game/academy';
 import { injectSpecialPlayers } from '../game/specialPlayers';
 import { generateSeasonObjectives } from '../game/playerObjectives';
+import { defaultAmbitions } from '../game/playerLegacy';
 
-export const CURRENT_SCHEMA_VERSION = 12;
+export const CURRENT_SCHEMA_VERSION = 13;
 
 export interface MigrationResult {
   meta: SaveMeta;
@@ -125,9 +126,28 @@ export function migrateSave(
   if (fromVersion < 10) migrateToV10(meta);
   if (fromVersion < 11) migrateToV11(meta);
   if (fromVersion < 12) migrateToV12(meta);
+  if (fromVersion < 13) migrateToV13(meta, players);
 
   meta.schemaVersion = CURRENT_SCHEMA_VERSION;
   return { meta, clubs, players, changed: true };
+}
+
+/**
+ * v12 → v13: Tier-5 legacy & endgame. Seed the ambitions checklist + decline
+ * state on existing Player saves (legacy/retirement/continuation are computed on
+ * demand, so they stay absent until earned). Manager saves untouched.
+ */
+function migrateToV13(meta: SaveMeta, players: Record<string, Player>): void {
+  if (meta.careerMode !== 'PLAYER' || !meta.playerCareer) return;
+  const pc = meta.playerCareer;
+  const avatar = players[pc.playerId];
+  if (avatar && (!pc.ambitions || pc.ambitions.length === 0)) {
+    pc.ambitions = defaultAmbitions(avatar);
+  }
+  pc.decline = pc.decline ?? { started: false, peakOvr: avatar?.overall ?? 70 };
+  pc.veteranTraits = pc.veteranTraits ?? [];
+  pc.roleEvolution = pc.roleEvolution ?? 'PRIME';
+  pc.mentorships = pc.mentorships ?? [];
 }
 
 /**

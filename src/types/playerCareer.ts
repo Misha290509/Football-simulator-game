@@ -211,6 +211,26 @@ export interface PlayerCareer {
   /** Lifetime career earnings (wages + bonuses + sponsorships). */
   careerEarnings?: number;
 
+  // --- Legacy & endgame (Tier 5) ---------------------------------------------
+  /** Personal ambitions checklist, evaluated from real career data. */
+  ambitions?: import('./playerLegacy').CareerAmbition[];
+  /** The nominated dream club (drives the dream-move saga). */
+  dreamClubId?: string;
+  /** The graceful-decline arc into a veteran game. */
+  decline?: import('./playerLegacy').DeclineState;
+  /** Late-unlocked veteran traits (leadership/game-reading compensation). */
+  veteranTraits?: string[];
+  /** The squad-elder role arc within the decline. */
+  roleEvolution?: import('./playerLegacy').RoleEvolution;
+  /** The retirement decision + farewell + send-off bookkeeping. */
+  retirement?: import('./playerLegacy').RetirementState;
+  /** The computed, transparent legacy (score, identities, HoF, peer rank). */
+  legacy?: import('./playerLegacy').LegacyState;
+  /** What the human chose to do after the playing career ended. */
+  continuation?: import('./playerLegacy').Continuation;
+  /** Active late-career mentorships of young players. */
+  mentorships?: import('./playerLegacy').Mentorship[];
+
   // --- Manager relationship & standing (Tier 2) ------------------------------
   /** Optional breakdown of what's driving trust, for the UI. */
   trustFactors?: { ratings: number; objectives: number; talks: number; discipline: number; form: number };
