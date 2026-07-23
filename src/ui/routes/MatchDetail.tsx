@@ -4,6 +4,8 @@ import { CrestBadge } from '../components/Rating';
 import { ratingColor, fullName } from '../format';
 import type { MatchEvent } from '../../types/match';
 
+import { commentaryLine, goalFlourish } from '../../game/commentary';
+
 const WEATHER_ICON: Record<string, string> = { CLEAR: '☀️', RAIN: '🌧️', WIND: '💨', SNOW: '❄️', HOT: '🔥' };
 
 const EVENT_ICON: Record<string, string> = {
@@ -96,6 +98,7 @@ export function MatchDetail() {
                   {e.type === 'GOAL' ? (
                     <>
                       <strong>{nameOf(e.playerId)}</strong>
+                      <span className="text-slate-400"> {goalFlourish(e, match.seed)}</span>
                       {e.assistPlayerId && (
                         <span className="text-slate-500"> (assist {nameOf(e.assistPlayerId)})</span>
                       )}
@@ -108,7 +111,7 @@ export function MatchDetail() {
                     </>
                   ) : (
                     <>
-                      {nameOf(e.playerId)} <span className="text-slate-500">— {e.description}</span>
+                      {nameOf(e.playerId)} <span className="text-slate-500">— {commentaryLine(e, match.seed)}</span>
                     </>
                   )}
                 </span>
