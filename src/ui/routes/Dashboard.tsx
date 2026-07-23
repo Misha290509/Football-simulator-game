@@ -234,7 +234,7 @@ export function Dashboard() {
             const oppPlayers = Object.values(allPlayers).filter((p) => p.contract.clubId === oppId);
             const cont = meta.continental?.[nextMatch.competitionId];
             const cup = meta.domesticCups?.[nextMatch.competitionId];
-            const report = oppClub && oppPlayers.length ? buildOppositionReport(oppClub, oppPlayers, seasonMatches) : null;
+            const report = oppClub && oppPlayers.length ? buildOppositionReport(oppClub, oppPlayers, seasonMatches, club.formation) : null;
             const oppManager = oppId !== meta.managerClubId ? aiManagerOf(oppId, oppClub, meta.seed, meta.aiManagers) : null;
             return (
               <div className="space-y-2">
@@ -254,6 +254,8 @@ export function Dashboard() {
                       <span className="font-semibold text-slate-300">Scouting report</span>
                       <span>Strength <span className="font-mono text-white">{report.strength}</span> · Form {report.form}</span>
                     </div>
+                    <p>Likely shape: <span className="text-slate-300 font-mono">{report.formation}</span></p>
+                    {report.matchup && <p className="text-sky-300">⚔ {report.matchup}</p>}
                     {oppManager && (
                       <p>In the other dugout: <span className="text-slate-300">{oppManager.name}</span>
                         {oppManager.titles > 0 && <span className="text-amber-400/80"> · {oppManager.titles} title{oppManager.titles > 1 ? 's' : ''}</span>}
