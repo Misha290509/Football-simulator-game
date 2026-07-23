@@ -72,6 +72,8 @@ export interface Match {
  */
 export interface LineupProfile {
   clubId: string;
+  /** The shape being played — drives the formation-matchup edge (§ Tactics depth). */
+  formation: string;
   attack: number; // 0–100
   defense: number;
   midfield: number;

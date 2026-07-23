@@ -366,7 +366,7 @@ export function buildLineupProfile(
     });
 
   return {
-    clubId, attack, defense, midfield, gk: gkRating, aggression,
+    clubId, formation, attack, defense, midfield, gk: gkRating, aggression,
     scorers, creators,
     starters: xi.map((s) => s.player.id),
     gkId: gk?.player.id ?? null,

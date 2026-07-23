@@ -12,6 +12,7 @@ import type {
   PlayerMatchStat,
 } from '../types/match';
 import { Rng } from './rng';
+import { formationMatchup } from './formationMatchup';
 
 export interface MatchOutcome {
   homeGoals: number;
@@ -143,9 +144,11 @@ function simulateSide(
   const diff = attackQuality - defQuality;
   // A wider spread on squad strength so the better side dominates the chances —
   // upsets still happen, but weak teams shouldn't win leagues. Weather nudges
-  // the volume/quality of chances.
+  // the volume/quality of chances; the formation matchup tilts the shot count
+  // toward whichever shape wins the tactical battle (neutral when shapes match).
+  const matchup = formationMatchup(side.profile.formation, opp.profile.formation);
   const shotsLambda =
-    Math.max(2.0, Math.min(22, 9.6 + diff * 0.30)) * side.profile.shotVolumeMod * env.shotVol;
+    Math.max(2.0, Math.min(22, 9.6 + diff * 0.30)) * side.profile.shotVolumeMod * env.shotVol * matchup.shotVol;
   const numShots = poisson(rng, shotsLambda);
 
   const sideKey: 'home' | 'away' = side.isHome ? 'home' : 'away';
