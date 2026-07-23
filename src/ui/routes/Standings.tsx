@@ -4,6 +4,50 @@ import { CrestBadge } from '../components/Rating';
 import { computeStandings } from '../../engine/standings';
 import { applyPointsPenalties } from '../../game/ffp';
 import type { StandingRow } from '../../types/league';
+import type { Match } from '../../types/match';
+
+type Res = 'W' | 'D' | 'L';
+interface ClubForm { form: Res[]; xgf: number; xga: number }
+
+/** Per-club last-5 form + season xG for/against, from this competition's matches. */
+function computeForm(rows: StandingRow[], matches: Match[], compId: string): Map<string, ClubForm> {
+  const m = new Map<string, ClubForm>();
+  for (const r of rows) m.set(r.clubId, { form: [], xgf: 0, xga: 0 });
+  const byClub = new Map<string, Match[]>();
+  for (const mt of matches) {
+    if (!mt.played || mt.competitionId !== compId) continue;
+    for (const cid of [mt.homeClubId, mt.awayClubId]) {
+      if (!m.has(cid)) continue;
+      (byClub.get(cid) ?? byClub.set(cid, []).get(cid)!).push(mt);
+    }
+  }
+  for (const [cid, ms] of byClub) {
+    const rec = m.get(cid)!;
+    for (const mt of ms) {
+      const home = mt.homeClubId === cid;
+      rec.xgf += home ? (mt.homeXg ?? 0) : (mt.awayXg ?? 0);
+      rec.xga += home ? (mt.awayXg ?? 0) : (mt.homeXg ?? 0);
+    }
+    rec.form = [...ms].sort((a, b) => b.day - a.day).slice(0, 5).reverse().map((mt) => {
+      const home = mt.homeClubId === cid;
+      const gf = home ? mt.homeGoals : mt.awayGoals;
+      const ga = home ? mt.awayGoals : mt.homeGoals;
+      return gf > ga ? 'W' : gf === ga ? 'D' : 'L';
+    });
+  }
+  return m;
+}
+
+function FormPills({ form }: { form: Res[] }) {
+  const color = (r: Res) => r === 'W' ? 'bg-emerald-500/80' : r === 'D' ? 'bg-slate-500/70' : 'bg-red-500/80';
+  return (
+    <span className="inline-flex gap-0.5 justify-end">
+      {form.length === 0 ? <span className="text-slate-600">—</span> : form.map((r, i) => (
+        <span key={i} className={`inline-block w-4 h-4 rounded-sm text-[9px] leading-4 text-center text-white font-bold ${color(r)}`} title={r}>{r}</span>
+      ))}
+    </span>
+  );
+}
 
 export function Standings() {
   const meta = useGameStore((s) => s.meta)!;
@@ -21,6 +65,11 @@ export function Standings() {
     () => applyPointsPenalties(computeStandings(comp, seasonMatches), meta.pointsPenalties),
     [comp, seasonMatches, meta.pointsPenalties],
   );
+  const formByClub = useMemo(() => computeForm(rows, seasonMatches, comp.id), [rows, seasonMatches, comp.id]);
+  const fmtXgd = (r: StandingRow) => {
+    const f = formByClub.get(r.clubId); if (!f) return '—';
+    const d = f.xgf - f.xga; return `${d > 0 ? '+' : ''}${d.toFixed(1)}`;
+  };
 
   // Conference-format competitions (MLS) render one table per conference.
   if (comp.conferences) {
@@ -43,7 +92,7 @@ export function Standings() {
               <div key={conf} className="overflow-x-auto card">
                 <div className="px-3 py-2 text-sm font-semibold text-slate-300 border-b border-surface-600">{conf} Conference</div>
                 <table className="data-table">
-                  <thead><tr><th>#</th><th>Club</th><th className="text-right">P</th><th className="text-right">Pts</th></tr></thead>
+                  <thead><tr><th>#</th><th>Club</th><th className="text-right">P</th><th className="text-right">Pts</th><th className="text-right">Form</th></tr></thead>
                   <tbody>
                     {confRows.map((r, i) => {
                       const club = clubs[r.clubId];
@@ -53,6 +102,7 @@ export function Standings() {
                           <td><span className="flex items-center gap-2"><CrestBadge abbrev={club.abbrev} color={club.primaryColor} size={20} />{club.name}</span></td>
                           <td className="text-right">{r.played}</td>
                           <td className="text-right font-semibold">{r.points}</td>
+                          <td className="text-right"><FormPills form={formByClub.get(r.clubId)?.form ?? []} /></td>
                         </tr>
                       );
                     })}
@@ -113,7 +163,9 @@ export function Standings() {
               <th className="text-right">GF</th>
               <th className="text-right">GA</th>
               <th className="text-right">GD</th>
+              <th className="text-right" title="xG difference (season)">xGD</th>
               <th className="text-right">Pts</th>
+              <th className="text-right">Form</th>
             </tr>
           </thead>
           <tbody>
@@ -138,7 +190,9 @@ export function Standings() {
                   <td className="text-right">{r.goalsFor}</td>
                   <td className="text-right">{r.goalsAgainst}</td>
                   <td className="text-right">{gd(r) > 0 ? `+${gd(r)}` : gd(r)}</td>
+                  <td className="text-right text-slate-400 font-mono text-xs">{fmtXgd(r)}</td>
                   <td className="text-right font-semibold">{r.points}</td>
+                  <td className="text-right"><FormPills form={formByClub.get(r.clubId)?.form ?? []} /></td>
                 </tr>
               );
             })}

@@ -74,7 +74,12 @@ export function Fixtures() {
           <span className="truncate">{home.shortName}</span>
           <CrestBadge abbrev={home.abbrev} color={home.primaryColor} size={20} />
         </span>
-        <span className="font-mono font-semibold w-16 text-center">{scoreLabel(m)}</span>
+        <span className="w-16 text-center leading-tight">
+          <span className="font-mono font-semibold block">{scoreLabel(m)}</span>
+          {m.played && (m.homeXg != null || m.awayXg != null) && (
+            <span className="block text-[10px] text-slate-500 font-mono" title="Expected goals">xG {(m.homeXg ?? 0).toFixed(1)}–{(m.awayXg ?? 0).toFixed(1)}</span>
+          )}
+        </span>
         <span className="flex-1 flex items-center gap-2">
           <CrestBadge abbrev={away.abbrev} color={away.primaryColor} size={20} />
           <span className="truncate">{away.shortName}</span>
