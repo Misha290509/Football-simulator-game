@@ -2547,6 +2547,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       await putClubs(meta.id, Object.values(result.clubs));
       await persistMeta(newMeta);
 
+      // Archive the finished season's matches: the sim never reads a past
+      // season's fixtures again (load + runtime only ever hold the current
+      // season), so drop the heavy minute-by-minute event timelines — keeping
+      // the decisive PENALTY marker for knockout history + the result and
+      // player stats — to cap IndexedDB growth over a long save. Non-destructive
+      // to anything the game shows.
+      const finished = Object.values(get().matches).filter((m) => m.played && m.events.length > 1);
+      if (finished.length) {
+        const stripped = finished.map((m) => ({ ...m, events: m.events.filter((e) => e.type === 'PENALTY') }));
+        await putMatches(meta.id, stripped);
+      }
+
       const matches: Record<string, Match> = {};
       for (const m of result.newMatches) matches[m.id] = m;
 
