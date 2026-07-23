@@ -22,6 +22,7 @@ import { computeSeasonFinances, deriveBudgets } from '../engine/finances';
 import { coachingFactor, trainingBias } from '../engine/staff';
 import { evaluateObjective, setObjective, SACK_THRESHOLD, fanConfidenceOf, pickVision, reviewVision } from './board';
 import { processTakeovers } from './takeovers';
+import { driftClubReputations } from './reputationDrift';
 import type { BoardState } from '../types/staff';
 import { runAiTransferWindow, weeklyWageBill } from './transfers';
 import { runAiToAiTransfers } from './aiTransfers';
@@ -649,6 +650,11 @@ export async function resolveAndRollover(
         'Your club has new, ambitious owners — the war chest has swelled, but so have expectations. Deliver.'));
     }
   }
+
+  // --- Reputation drift (§ Living world, #50) ----------------------------
+  // Nudge every club's standing toward what its finish deserves, so serial
+  // winners grow into giants and perennial strugglers fade over the decades.
+  for (const c of driftClubReputations(finalClubs, finalStandings, competitions)) finalClubs[c.id] = c;
 
   // --- Board objective evaluation & job security (§M5) -------------------
   let board: BoardState | undefined = meta.board;
