@@ -16,7 +16,7 @@ import { estimateValue } from './valuation';
 const PHYSICAL_DECLINE = ['acceleration', 'sprintSpeed', 'agility', 'balance'];
 
 /** Attribute keys emphasised by each individual-training focus. */
-const FOCUS_KEYS: Record<string, string[]> = {
+export const FOCUS_KEYS: Record<string, string[]> = {
   SHOOTING: ['finishing', 'shotPower', 'longShots', 'volleys', 'positioning', 'penalties'],
   PASSING: ['shortPassing', 'longPassing', 'vision', 'crossing', 'curve', 'fkAccuracy'],
   DRIBBLING: ['dribbling', 'ballControl', 'agility', 'balance'],
@@ -24,6 +24,22 @@ const FOCUS_KEYS: Record<string, string[]> = {
   PHYSICAL: ['acceleration', 'sprintSpeed', 'stamina', 'strength', 'jumping'],
   GOALKEEPING: ['gkDiving', 'gkHandling', 'gkKicking', 'gkPositioning', 'gkReflexes'],
 };
+
+/** Flatten a player's attributes to a single key→value map (all four groups). */
+export function flattenAttributes(attrs: {
+  technical: Record<string, number>; mental: Record<string, number>;
+  physical: Record<string, number>; goalkeeping: Record<string, number>;
+}): Record<string, number> {
+  return { ...attrs.technical, ...attrs.mental, ...attrs.physical, ...attrs.goalkeeping };
+}
+
+/** The player's average rating in a training-focus skill area (0 if unknown). */
+export function focusRating(attrs: Parameters<typeof flattenAttributes>[0], focus: string): number {
+  const flat = flattenAttributes(attrs);
+  const keys = FOCUS_KEYS[focus] ?? [];
+  const vals = keys.map((k) => flat[k]).filter((v) => typeof v === 'number');
+  return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+}
 
 /** A player's aggregated output for the season just finished. */
 export interface SeasonPerf {

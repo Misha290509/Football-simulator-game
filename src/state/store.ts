@@ -54,7 +54,7 @@ import type { AcademyPlayer } from '../types/academy';
 import type { Position } from '../types/attributes';
 import { createNewGame, type NewGameConfig } from '../game/newGame';
 import {
-  createPlayerCareerGame, playerCareerOf, playerSelectionWeight, applyAvatarMatchday,
+  createPlayerCareerGame, playerCareerOf, avatarSelectionBias, applyAvatarMatchday,
   ensureAdvanceObjectives, type NewPlayerCareerConfig,
 } from '../game/playerCareer';
 import { generateSeasonObjectives } from '../game/playerObjectives';
@@ -3136,8 +3136,8 @@ async function playDays(
     const careerAtStart = careerBeforeObj
       ? ensureAdvanceObjectives(careerBeforeObj, avatarAtStart, toPlay, meta.seed)
       : null;
-    const selectionBias = careerAtStart
-      ? { [careerAtStart.playerId]: playerSelectionWeight(careerAtStart) }
+    const selectionBias = careerAtStart && avatarAtStart
+      ? { [careerAtStart.playerId]: avatarSelectionBias(careerAtStart, avatarAtStart, Object.values(get().players).filter((pl) => pl.contract.clubId === avatarAtStart.contract.clubId)) }
       : undefined;
 
     // Simulate the whole range in one worker dispatch…

@@ -124,7 +124,14 @@ function buildCreatedAvatar(snapshot: WorldSnapshot, config: NewPlayerCareerConf
   const rng = new Rng((snapshot.meta.seed ^ hashSeed(`avatar_${config.clubId}`)) >>> 0);
   const arch = archetypeById(config.archetype);
   const position = config.position ?? 'ST';
-  const target = clamp(52 + arch.targetBias + rng.int(-2, 3), 40, 66);
+  // Scale the starting ability to the club's level so a created avatar is a
+  // genuine, close-to-the-team prospect rather than a hopeless mismatch: a raw
+  // 52 dumped at an elite side never plays and the career stalls before it
+  // starts. He still starts below the XI (a prospect to develop), but within
+  // striking distance — and at a modest club he's near first-team level already.
+  const clubRep = club?.reputation ?? 62;
+  const scaled = Math.round(clubRep * 0.8 + 7); // rep 56 → 52, 70 → 63, 78 → 69
+  const target = clamp(scaled + arch.targetBias + rng.int(-2, 3), 48, 72);
 
   const p = generatePlayer({
     rng, currentYear: config.startYear, target, position,
@@ -300,6 +307,31 @@ const STATUS_SELECTION_BUMP: Record<SquadStatus, number> = {
 export function playerSelectionWeight(career: Pick<PlayerCareer, 'managerTrust' | 'status'>): number {
   const fromTrust = (clamp(career.managerTrust, 0, 100) - 50) * 0.16; // ±8
   return fromTrust + (STATUS_SELECTION_BUMP[career.status] ?? 0);
+}
+
+/**
+ * Extra selection nudge for being the club's specialist in the avatar's role.
+ * Being the only (or best) natural option for your position should earn a start
+ * over a better player shoved out of position — "I'm the only right-winger and
+ * I never play" shouldn't happen. Scales with how few better specialists there
+ * are; it never overrides two clearly better players in the same role.
+ */
+export function positionalScarcityBoost(avatar: Player, squad: Player[]): number {
+  const mine = new Set(avatar.positions);
+  const betterSpecialists = squad.filter((t) =>
+    t.id !== avatar.id && t.overall > avatar.overall && t.positions.some((pos) => mine.has(pos))).length;
+  if (betterSpecialists === 0) return 5; // the club's first-choice in the role
+  if (betterSpecialists === 1) return 2; // a genuine rotation option
+  return 0;
+}
+
+/** The full auto-selection bias for the avatar: trust + status + role scarcity. */
+export function avatarSelectionBias(
+  career: Pick<PlayerCareer, 'managerTrust' | 'status'>,
+  avatar: Player,
+  squad: Player[],
+): number {
+  return playerSelectionWeight(career) + positionalScarcityBoost(avatar, squad);
 }
 
 /** Average match rating that leaves trust unchanged (a par performance). */

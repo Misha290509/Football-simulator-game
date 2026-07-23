@@ -12,7 +12,7 @@ import type { PlayerCareer } from '../types/playerCareer';
 import type { GamePlan } from '../types/interactiveMatch';
 import { buildLineupProfile } from '../engine/lineup';
 import { momentRole } from './momentLibrary';
-import { playerSelectionWeight } from './playerCareer';
+import { avatarSelectionBias } from './playerCareer';
 import type { InteractiveInput } from '../engine/interactiveMatch';
 
 const squadOf = (players: Record<string, Player>, clubId: string) =>
@@ -47,7 +47,7 @@ export function buildInteractiveInput(
 
   const mySquad = squadOf(players, clubId);
   const oppSquad = squadOf(players, oppId);
-  const bias = { [avatar.id]: playerSelectionWeight(career) };
+  const bias = { [avatar.id]: avatarSelectionBias(career, avatar, mySquad) };
   const myProfile = buildLineupProfile(clubId, mySquad, clubs[clubId]?.formation ?? '4-3-3', { autoMode: true, selectionBias: bias });
   const oppProfile = buildLineupProfile(oppId, oppSquad, clubs[oppId]?.formation ?? '4-3-3', { autoMode: true });
 

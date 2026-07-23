@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
-import { playerCareerOf, playerSelectionWeight } from '../../game/playerCareer';
+import { playerCareerOf, avatarSelectionBias } from '../../game/playerCareer';
 import { assignXI, resolveBench } from '../../engine/lineup';
 import { Rating, CrestBadge } from '../components/Rating';
 import { fullName, ageOf } from '../format';
@@ -29,7 +29,7 @@ export function PlayerHome() {
   const selection = useMemo(() => {
     if (!career || !p || !clubId || !club) return null;
     const squad = Object.values(players).filter((pl) => pl.contract.clubId === clubId);
-    const bias = { [career.playerId]: playerSelectionWeight(career) };
+    const bias = { [career.playerId]: avatarSelectionBias(career, p, squad) };
     const formation = club.formation ?? '4-3-3';
     const xi = assignXI(squad, formation, { autoMode: true, selectionBias: bias });
     if (xi.some((s) => s?.player.id === career.playerId)) return 'START';

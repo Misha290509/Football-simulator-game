@@ -54,9 +54,23 @@ export function slotPenalty(p: Player, slot: Position): number {
   if (mirror && p.positions.includes(mirror)) {
     return slot === 'LCB' || slot === 'RCB' ? 1 : 4;
   }
+  // Adjacent roles that overlap heavily across formations: a wide forward and a
+  // wide midfielder on the same flank are effectively the same job (a natural
+  // RW slots into RM, and vice-versa), and the central-midfield band shades into
+  // itself. Without this, a winger at a club that plays a winger-less shape
+  // (4-4-2 / 4-5-1) takes the full cross-group hit and never gets picked.
+  if (ADJACENT_SLOTS[slot]?.some((pos) => p.positions.includes(pos))) return 3;
   const sameGroup = POSITION_GROUP[p.position] === POSITION_GROUP[slot];
   return sameGroup ? 6 : 14;
 }
+
+/** For a formation SLOT, the natural positions that fill it near-natively. */
+const ADJACENT_SLOTS: Partial<Record<Position, Position[]>> = {
+  RM: ['RW'], RW: ['RM'],
+  LM: ['LW'], LW: ['LM'],
+  CAM: ['CM'], CM: ['CAM', 'CDM'], CDM: ['CM'],
+  ST: ['CAM'],
+};
 
 /** Effective OVR at a slot, folding in the wrong-position penalty. */
 export const effectiveOverall = (p: Player, slot: Position): number =>
