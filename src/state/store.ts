@@ -644,7 +644,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const ex = executeContractOffer(pc, avatar, offer, clubs, year, meta.currentDay);
     const newPlayers = { ...players, [avatar.id]: ex.avatar };
     const newClubs = { ...clubs, ...ex.clubPatches };
-    const newMeta: SaveMeta = { ...meta, playerCareer: ex.career, news: [...meta.news, ...ex.news] };
+    // In Player mode the avatar's club stands in as the "manager club" that all
+    // the reused world screens (Fixtures, Standings, next-match) follow — so it
+    // must track a transfer, or those views stay stuck on the old club/league.
+    const newMeta: SaveMeta = { ...meta, playerCareer: ex.career, news: [...meta.news, ...ex.news], managerClubId: ex.avatar.contract.clubId || meta.managerClubId };
     set({ meta: newMeta, players: newPlayers, clubs: newClubs });
     await putPlayers(meta.id, [ex.avatar]);
     if (Object.keys(ex.clubPatches).length) await putClubs(meta.id, Object.values(ex.clubPatches));
@@ -678,7 +681,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const ex = executeLoanOffer(pc, avatar, offer, clubs, year, meta.currentDay);
     const newPlayers = { ...players, [avatar.id]: ex.avatar };
     const newClubs = { ...clubs, ...ex.clubPatches };
-    const newMeta: SaveMeta = { ...meta, playerCareer: ex.career, news: [...meta.news, ...ex.news] };
+    // The avatar plays at his loan club, so the world screens follow him there.
+    const newMeta: SaveMeta = { ...meta, playerCareer: ex.career, news: [...meta.news, ...ex.news], managerClubId: ex.avatar.contract.clubId || meta.managerClubId };
     set({ meta: newMeta, players: newPlayers, clubs: newClubs });
     await putPlayers(meta.id, [ex.avatar]);
     if (Object.keys(ex.clubPatches).length) await putClubs(meta.id, Object.values(ex.clubPatches));
@@ -2524,6 +2528,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           transferInterest: [], activeSagas: [], contractOffers: [], loanOffers: [],
           pendingPress: [], pendingSponsorOffers: [], transferRequestPending: false,
         };
+        // Keep the stand-in "manager club" on the avatar's club (e.g. after a
+        // loan spell ends and he returns to his parent), so the world screens
+        // follow him into the new season.
+        const avClub = result.players[pc.playerId]?.contract.clubId;
+        if (avClub && avClub !== newMeta.managerClubId) newMeta.managerClubId = avClub;
       }
 
       // Persist playoff/cup/continental (history) + new fixtures + squads.
@@ -3605,12 +3614,21 @@ async function playDays(
       }
     }
 
+    // Player mode: keep the stand-in "manager club" tracking the avatar's actual
+    // club, so an auto-negotiated move (or any club change this advance) carries
+    // Fixtures / Standings / next-match to where he now plays.
+    let managerClubId = meta.managerClubId;
+    if (careerAtStart) {
+      const avNow = playersById[careerAtStart.playerId];
+      if (avNow?.contract.clubId && avNow.contract.clubId !== managerClubId) managerClubId = avNow.contract.clubId;
+    }
+
     const newMeta: SaveMeta = {
       ...meta, currentDay: to, news: newsItems, scouting, pendingOffers, board,
       scoutAssignments: scoutRes.assignments, youthProspects, pendingPress,
       scoutReports, playerScoutAssignments: remainingAssignments,
       pendingGala, history, managerStyle, pendingArrivals, storylines, ballonDor,
-      clubRelations, playerCareer,
+      clubRelations, playerCareer, managerClubId,
     };
     set({ matches, players: playersById, clubs: clubsAfter, meta: newMeta });
 

@@ -305,19 +305,25 @@ function advanceLoans(
   const news: NewsItem[] = [];
   if (career.loanSpell) return { career, news }; // already out; return handled at rollover
   const age = year - avatar.born.year;
-  const buried = statusRank(career.status) <= statusRank('PROSPECT') && career.seasonApps <= 3 && career.managerTrust < 50;
-  if (!(buried && age <= 22)) return { career, news };
+  // Buried = a fringe player who just isn't getting on. A loan for regular
+  // football is the escape hatch out of a 0-appearances dead end — offered to
+  // any player through his prime (not just teenagers), including one who moved
+  // to a big club and can't break in.
+  const buried = statusRank(career.status) <= statusRank('ROTATION') && career.seasonApps <= 3 && career.managerTrust < 55;
+  if (!(buried && age <= 28)) return { career, news };
   if ((career.loanOffers ?? []).length > 0) return { career, news };
   const rng = rngFor(seed, day, 'loan');
-  if (!rng.chance(0.4)) return { career, news };
+  if (!rng.chance(0.55)) return { career, news };
   const parentRep = clubs[avatar.contract.clubId ?? '']?.reputation ?? 55;
+  // A club where the avatar would actually walk into the side (at or below his
+  // own ability), so the loan means real minutes, not more bench-warming.
   const dest = Object.values(clubs)
-    .filter((c) => c.id !== avatar.contract.clubId && c.reputation >= parentRep - 22 && c.reputation <= parentRep - 4)
+    .filter((c) => c.id !== avatar.contract.clubId && c.reputation <= Math.min(parentRep - 3, avatar.overall + 2) && c.reputation >= parentRep - 26)
     .sort((a, b) => b.reputation - a.reputation);
   const pick = dest[rng.int(0, Math.max(0, Math.min(4, dest.length - 1)))];
   if (!pick) return { career, news };
   const offers: LoanOffer[] = [{
-    id: `loan_${pick.id}_${day}`, clubId: pick.id, minutesGuarantee: rng.chance(0.6),
+    id: `loan_${pick.id}_${day}`, clubId: pick.id, minutesGuarantee: rng.chance(0.85),
     quality: pick.reputation, deadline: day + 14,
     note: `${pick.shortName} want ${nameOf(avatar)} on loan to get him regular football.`,
   }];
