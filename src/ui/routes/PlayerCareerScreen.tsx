@@ -93,6 +93,19 @@ export function PlayerCareerScreen() {
         )}
       </div>
 
+      {/* Interactive moments (Tier 3) */}
+      {career.momentStats && (career.momentStats.bigMomentsWon + career.momentStats.bigMomentsLost) > 0 && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-2">Big moments</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+            <Row label="Won" value={`${career.momentStats.bigMomentsWon}`} />
+            <Row label="Lost" value={`${career.momentStats.bigMomentsLost}`} />
+            <Row label="Pens scored" value={`${career.momentStats.penaltiesScored}`} />
+            <Row label="Decisive" value={`${career.momentStats.decisiveContributions}`} />
+          </div>
+        </div>
+      )}
+
       {/* Awards */}
       {p.awards.length > 0 && (
         <div className="card p-4">

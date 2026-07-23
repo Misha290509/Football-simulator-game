@@ -87,8 +87,25 @@ trust, status, season tallies, milestones); later tiers fill the rest.
 All in `playerProgression.ts` (orchestrated per advance) + the season rollover.
 Migration v10 backfills Tier-2 fields on existing Player saves.
 
-**Tier 3 — Interactive match layer:** key-moment decisions + manager in-match
-instructions; position-specific moment sets.
+**Tier 3 — Interactive key-moments match layer — ✅ COMPLETE:**
+- Resumable, deterministic engine (`engine/interactiveMatch.ts`) realised as a
+  REPLAY function: `runInteractiveMatch(input, decisions)` re-runs from the seed
+  applying the logged decisions, pausing at the first undecided `KeyMoment`. Pure
+  fn of `(seed, decisionLog)` → replays/save-reload/tests all bit-reproducible;
+  moment RNG drawn only after the decision. Only the avatar's match uses it —
+  every other fixture batch-sims unchanged via the worker.
+- Position-keyed moment libraries (`game/momentLibrary.ts`) — GK/CB/FB/CM/WIDE/ST
+  + set pieces; a keeper never gets a finishing moment. 4–10 moments/match by
+  role, minutes, status, frequency setting.
+- Resolution model: attributes rule, decision modifies, traits + context
+  (fatigue/pressure/confidence) bite; risk/reward; failure is interesting
+  (cards, spurned chances). Outcomes write real `playerStats` → records/awards.
+- Manager game plan + adherence → Tier-2 trust (defiance forgiven when it works);
+  half-time talk.
+- Input modes/timers/auto-resolve at every level + settings; migration v11.
+- Store flow: `beginPlayerMatch`/`decideMoment`/`autoResolve*`/`finishPlayerMatch`
+  fold the interactive result into `playDays` (extraPlayed), so aftermath +
+  other fixtures run exactly as before.
 
 **Tier 4 — Off-pitch life & narrative:** agent, inverted contracts/transfers +
 role promises, loans out for game time, sponsorships, media/press,

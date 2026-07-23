@@ -209,6 +209,10 @@ export interface PlayerCareer {
   /** Progress 0–100 toward the nearest not-yet-earned trait. */
   traitProgress?: Record<string, number>;
 
+  // --- Interactive matches (Tier 3) -----------------------------------------
+  /** Lifetime interactive key-moment stats. */
+  momentStats?: import('./interactiveMatch').MomentStats;
+
   // --- Timeline & legacy -----------------------------------------------------
   milestones: CareerMilestone[];
   seasonHistory: CareerSeasonRecord[];

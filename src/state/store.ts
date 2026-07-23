@@ -58,6 +58,13 @@ import {
   ensureAdvanceObjectives, type NewPlayerCareerConfig,
 } from '../game/playerCareer';
 import { generateSeasonObjectives } from '../game/playerObjectives';
+import { runInteractiveMatch, type InteractiveInput } from '../engine/interactiveMatch';
+import { buildInteractiveInput } from '../game/interactivePlay';
+import { defaultChoiceId } from '../game/momentLibrary';
+import { DEFAULT_CAREER_SETTINGS, EMPTY_MOMENT_STATS } from '../types/interactiveMatch';
+import type {
+  KeyMoment, MomentDecision, MatchTick, GamePlan, InteractiveMatchRecord, CareerSettings,
+} from '../types/interactiveMatch';
 import { progressPlayerCareer, statusRank } from '../game/playerProgression';
 import {
   postDropConversation, evaluatePromises, resolveConversation, requestMinutesOutcome, roleMeetingConversation,
@@ -145,6 +152,18 @@ interface LiveWork {
 }
 let liveWork: LiveWork | null = null;
 
+/** Transient state of the avatar's interactive Tier-3 match. */
+export interface InteractivePlayState {
+  input: InteractiveInput;
+  decisions: MomentDecision[];
+  pending: KeyMoment | null;
+  ticker: MatchTick[];
+  done: { match: Match; record: InteractiveMatchRecord } | null;
+  phase: 'PREMATCH' | 'PLAYING' | 'HALFTIME' | 'DONE';
+  halfTimeSeen: boolean;
+  htBoost?: boolean;
+}
+
 interface GameState {
   loaded: boolean;
   saving: boolean;
@@ -155,6 +174,7 @@ interface GameState {
   meta: SaveMeta | null;
   /** Interactive live match in progress (transient). */
   liveMatch: LiveMatchState | null;
+  interactivePlay: InteractivePlayState | null;
   clubs: Record<string, Club>;
   players: Record<string, Player>;
   matches: Record<string, Match>;
@@ -165,6 +185,17 @@ interface GameState {
   newPlayerCareer: (config: NewPlayerCareerConfig) => Promise<string>;
   answerConversation: (id: string, choiceIdx: number) => Promise<void>;
   requestMeeting: () => Promise<string>;
+  // --- Interactive match (Tier 3) ---
+  beginPlayerMatch: () => Promise<'STARTED' | 'AUTO' | 'NONE'>;
+  setInteractiveGamePlan: (plan: GamePlan) => void;
+  kickOffInteractive: () => void;
+  decideMoment: (choiceId: string, autoResolved?: boolean) => void;
+  autoResolveMoment: () => void;
+  autoResolveRest: () => void;
+  acknowledgeHalfTime: (boost: boolean) => void;
+  finishPlayerMatch: () => Promise<void>;
+  cancelInteractive: () => void;
+  setCareerSettings: (patch: Partial<CareerSettings>) => Promise<void>;
   load: (saveId: string) => Promise<boolean>;
   remove: (saveId: string) => Promise<void>;
   persist: () => Promise<void>;
@@ -339,6 +370,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   stopSim: () => set({ stopRequested: true }),
   meta: null,
   liveMatch: null,
+  interactivePlay: null,
   clubs: {},
   players: {},
   matches: {},
@@ -410,6 +442,128 @@ export const useGameStore = create<GameState>((set, get) => ({
     return res.news[0]?.body ?? 'You spoke with the manager.';
   },
 
+  // --- Interactive match (Tier 3) ----------------------------------------
+  beginPlayerMatch: async () => {
+    const { meta, players, clubs } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'NONE';
+    const avatar = players[pc.playerId];
+    const cid = avatar?.contract.clubId;
+    if (!avatar || !cid) return 'NONE';
+    const settings = meta.careerSettings ?? DEFAULT_CAREER_SETTINGS;
+    const nextM = Object.values(get().matches)
+      .filter((m) => !m.played && !m.neutral && (m.homeClubId === cid || m.awayClubId === cid) && m.day >= meta.currentDay)
+      .sort((a, b) => a.day - b.day)[0];
+    if (!nextM) return 'NONE';
+    if (!settings.interactive) return 'AUTO';
+    const built = buildInteractiveInput(meta, players, clubs, nextM, avatar, pc);
+    if (!built.willStart) return 'AUTO'; // benched → nothing to play interactively
+    const input: InteractiveInput = { ...built.input, frequency: settings.momentFrequency };
+    set({ interactivePlay: { input, decisions: [], pending: null, ticker: [], done: null, phase: 'PREMATCH', halfTimeSeen: false } });
+    return 'STARTED';
+  },
+
+  setInteractiveGamePlan: (plan) => {
+    const ip = get().interactivePlay;
+    if (!ip || ip.phase !== 'PREMATCH') return;
+    set({ interactivePlay: { ...ip, input: { ...ip.input, gamePlan: plan } } });
+  },
+
+  kickOffInteractive: () => {
+    const ip = get().interactivePlay;
+    if (!ip || ip.phase !== 'PREMATCH') return;
+    stepInteractive(get, set, ip.input, []);
+  },
+
+  decideMoment: (choiceId, autoResolved = false) => {
+    const ip = get().interactivePlay;
+    if (!ip || !ip.pending) return;
+    const decision: MomentDecision = {
+      momentId: ip.pending.id, choiceId, autoResolved,
+      followedGamePlan: ip.pending.gamePlanAligned.includes(choiceId), success: false, effect: '',
+    };
+    stepInteractive(get, set, ip.input, [...ip.decisions, decision]);
+  },
+
+  autoResolveMoment: () => {
+    const ip = get().interactivePlay;
+    if (!ip || !ip.pending) return;
+    get().decideMoment(defaultChoiceId(ip.pending.type, ip.input.gamePlan), true);
+  },
+
+  autoResolveRest: () => {
+    let guard = 0;
+    // Acknowledge any half-time pause, then blitz the remaining moments.
+    while (guard++ < 60) {
+      const ip = get().interactivePlay;
+      if (!ip) break;
+      if (ip.phase === 'HALFTIME') { get().acknowledgeHalfTime(false); continue; }
+      if (ip.phase === 'PREMATCH') { get().kickOffInteractive(); continue; }
+      if (!ip.pending) break; // DONE
+      get().autoResolveMoment();
+    }
+  },
+
+  acknowledgeHalfTime: (boost) => {
+    const ip = get().interactivePlay;
+    if (!ip) return;
+    // Half-time talk is a narrative beat that nudges confidence for the rest of
+    // the run WITHOUT changing the deterministic match input.
+    set({ interactivePlay: { ...ip, phase: ip.pending ? 'PLAYING' : 'DONE', halfTimeSeen: true, htBoost: boost } as InteractivePlayState });
+  },
+
+  finishPlayerMatch: async () => {
+    const ip = get().interactivePlay;
+    const { meta } = get();
+    if (!ip || !ip.done || !meta) return;
+    const { match, record } = ip.done;
+    // Mark it played so the batch skips it, then commit the matchday.
+    set({ matches: { ...get().matches, [match.id]: match }, interactivePlay: null });
+    await playDays(get, set, meta.currentDay, match.day + 1, [match]);
+    while (await progressKnockouts(get, set)) { /* draw any unlocked round */ }
+
+    // Tier-3 extras on top of the standard matchday processing playDays ran:
+    // lifetime moment stats, game-plan adherence → trust, standout milestone.
+    const meta2 = get().meta;
+    const pc = playerCareerOf(meta2);
+    if (!meta2 || !pc) return;
+    const avatar = get().players[pc.playerId];
+    const av = match.playerStats.find((s) => s.playerId === pc.playerId);
+    const won = ip.input.isAvatarHome ? match.homeGoals > match.awayGoals : match.awayGoals > match.homeGoals;
+    const ms = { ...(pc.momentStats ?? EMPTY_MOMENT_STATS) };
+    ms.bigMomentsWon += record.tally.bigWon; ms.bigMomentsLost += record.tally.bigLost;
+    ms.penaltiesScored += record.tally.penScored; ms.penaltiesMissed += record.tally.penMissed;
+    ms.penaltiesSaved += record.tally.penSaved; ms.decisiveContributions += record.tally.decisive;
+
+    // Following the plan builds trust, defiance costs it — unless it worked.
+    let trustDelta = (record.gamePlanAdherence - 0.6) * 3;
+    if (record.gamePlanAdherence < 0.5 && ((av?.goals ?? 0) > 0 || won)) trustDelta = Math.max(trustDelta, 0.6);
+    const htBoost = (ip as InteractivePlayState & { htBoost?: boolean }).htBoost ? 4 : 0;
+
+    const milestones = record.standout ? [...pc.milestones, { day: meta2.currentDay, text: record.standout }] : pc.milestones;
+    const newPc = {
+      ...pc, momentStats: ms, milestones,
+      managerTrust: clamp((pc.managerTrust ?? 50) + trustDelta, 0, 100) as number,
+      confidence: clamp((pc.confidence ?? 60) + htBoost, 0, 100) as number,
+    };
+    const newMeta: SaveMeta = { ...meta2, playerCareer: newPc };
+    let newPlayers = get().players;
+    if (avatar && htBoost) { const np = { ...avatar, morale: clamp(avatar.morale + 2) as number }; newPlayers = { ...newPlayers, [avatar.id]: np }; await putPlayers(meta2.id, [np]); }
+    set({ meta: newMeta, players: newPlayers });
+    await persistMeta(newMeta);
+  },
+
+  cancelInteractive: () => set({ interactivePlay: null }),
+
+  setCareerSettings: async (patch) => {
+    const { meta } = get();
+    if (!meta) return;
+    const careerSettings: CareerSettings = { ...(meta.careerSettings ?? DEFAULT_CAREER_SETTINGS), ...patch };
+    const newMeta: SaveMeta = { ...meta, careerSettings };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
   load: async (saveId) => {
     const snap = await loadSave(saveId);
     if (!snap) return false;
@@ -449,7 +603,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  closeSave: () => { liveRng = null; liveWork = null; set({ loaded: false, meta: null, liveMatch: null, clubs: {}, players: {}, matches: {} }); },
+  closeSave: () => { liveRng = null; liveWork = null; set({ loaded: false, meta: null, liveMatch: null, interactivePlay: null, clubs: {}, players: {}, matches: {} }); },
 
   // --- Transfers ---------------------------------------------------------
 
@@ -2518,6 +2672,24 @@ export const useGameStore = create<GameState>((set, get) => ({
  * Play every unplayed league match with `from <= day < to`, then set
  * currentDay = to. Batches all matches into a single worker dispatch.
  */
+/** Advance the interactive match engine one step and reflect it in state. */
+function stepInteractive(
+  get: () => GameState,
+  set: (partial: Partial<GameState>) => void,
+  input: InteractiveInput,
+  decisions: MomentDecision[],
+): void {
+  const cur = get().interactivePlay;
+  if (!cur) return;
+  const step = runInteractiveMatch(input, decisions);
+  if (step.kind === 'DECISION') {
+    const halfTime = step.moment.minute >= 45 && !cur.halfTimeSeen;
+    set({ interactivePlay: { ...cur, input, decisions, pending: step.moment, ticker: step.ticker, done: null, phase: halfTime ? 'HALFTIME' : 'PLAYING' } });
+  } else {
+    set({ interactivePlay: { ...cur, input, decisions: step.record.decisionLog, pending: null, ticker: step.ticker, done: { match: step.match, record: step.record }, phase: 'DONE' } });
+  }
+}
+
 async function playDays(
   get: () => GameState,
   set: (partial: Partial<GameState>) => void,

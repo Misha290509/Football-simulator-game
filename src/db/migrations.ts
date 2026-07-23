@@ -19,7 +19,7 @@ import { fillAcademyBands } from '../game/academy';
 import { injectSpecialPlayers } from '../game/specialPlayers';
 import { generateSeasonObjectives } from '../game/playerObjectives';
 
-export const CURRENT_SCHEMA_VERSION = 10;
+export const CURRENT_SCHEMA_VERSION = 11;
 
 export interface MigrationResult {
   meta: SaveMeta;
@@ -123,9 +123,22 @@ export function migrateSave(
   if (fromVersion < 8) migrateToV8(meta);
   if (fromVersion < 9) migrateToV9(meta, players);
   if (fromVersion < 10) migrateToV10(meta);
+  if (fromVersion < 11) migrateToV11(meta);
 
   meta.schemaVersion = CURRENT_SCHEMA_VERSION;
   return { meta, clubs, players, changed: true };
+}
+
+/**
+ * v10 → v11: Tier-3 interactive matches. Backfill default career settings and
+ * empty lifetime moment stats on Player saves. Manager saves untouched.
+ */
+function migrateToV11(meta: SaveMeta): void {
+  if (meta.careerMode !== 'PLAYER') return;
+  meta.careerSettings = meta.careerSettings ?? { interactive: true, timed: false, timerSeconds: 15, momentFrequency: 'NORMAL' };
+  if (meta.playerCareer && !meta.playerCareer.momentStats) {
+    meta.playerCareer.momentStats = { bigMomentsWon: 0, bigMomentsLost: 0, penaltiesScored: 0, penaltiesMissed: 0, penaltiesSaved: 0, decisiveContributions: 0 };
+  }
 }
 
 /**

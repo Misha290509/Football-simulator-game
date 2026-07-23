@@ -431,6 +431,8 @@ export interface SaveGame {
   careerMode?: import('./playerCareer').CareerMode;
   /** The be-a-player career state; present only when careerMode === 'PLAYER'. */
   playerCareer?: import('./playerCareer').PlayerCareer;
+  /** Tier-3 interactive-match settings (input mode, timers, on/off). */
+  careerSettings?: import('./interactiveMatch').CareerSettings;
   // Clubs and players are kept in separate Dexie tables for performance,
   // but a fully-exported save inlines them (see import/export).
 }

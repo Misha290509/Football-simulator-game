@@ -21,6 +21,7 @@ import {
   generateSeasonObjectives, generateMatchObjectives, evaluateMatchObjectives, updateSeasonObjectives,
 } from './playerObjectives';
 import { roleMeetingConversation } from './playerConversations';
+import { DEFAULT_CAREER_SETTINGS, EMPTY_MOMENT_STATS } from '../types/interactiveMatch';
 
 /** The career mode of a save. Absent flag ⇒ 'MANAGER' (every legacy save). */
 export function careerModeOf(meta: Pick<SaveGame, 'careerMode'> | null | undefined): CareerMode {
@@ -192,6 +193,7 @@ export function initialPlayerCareer(
     confidence: 60,
     matchSharpness: 100,
     traitProgress: {},
+    momentStats: { ...EMPTY_MOMENT_STATS },
     milestones: [{ day: startDay, text: originMilestone(origin, clubName) }],
     seasonHistory: [],
   };
@@ -233,6 +235,7 @@ export function createPlayerCareerGame(config: NewPlayerCareerConfig): WorldSnap
   const name = displayName(avatar);
   snapshot.meta.careerMode = 'PLAYER';
   snapshot.meta.managerName = name;
+  snapshot.meta.careerSettings = { ...DEFAULT_CAREER_SETTINGS };
   let career = initialPlayerCareer(avatar, config.origin, config.archetype ?? 'Academy Graduate', club?.name ?? 'your club', snapshot.meta.seed);
   // Seed objectives for the avatar's opening fixture so they show from day one.
   const firstMatch = Object.values(snapshot.matches)

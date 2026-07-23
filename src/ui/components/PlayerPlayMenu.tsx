@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 
 /**
@@ -8,16 +9,25 @@ import { useGameStore } from '../../state/store';
  * My Player screen after each step.
  */
 export function PlayerPlayMenu() {
+  const navigate = useNavigate();
   const meta = useGameStore((s) => s.meta)!;
   const simming = useGameStore((s) => s.simming);
   const advance = useGameStore((s) => s.advanceMatchday);
   const toNext = useGameStore((s) => s.simToNextManagerMatch);
   const toEnd = useGameStore((s) => s.simToSeasonEnd);
   const startNext = useGameStore((s) => s.startNextSeason);
+  const beginPlayerMatch = useGameStore((s) => s.beginPlayerMatch);
   const complete = useGameStore((s) => s.seasonComplete());
   const nextMatch = useGameStore((s) => s.managerNextMatch());
   const seasonMatches = useGameStore((s) => s.currentSeasonMatches());
   const stopSim = useGameStore((s) => s.stopSim);
+
+  // Play the avatar's next fixture: interactive if enabled + starting, else sim.
+  const playNext = async () => {
+    const r = await beginPlayerMatch();
+    if (r === 'STARTED') navigate('/play-match');
+    else await toNext();
+  };
 
   const clubId = meta.managerClubId;
   const mine = seasonMatches.filter((m) => !m.neutral && (m.homeClubId === clubId || m.awayClubId === clubId));
@@ -47,7 +57,7 @@ export function PlayerPlayMenu() {
       ) : (
         <>
           <button className="btn-ghost" onClick={() => advance()}>{preseason ? 'Advance Day' : 'Advance'}</button>
-          <button className="btn-primary" disabled={!nextMatch} onClick={() => toNext()}>{preseason ? 'Skip to opening day ▸' : 'Play Next Match ▸'}</button>
+          <button className="btn-primary" disabled={!nextMatch} onClick={() => (preseason ? toNext() : playNext())}>{preseason ? 'Skip to opening day ▸' : 'Play Next Match ▸'}</button>
           <button className="btn-ghost" onClick={() => toEnd()}>To Season End ⏩</button>
         </>
       )}

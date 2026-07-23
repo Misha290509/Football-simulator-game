@@ -92,7 +92,43 @@ export function PlayerTraining() {
         </div>
       </div>
 
+      <MatchSettings />
+
       {toast && <div className="fixed bottom-6 right-6 card px-4 py-3 text-sm shadow-lg border-accent">{toast}</div>}
+    </div>
+  );
+}
+
+function MatchSettings() {
+  const meta = useGameStore((s) => s.meta);
+  const setCareerSettings = useGameStore((s) => s.setCareerSettings);
+  const s = meta?.careerSettings ?? { interactive: true, timed: false, timerSeconds: 15, momentFrequency: 'NORMAL' as const };
+  return (
+    <div className="card p-4 space-y-3">
+      <h2 className="text-sm font-semibold text-slate-400">Match settings</h2>
+      <label className="flex items-center justify-between text-sm">
+        <span className="text-slate-300">Play key moments interactively</span>
+        <input type="checkbox" checked={s.interactive} onChange={(e) => void setCareerSettings({ interactive: e.target.checked })} />
+      </label>
+      <label className="flex items-center justify-between text-sm">
+        <span className="text-slate-300">Timed decisions <span className="text-slate-500">(optional)</span></span>
+        <input type="checkbox" checked={s.timed} onChange={(e) => void setCareerSettings({ timed: e.target.checked })} />
+      </label>
+      {s.timed && (
+        <label className="block text-sm">
+          <span className="text-slate-400">Timer: {s.timerSeconds}s</span>
+          <input type="range" min={5} max={30} step={1} value={s.timerSeconds} className="w-full" onChange={(e) => void setCareerSettings({ timerSeconds: Number(e.target.value) })} />
+        </label>
+      )}
+      <label className="block text-sm">
+        <span className="text-slate-400">Moment frequency</span>
+        <select className="mt-1 w-full bg-surface-700 border border-surface-600 rounded px-3 py-2 text-sm" value={s.momentFrequency} onChange={(e) => void setCareerSettings({ momentFrequency: e.target.value as 'LOW' | 'NORMAL' | 'HIGH' })}>
+          <option value="LOW">Fewer (quicker matches)</option>
+          <option value="NORMAL">Normal</option>
+          <option value="HIGH">More (more involved)</option>
+        </select>
+      </label>
+      <p className="text-xs text-slate-500">Turn interactive off to auto-simulate every match. Timers are always optional.</p>
     </div>
   );
 }
