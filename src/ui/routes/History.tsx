@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { useGameStore } from '../../state/store';
 import type { Award } from '../../types/league';
+import { dynastyBoard } from '../../game/dynasty';
 
 export function History() {
   const meta = useGameStore((s) => s.meta)!;
   const clubs = useGameStore((s) => s.clubs);
   const players = useGameStore((s) => s.players);
-  const [tab, setTab] = useState<'honours' | 'hof'>('honours');
+  const [tab, setTab] = useState<'honours' | 'hof' | 'dynasty'>('honours');
 
   const history = [...(meta.history ?? [])].reverse();
   const hof = [...(meta.hallOfFame ?? [])].sort((a, b) => b.peakOvr - a.peakOvr);
+  const dynasty = dynastyBoard(meta.allTimeHonours);
 
   const subject = (a: Award): string => {
     if (a.playerId) return players[a.playerId] ? `${players[a.playerId].name.first} ${players[a.playerId].name.last}` : '—';
@@ -23,10 +25,33 @@ export function History() {
 
       <div className="flex gap-2">
         <button className={tab === 'honours' ? 'btn-primary' : 'btn-ghost'} onClick={() => setTab('honours')}>Honours</button>
+        <button className={tab === 'dynasty' ? 'btn-primary' : 'btn-ghost'} onClick={() => setTab('dynasty')}>Dynasty</button>
         <button className={tab === 'hof' ? 'btn-primary' : 'btn-ghost'} onClick={() => setTab('hof')}>Hall of Fame</button>
       </div>
 
-      {tab === 'honours' ? (
+      {tab === 'dynasty' ? (
+        dynasty.length === 0 ? (
+          <div className="card p-6 text-center text-slate-500">No silverware won yet — the all-time board fills as trophies are decided.</div>
+        ) : (
+          <div className="overflow-x-auto card">
+            <table className="data-table w-full">
+              <thead><tr><th>#</th><th>Club</th><th className="text-right">League</th><th className="text-right">Cups</th><th className="text-right">Continental</th><th className="text-right">Total</th></tr></thead>
+              <tbody>
+                {dynasty.map((r, i) => (
+                  <tr key={r.clubId}>
+                    <td className="text-slate-500">{i + 1}</td>
+                    <td className="font-medium">{clubs[r.clubId]?.name ?? r.clubId}</td>
+                    <td className="text-right font-mono">{r.honours.league}</td>
+                    <td className="text-right font-mono">{r.honours.cup}</td>
+                    <td className="text-right font-mono">{r.honours.continental}</td>
+                    <td className="text-right font-mono font-semibold">{r.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : tab === 'honours' ? (
         history.length === 0 ? (
           <div className="card p-6 text-center text-slate-500">Complete a season to build the honours archive.</div>
         ) : (

@@ -108,6 +108,7 @@ import {
 import { advanceRumours } from '../game/rumours';
 import { buildDeadlineFeed } from '../game/deadlineDay';
 import { generateSponsorOffers } from '../game/sponsorship';
+import { accrueHonours } from '../game/dynasty';
 import { agentDemands, evaluateContractOffer, applyContractOffer, leaveWillingness, type ContractOffer, type NegotiationResult } from '../game/contracts';
 import { transferFloor, overpricedAsk, respondToTransferOffer, type FeeOffer } from '../game/feeNegotiation';
 import type { TransferTalk, InstalmentPayment } from '../types/league';
@@ -2629,6 +2630,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         board: result.board ?? meta.board,
         sacked: result.sacked ?? false,
         history: [...(meta.history ?? []), ...(result.historyEntry ? [result.historyEntry] : [])],
+        allTimeHonours: accrueHonours(meta.allTimeHonours, result.historyEntry?.awards ?? []),
         hallOfFame: [...(meta.hallOfFame ?? []), ...(result.hallOfFameAdds ?? [])],
         pendingOffers: [],
         brokenTalks: {},

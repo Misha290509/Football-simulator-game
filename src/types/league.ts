@@ -146,6 +146,14 @@ export interface SeasonHistory {
   awards: Award[];
 }
 
+/** All-time club honours tally (§ Dynasty, #53). Stored as an aggregate — never
+ *  re-scanned from raw history — so it stays cheap over decades of saves. */
+export interface ClubHonours {
+  league: number;
+  cup: number;
+  continental: number;
+}
+
 /**
  * A transfer rumour (§ Living market, #30). Seeded gossip that escalates from
  * idle interest to a valuation to a looming bid; a hot rumour about one of the
@@ -344,6 +352,8 @@ export interface SaveGame {
   playerScoutAssignments?: PlayerScoutAssignment[];
   /** Season-by-season honours archive (§8, M6). */
   history?: SeasonHistory[];
+  /** All-time club honours tally (§ Dynasty, #53), keyed by clubId. */
+  allTimeHonours?: Record<string, ClubHonours>;
   /** Hall of Fame inductees (§8, M6). */
   hallOfFame?: HallOfFameEntry[];
   /** Retired shirt numbers honouring player-career legends (Tier 5), by club. */
