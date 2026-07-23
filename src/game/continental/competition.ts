@@ -12,6 +12,7 @@ import type { Player } from '../../types/player';
 import type { StandingRow } from '../../types/league';
 import type { ContinentalState, ContinentalId } from '../../types/continental';
 import { Rng } from '../../engine/rng';
+import { resolveKnockoutTie } from '../knockout';
 import { buildSwissLeaguePhase, buildGroupStage, buildKnockoutRound } from './schedule';
 import { CALENDAR_STRIDE, DAY_CLASS, slotsInClass, nextDayInClass } from '../calendar';
 
@@ -158,30 +159,8 @@ function labelForCount(n: number): string {
 /** Ordering key so earlier rounds sort before later ones. */
 const roundNoForCount = (n: number) => 200 - n;
 
-function penaltyWinner(m: Match, clubs: Record<string, Club>, rng: Rng): { winner: string; label: string } {
-  const hr = clubs[m.homeClubId]?.reputation ?? 50;
-  const ar = clubs[m.awayClubId]?.reputation ?? 50;
-  const ph = 0.75 + (hr - ar) / 500, pa = 0.75 + (ar - hr) / 500;
-  let hs = 0, as = 0;
-  for (let i = 0; i < 5; i++) { if (rng.chance(ph)) hs++; if (rng.chance(pa)) as++; }
-  let guard = 0;
-  while (hs === as && guard++ < 20) { if (rng.chance(ph)) hs++; if (rng.chance(pa)) as++; }
-  if (hs === as) hs++;
-  return { winner: hs > as ? m.homeClubId : m.awayClubId, label: `Penalty shootout ${hs}–${as}` };
-}
-
-/** Resolve a played knockout tie (goals, else penalties). Mutates `m` for pens. */
-function tieWinner(m: Match, clubs: Record<string, Club>, rng: Rng): string {
-  if (m.homeGoals > m.awayGoals) return m.homeClubId;
-  if (m.awayGoals > m.homeGoals) return m.awayClubId;
-  // A shootout the manager already played live records a PENALTY event — respect
-  // its result rather than re-deciding the tie.
-  const existing = m.events.find((e) => e.type === 'PENALTY');
-  if (existing) return existing.side === 'home' ? m.homeClubId : m.awayClubId;
-  const pen = penaltyWinner(m, clubs, rng);
-  m.events = [...m.events, { minute: 120, type: 'PENALTY', side: pen.winner === m.homeClubId ? 'home' : 'away', description: pen.label }];
-  return pen.winner;
-}
+/** Resolve a played knockout tie (goals → extra time → penalties). Mutates `m`. */
+const tieWinner = (m: Match, clubs: Record<string, Club>, rng: Rng): string => resolveKnockoutTie(m, clubs, rng);
 
 export interface ContinentalAdvance {
   state: ContinentalState;

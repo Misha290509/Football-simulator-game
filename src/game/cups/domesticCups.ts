@@ -10,6 +10,7 @@ import type { Club } from '../../types/club';
 import type { Competition } from '../../types/competition';
 import type { DomesticCupState, CupKind } from '../../types/cup';
 import { Rng } from '../../engine/rng';
+import { resolveKnockoutTie } from '../knockout';
 import { buildKnockoutRound } from '../continental/schedule';
 import { DAY_CLASS, slotsInClass, nextDayInClass } from '../calendar';
 
@@ -30,24 +31,8 @@ function nextCupDay(state: DomesticCupState, currentDay: number): number {
   return reserved ?? nextDayInClass(currentDay, DAY_CLASS.CUP);
 }
 
-/** Settle a played tie (goals, else penalties by reputation; live pens respected). */
-function resolveTie(m: Match, clubs: Record<string, Club>, rng: Rng): string {
-  if (m.homeGoals > m.awayGoals) return m.homeClubId;
-  if (m.awayGoals > m.homeGoals) return m.awayClubId;
-  const existing = m.events.find((e) => e.type === 'PENALTY');
-  if (existing) return existing.side === 'home' ? m.homeClubId : m.awayClubId;
-  const hr = clubs[m.homeClubId]?.reputation ?? 50;
-  const ar = clubs[m.awayClubId]?.reputation ?? 50;
-  const ph = 0.75 + (hr - ar) / 500, pa = 0.75 + (ar - hr) / 500;
-  let hs = 0, as = 0;
-  for (let i = 0; i < 5; i++) { if (rng.chance(ph)) hs++; if (rng.chance(pa)) as++; }
-  let guard = 0;
-  while (hs === as && guard++ < 20) { if (rng.chance(ph)) hs++; if (rng.chance(pa)) as++; }
-  if (hs === as) hs++;
-  const winner = hs > as ? m.homeClubId : m.awayClubId;
-  m.events = [...m.events, { minute: 120, type: 'PENALTY', side: winner === m.homeClubId ? 'home' : 'away', description: `Penalty shootout ${hs}–${as}` }];
-  return winner;
-}
+/** Settle a played tie (goals → extra time → penalties; live pens respected). */
+const resolveTie = (m: Match, clubs: Record<string, Club>, rng: Rng): string => resolveKnockoutTie(m, clubs, rng);
 
 interface DrawResult { newMatches: Match[]; done: boolean }
 
