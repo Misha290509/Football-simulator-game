@@ -82,8 +82,9 @@ export function computeSeasonFinances(
   // Prize money for the final standing.
   const prize = Math.round((tier === 1 ? 30_000_000 : 6_000_000) * meritShare);
 
-  // Sponsorship & commercial.
-  const sponsorship = Math.round(rep * rep * (tier === 1 ? 5_200 : 1_400));
+  // Sponsorship & commercial: baseline plus any negotiated headline shirt deal
+  // the manager has landed (§ #37). Expired deals are cleared at the rollover.
+  const sponsorship = Math.round(rep * rep * (tier === 1 ? 5_200 : 1_400)) + (club.sponsor?.annual ?? 0);
 
   const income = gate + broadcast + prize + sponsorship;
 

@@ -107,6 +107,7 @@ import {
 } from '../game/transfers';
 import { advanceRumours } from '../game/rumours';
 import { buildDeadlineFeed } from '../game/deadlineDay';
+import { generateSponsorOffers } from '../game/sponsorship';
 import { agentDemands, evaluateContractOffer, applyContractOffer, leaveWillingness, type ContractOffer, type NegotiationResult } from '../game/contracts';
 import { transferFloor, overpricedAsk, respondToTransferOffer, type FeeOffer } from '../game/feeNegotiation';
 import type { TransferTalk, InstalmentPayment } from '../types/league';
@@ -342,6 +343,8 @@ interface GameState {
   setSetPieceRoutine: (kind: 'corner' | 'freeKick' | 'marking', value: string | null) => Promise<void>;
   /** Set match-day ticket pricing (§ #40), 0–100 (50 = standard). */
   setTicketLevel: (level: number) => Promise<void>;
+  /** Accept a shirt-sponsorship offer (§ #37). */
+  acceptSponsor: (offerId: string) => Promise<void>;
   expandStadium: (seats: number) => Promise<BidResult>;
   setAutoMode: (on: boolean) => Promise<void>;
   setLockFormation: (on: boolean) => Promise<void>;
@@ -2280,6 +2283,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     await putClubs(meta.id, [updated]);
   },
 
+  acceptSponsor: async (offerId) => {
+    const { meta, clubs } = get();
+    if (!meta) return;
+    const offer = (meta.sponsorOffers ?? []).find((o) => o.id === offerId);
+    if (!offer) return;
+    const club = clubs[meta.managerClubId];
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const updated = { ...club, sponsor: { name: offer.name, annual: offer.annual, untilYear: year + offer.years } };
+    const news = { id: `news_sponsoraccept_${offerId}`, day: meta.currentDay, category: 'BOARD' as const,
+      title: `${offer.name} become shirt sponsor`,
+      body: `A ${offer.years}-year shirt deal worth ${offer.annual.toLocaleString()}/season is signed with ${offer.name}.`, read: false };
+    const newMeta: SaveMeta = { ...meta, sponsorOffers: undefined, news: [...meta.news, news] };
+    set({ clubs: { ...clubs, [club.id]: updated }, meta: newMeta });
+    await putClubs(meta.id, [updated]);
+    await persistMeta(newMeta);
+  },
+
   setAutoMode: async (on) => {
     const { meta, clubs } = get();
     if (!meta) return;
@@ -2632,6 +2652,33 @@ export const useGameStore = create<GameState>((set, get) => ({
         pendingGala: result.pendingGala ?? null,
         aiManagers: result.aiManagers ?? meta.aiManagers,
       };
+
+      // Shirt sponsorship (§ #37): retire an expired deal, and when the manager
+      // has no headline sponsor, table a slate of offers to choose from.
+      if (!newMeta.sacked) {
+        const newYear = result.newSeason.year;
+        const mgrClub = result.clubs[meta.managerClubId];
+        if (mgrClub) {
+          if (mgrClub.sponsor && mgrClub.sponsor.untilYear < newYear) {
+            result.clubs[meta.managerClubId] = { ...mgrClub, sponsor: undefined };
+          }
+          const active = result.clubs[meta.managerClubId].sponsor;
+          if (!active) {
+            let pos = 10, size = 20;
+            for (const rows of Object.values(result.finalStandings)) {
+              const idx = rows.findIndex((r) => r.clubId === meta.managerClubId);
+              if (idx >= 0) { pos = idx + 1; size = rows.length; break; }
+            }
+            const successMult = Math.max(0, 1 - (pos - 1) / Math.max(1, size));
+            const offers = generateSponsorOffers(result.clubs[meta.managerClubId], successMult, new Rng((meta.seed ^ (newYear * 0x59074501)) >>> 0));
+            newMeta.sponsorOffers = offers;
+            newMeta.news = [...newMeta.news, { id: `news_sponsor_${newYear}`, day: 0, category: 'BOARD', title: 'Shirt sponsorship offers', body: 'Commercial partners are courting the club — choose a shirt sponsor on the Club screen.', read: false }];
+          } else {
+            newMeta.sponsorOffers = undefined; // a live deal — no open offers
+          }
+        }
+      }
+
       // Announce any newly-unlocked achievements.
       for (const [id, year] of Object.entries(result.achievements ?? {})) {
         const def = ACHIEVEMENTS.find((a) => a.id === id);

@@ -172,6 +172,14 @@ export interface DeadlineFeed {
   items: { time: string; text: string; big?: boolean; mine?: boolean }[];
 }
 
+/** A shirt-sponsorship offer the manager can accept (§ Living club, #37). */
+export interface SponsorOffer {
+  id: string;
+  name: string;
+  annual: number; // per-season income
+  years: number;  // contract length
+}
+
 export interface TransferOffer {
   id: string;
   type: 'BUY' | 'LOAN';
@@ -350,6 +358,8 @@ export interface SaveGame {
   rumours?: Rumour[];
   /** The most recent deadline-day feed (§ Living market, #31). */
   deadlineFeed?: DeadlineFeed;
+  /** Open shirt-sponsorship offers for the manager to choose from (§ #37). */
+  sponsorOffers?: SponsorOffer[];
 
   // --- Academy system (§ Academy) ----------------------------------------
   /** Per-club youth academies, keyed by clubId. */

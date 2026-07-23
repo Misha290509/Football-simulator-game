@@ -118,6 +118,9 @@ export interface Club {
    *  gate income but soften attendance and annoy the supporters; cheaper tickets
    *  do the reverse. Absent ⇒ standard pricing. */
   ticketLevel?: number;
+  /** A negotiated shirt sponsorship (§ #37) paying `annual` on top of baseline
+   *  commercial income, through `untilYear`. Absent ⇒ no headline sponsor. */
+  sponsor?: { name: string; annual: number; untilYear: number };
   /** Designated set-piece takers (player ids). */
   penaltyTakerId?: string | null;
   freeKickTakerId?: string | null;

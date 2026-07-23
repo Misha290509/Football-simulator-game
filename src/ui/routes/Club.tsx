@@ -27,6 +27,7 @@ export function Club() {
   const setTrainingFocus = useGameStore((s) => s.setTrainingFocus);
   const expandStadium = useGameStore((s) => s.expandStadium);
   const setTicketLevel = useGameStore((s) => s.setTicketLevel);
+  const acceptSponsor = useGameStore((s) => s.acceptSponsor);
   const [toast, setToast] = useState<string | null>(null);
   const [seats, setSeats] = useState(5000);
   const [negotiating, setNegotiating] = useState<{ staff: Staff; mode: 'hire' | 'renew' } | null>(null);
@@ -65,6 +66,28 @@ export function Club() {
               <div className="text-xs text-slate-500">Under ambitious owners since {club.owner.since} — the coffers are topped up every summer.</div>
             </div>
           </div>
+        </div>
+      )}
+
+      {(club.sponsor || (meta.sponsorOffers?.length ?? 0) > 0) && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-3">👕 Shirt sponsorship</h2>
+          {club.sponsor ? (
+            <div className="text-sm">
+              Current sponsor: <strong className="text-slate-200">{club.sponsor.name}</strong>
+              <span className="text-slate-500"> · {club.sponsor.annual.toLocaleString()}/season through {club.sponsor.untilYear}</span>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500">Choose a shirt sponsor — a bigger annual deal, or a longer, steadier one.</p>
+              {(meta.sponsorOffers ?? []).map((o) => (
+                <div key={o.id} className="flex items-center justify-between bg-surface-700 rounded px-3 py-2 text-sm">
+                  <span><strong>{o.name}</strong> <span className="text-slate-500">— {o.annual.toLocaleString()}/season for {o.years} years</span></span>
+                  <button className="btn-primary text-xs py-1" onClick={async () => { await acceptSponsor(o.id); flash(`${o.name} signed as shirt sponsor.`); }}>Accept</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
