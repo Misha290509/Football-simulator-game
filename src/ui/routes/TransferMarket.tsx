@@ -43,6 +43,7 @@ export function TransferMarket() {
   const [minPot, setMinPot] = useState(0);
   const [maxWage, setMaxWage] = useState(0);
   const [foot, setFoot] = useState('ALL');
+  const [nat, setNat] = useState('ALL');
   const [avail, setAvail] = useState('ALL'); // ALL | LISTED | EXPIRING | FREE
   const [knownOnly, setKnownOnly] = useState(false);
   const [hideExpiring, setHideExpiring] = useState(false);
@@ -147,6 +148,7 @@ export function TransferMarket() {
       if (leagueFilter !== 'ALL' && (p.contract.clubId ? leagueByClub[p.contract.clubId] : 'Free agents') !== leagueFilter) continue;
       if (q && !`${p.name.first} ${p.name.last}`.toLowerCase().includes(q)) continue;
       if (foot !== 'ALL' && p.preferredFoot !== foot) continue;
+      if (nat !== 'ALL' && p.nationality !== nat) continue;
       if (maxWage > 0 && p.contract.wage > maxWage) continue;
       if (avail === 'FREE' && p.contract.clubId) continue;
       if (avail === 'LISTED' && !p.transferListed && !p.loanListed) continue;
@@ -163,7 +165,30 @@ export function TransferMarket() {
     // Sort by shown (estimated) value, high to low.
     out.sort((a, b) => b.v.value - a.v.value);
     return out.slice(0, 250);
-  }, [players, meta.managerClubId, posFilter, minAge, maxAge, leagueFilter, search, knownOnly, hideExpiring, minVal, maxVal, minOvr, minPot, maxWage, foot, avail, shortlistSet, year, reports, eliteIds, leagueByClub, clubs, scoutRating]);
+  }, [players, meta.managerClubId, posFilter, minAge, maxAge, leagueFilter, search, knownOnly, hideExpiring, minVal, maxVal, minOvr, minPot, maxWage, foot, nat, avail, shortlistSet, year, reports, eliteIds, leagueByClub, clubs, scoutRating]);
+
+  // Distinct nationalities present in the world (§ #62), for the filter dropdown.
+  const nationalities = useMemo(() => [...new Set(Object.values(players).map((p) => p.nationality).filter(Boolean))].sort(), [players]);
+
+  // Saved filters (§ #62): persisted client-side per save, since they are a UI
+  // preference rather than game state.
+  type FilterState = { posFilter: string; leagueFilter: string; minAge: number; maxAge: number; minVal: number; maxVal: number; minOvr: number; minPot: number; maxWage: number; foot: string; nat: string; avail: string; knownOnly: boolean; hideExpiring: boolean; search: string };
+  const filterKey = `tmfilters_${meta.id}`;
+  const [savedFilters, setSavedFilters] = useState<Record<string, FilterState>>(() => {
+    try { return JSON.parse(localStorage.getItem(filterKey) || '{}'); } catch { return {}; }
+  });
+  const persistFilters = (next: Record<string, FilterState>) => { setSavedFilters(next); try { localStorage.setItem(filterKey, JSON.stringify(next)); } catch { /* ignore */ } };
+  const saveCurrentFilter = () => {
+    const name = window.prompt('Name this filter set:')?.trim();
+    if (!name) return;
+    persistFilters({ ...savedFilters, [name]: { posFilter, leagueFilter, minAge, maxAge, minVal, maxVal, minOvr, minPot, maxWage, foot, nat, avail, knownOnly, hideExpiring, search } });
+  };
+  const applyFilter = (f: FilterState) => {
+    setPosFilter(f.posFilter); setLeagueFilter(f.leagueFilter); setMinAge(f.minAge); setMaxAge(f.maxAge);
+    setMinVal(f.minVal); setMaxVal(f.maxVal); setMinOvr(f.minOvr); setMinPot(f.minPot); setMaxWage(f.maxWage);
+    setFoot(f.foot); setNat(f.nat); setAvail(f.avail); setKnownOnly(f.knownOnly); setHideExpiring(f.hideExpiring); setSearch(f.search);
+  };
+  const deleteFilter = (name: string) => { const next = { ...savedFilters }; delete next[name]; persistFilters(next); };
 
   const RatingCell = ({ v }: { v: MarketView }) => {
     if (v.exact) return <Rating value={v.ovr} />;
@@ -389,6 +414,10 @@ export function TransferMarket() {
           <option value="L">Left</option>
           <option value="B">Both</option>
         </select>
+        <select className="bg-surface-700 border border-surface-600 rounded px-2 py-1.5" value={nat} onChange={(e) => setNat(e.target.value)} title="Nationality">
+          <option value="ALL">Any nationality</option>
+          {nationalities.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
         <select className="bg-surface-700 border border-surface-600 rounded px-2 py-1.5" value={avail} onChange={(e) => setAvail(e.target.value)}>
           <option value="ALL">Any status</option>
           <option value="LISTED">Transfer/loan-listed</option>
@@ -417,6 +446,13 @@ export function TransferMarket() {
         <label className="flex items-center gap-2"><input type="checkbox" checked={knownOnly} onChange={(e) => setKnownOnly(e.target.checked)} /><span className="text-slate-400">Firm reads only</span></label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={hideExpiring} onChange={(e) => setHideExpiring(e.target.checked)} /><span className="text-slate-400">Hide expiring this season</span></label>
         <button className="btn-ghost text-xs py-1 px-2" onClick={resetFilters}>Reset</button>
+        <button className="btn-ghost text-xs py-1 px-2" onClick={saveCurrentFilter} title="Save the current filters as a reusable set">💾 Save filter</button>
+        {Object.keys(savedFilters).map((name) => (
+          <span key={name} className="inline-flex items-center bg-surface-700 rounded border border-surface-600 text-xs overflow-hidden">
+            <button className="px-2 py-1 hover:bg-accent/10" onClick={() => applyFilter(savedFilters[name])}>{name}</button>
+            <button className="px-1.5 py-1 text-slate-500 hover:text-rose-400" title="Delete" onClick={() => deleteFilter(name)}>✕</button>
+          </span>
+        ))}
         <span className="text-slate-500 ml-auto">{rows.length} shown</span>
       </div>
 

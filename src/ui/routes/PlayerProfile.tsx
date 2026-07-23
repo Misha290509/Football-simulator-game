@@ -8,6 +8,7 @@ import { MoneyInput } from '../components/MoneyInput';
 import { Rating } from '../components/Rating';
 import { ageOf, fullName, formatMoney, formatWage, ratingColor, playerStatus } from '../format';
 import { overallAt } from '../../engine/ratings';
+import { ATTR_HELP } from '../attrHelp';
 import { moodLabel, INTERACT_LABEL, INTERACT_DESC, egoOf, type InteractKind } from '../../engine/morale';
 import { traitsOf, TRAIT_LABEL } from '../../engine/traits';
 import { awardMeta, isTeamTrophy } from '../../game/awardMeta';
@@ -34,7 +35,7 @@ function AttrGroup({
           const d = deltas?.[k];
           return (
             <div key={k} className="flex items-center justify-between text-sm">
-              <span className="text-slate-400 capitalize">
+              <span className="text-slate-400 capitalize cursor-help" title={ATTR_HELP[k] ?? ''}>
                 {k.replace(/([A-Z])/g, ' $1').trim()}
               </span>
               <span className="flex items-center gap-1.5">
@@ -237,6 +238,7 @@ export function PlayerProfile() {
 
       {/* Trophies and career output are public record — shown for any player. */}
       <CareerRecord player={player} isGk={isGk} />
+      <GameLog player={player} />
       <TrophyCabinet player={player} />
 
       {!known && (
@@ -447,6 +449,49 @@ function TrainingPanel({ player, flash }: { player: Player; flash: (m: string) =
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Per-match game log (§ #3): the player's last matches with his individual line. */
+function GameLog({ player }: { player: Player }) {
+  const matches = useGameStore((s) => s.matches);
+  const clubs = useGameStore((s) => s.clubs);
+  const rows = useMemo(() => {
+    const out: { id: string; day: number; oppAbbrev: string; home: boolean; score: string; stat: import('../../types/match').PlayerMatchStat }[] = [];
+    for (const m of Object.values(matches)) {
+      if (!m.played) continue;
+      const stat = m.playerStats.find((s) => s.playerId === player.id);
+      if (!stat || stat.minutes <= 0) continue;
+      const home = m.homeClubId === player.contract.clubId;
+      const oppId = home ? m.awayClubId : m.homeClubId;
+      out.push({ id: m.id, day: m.day, oppAbbrev: clubs[oppId]?.abbrev ?? '???', home, score: `${m.homeGoals}–${m.awayGoals}`, stat });
+    }
+    return out.sort((a, b) => b.day - a.day).slice(0, 12);
+  }, [matches, clubs, player.id, player.contract.clubId]);
+
+  if (rows.length === 0) return null;
+  return (
+    <div className="card p-4">
+      <h2 className="text-sm font-semibold text-slate-400 mb-3">Recent matches <span className="text-slate-600 font-normal">(this season)</span></h2>
+      <div className="overflow-x-auto">
+        <table className="data-table w-full text-sm">
+          <thead><tr><th>Opp</th><th>Result</th><th className="text-right">Min</th><th className="text-right">G</th><th className="text-right">A</th><th className="text-right">Sh</th><th className="text-right">Rating</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td className="font-mono text-slate-400">{r.home ? 'v' : '@'} {r.oppAbbrev}</td>
+                <td className="font-mono">{r.score}</td>
+                <td className="text-right font-mono text-slate-400">{r.stat.minutes}'</td>
+                <td className="text-right font-mono text-emerald-300">{r.stat.goals || ''}</td>
+                <td className="text-right font-mono text-sky-300">{r.stat.assists || ''}</td>
+                <td className="text-right font-mono text-slate-500">{r.stat.shots || ''}</td>
+                <td className={`text-right font-mono font-semibold ${ratingColor(r.stat.rating * 10)}`}>{r.stat.rating.toFixed(1)}{r.stat.red ? ' 🟥' : r.stat.yellow ? ' 🟨' : ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

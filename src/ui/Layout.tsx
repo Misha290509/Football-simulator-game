@@ -105,6 +105,28 @@ export function Layout({ children }: { children: ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   useEffect(() => { setNavOpen(false); }, [location.pathname]);
 
+  // Keyboard shortcuts (§ #65): single keys jump around the app; "?" toggles a
+  // cheatsheet. Ignored while typing in a field, in a live match, or in menus.
+  const [showKeys, setShowKeys] = useState(false);
+  const playerModeKb = isPlayerCareer(meta);
+  useEffect(() => {
+    const SHORTCUTS: Record<string, string> = playerModeKb
+      ? { h: '/my-player', s: '/squad', t: '/training', f: '/fixtures', l: '/standings', i: '/inbox', c: '/career' }
+      : { d: '/dashboard', s: '/squad', t: '/tactics', r: '/transfers', f: '/fixtures', l: '/standings', i: '/inbox', m: '/manager', b: '/club' };
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (location.pathname === '/live' || location.pathname === '/' || location.pathname === '/new') return;
+      if (e.key === '?') { setShowKeys((v) => !v); return; }
+      if (e.key === 'Escape') { setShowKeys(false); return; }
+      const dest = SHORTCUTS[e.key.toLowerCase()];
+      if (dest && meta) { navigate(dest); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navigate, location.pathname, meta, playerModeKb]);
+
   const season = meta ? Object.values(meta.seasons).find((s) => s.current) : null;
   const playerMode = isPlayerCareer(meta);
   const navGroups = playerMode ? PLAYER_NAV_GROUPS : NAV_GROUPS;
@@ -124,6 +146,29 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-full">
+      {showKeys && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={() => setShowKeys(false)}>
+          <div className="card p-5 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold">Keyboard shortcuts</h2>
+              <button className="text-slate-500 hover:text-white" onClick={() => setShowKeys(false)}>✕</button>
+            </div>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+              {(playerModeKb
+                ? [['H', 'My Player'], ['S', 'Squad'], ['T', 'Training'], ['F', 'Fixtures'], ['L', 'Standings'], ['C', 'Career'], ['I', 'Inbox']]
+                : [['D', 'Dashboard'], ['S', 'Squad'], ['T', 'Tactics'], ['R', 'Transfers'], ['B', 'Club & Staff'], ['F', 'Fixtures'], ['L', 'Standings'], ['M', 'Manager'], ['I', 'Inbox']]
+              ).map(([k, l]) => (
+                <div key={k} className="flex items-center gap-2">
+                  <kbd className="px-1.5 py-0.5 rounded bg-surface-700 border border-surface-600 font-mono text-xs">{k}</kbd>
+                  <span className="text-slate-400">{l}</span>
+                </div>
+              ))}
+              <div className="flex items-center gap-2"><kbd className="px-1.5 py-0.5 rounded bg-surface-700 border border-surface-600 font-mono text-xs">N</kbd><span className="text-slate-400">Advance matchday</span></div>
+              <div className="flex items-center gap-2"><kbd className="px-1.5 py-0.5 rounded bg-surface-700 border border-surface-600 font-mono text-xs">?</kbd><span className="text-slate-400">This help</span></div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Backdrop behind the mobile drawer. */}
       {navOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-30 md:hidden" onClick={() => setNavOpen(false)} aria-hidden />

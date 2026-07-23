@@ -16,6 +16,11 @@ const ATTRIBUTE_GROUPS = [
 
 const prettify = (k: string) => k.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
 
+/** Career totals across every recorded season (§ #64). */
+function career(p: Player): { apps: number; goals: number; assists: number } {
+  return p.stats.reduce((m, s) => ({ apps: m.apps + s.appearances, goals: m.goals + s.goals, assists: m.assists + s.assists }), { apps: 0, goals: 0, assists: 0 });
+}
+
 export function Compare() {
   const navigate = useNavigate();
   const meta = useGameStore((s) => s.meta)!;
@@ -119,8 +124,16 @@ function Comparison({ a, b, va, vb, clubs, year }: {
             <Row label="Age" a={ageOf(a, year)} b={ageOf(b, year)} hi={num(-ageOf(a, year), -ageOf(b, year))} />
             <Row label="OVR" a={shown(va, 'ovr')} b={shown(vb, 'ovr')} hi={num(va.ovr, vb.ovr)} />
             <Row label="Potential" a={shown(va, 'pot')} b={shown(vb, 'pot')} hi={num(va.pot, vb.pot)} />
-            <Row label="Value" a={formatMoney(va.value)} b={formatMoney(vb.value)} />
+            <Row label="Value" a={formatMoney(va.value)} b={formatMoney(vb.value)} hi={num(va.value, vb.value)} />
             <Row label="Wage" a={formatWage(a.contract.wage)} b={formatWage(b.contract.wage)} />
+            {(() => { const ca = career(a), cb = career(b); return (
+              <>
+                <Row label="Career apps" a={ca.apps} b={cb.apps} hi={num(ca.apps, cb.apps)} />
+                <Row label="Career goals" a={ca.goals} b={cb.goals} hi={num(ca.goals, cb.goals)} />
+                <Row label="Career assists" a={ca.assists} b={cb.assists} hi={num(ca.assists, cb.assists)} />
+                <Row label="Goals / game" a={ca.apps ? (ca.goals / ca.apps).toFixed(2) : '—'} b={cb.apps ? (cb.goals / cb.apps).toFixed(2) : '—'} hi={num(ca.apps ? ca.goals / ca.apps : 0, cb.apps ? cb.goals / cb.apps : 0)} />
+              </>
+            ); })()}
             <Row label="Height" a={`${a.height_cm}cm`} b={`${b.height_cm}cm`} />
             <Row label="Preferred foot" a={a.preferredFoot} b={b.preferredFoot} />
           </tbody>
