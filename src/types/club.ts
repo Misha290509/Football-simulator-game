@@ -111,6 +111,9 @@ export interface Club {
   trainingFocus?: TrainingFocus;
   /** Real-club personality traits that bias context-specific results. */
   traits?: ClubTrait[];
+  /** Wealthy owner from a takeover (§ Living world, #38). Drives budget top-ups
+   *  and rising ambition over the seasons. Absent ⇒ ordinary ownership. */
+  owner?: { wealth: 'RICH' | 'SUPER_RICH'; since: number };
   /** Designated set-piece takers (player ids). */
   penaltyTakerId?: string | null;
   freeKickTakerId?: string | null;

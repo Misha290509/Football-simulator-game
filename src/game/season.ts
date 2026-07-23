@@ -21,6 +21,7 @@ import { developPlayer, shouldRetire, type SeasonPerf } from '../engine/developm
 import { computeSeasonFinances, deriveBudgets } from '../engine/finances';
 import { coachingFactor, trainingBias } from '../engine/staff';
 import { evaluateObjective, setObjective, SACK_THRESHOLD, fanConfidenceOf, pickVision, reviewVision } from './board';
+import { processTakeovers } from './takeovers';
 import type { BoardState } from '../types/staff';
 import { runAiTransferWindow, weeklyWageBill } from './transfers';
 import { runAiToAiTransfers } from './aiTransfers';
@@ -631,6 +632,21 @@ export async function resolveAndRollover(
       }
       // A tighter budget when spending is being reined in.
       if (verdict.embargo) club.finances = { ...club.finances, transferBudget: Math.round(club.finances.transferBudget * 0.4) };
+    }
+  }
+
+  // --- Club takeovers / rich owners (§ Living world, #38) ----------------
+  // A moneyed owner can buy out a mid-tier club, reshaping the pecking order over
+  // the decades. Runs before the board block so a manager-club takeover feeds
+  // straight into next season's (raised) expectations.
+  {
+    const takeover = processTakeovers(finalClubs, meta.managerClubId, nextYear, meta.currentDay,
+      new Rng((meta.seed ^ (nextYear * 0x7a4e0b17)) >>> 0));
+    for (const c of takeover.changed) finalClubs[c.id] = c;
+    news.push(...takeover.news);
+    if (takeover.managerTakeover) {
+      news.push(mkNews(meta.currentDay, 'BOARD', 'New owners at your club',
+        'Your club has new, ambitious owners — the war chest has swelled, but so have expectations. Deliver.'));
     }
   }
 

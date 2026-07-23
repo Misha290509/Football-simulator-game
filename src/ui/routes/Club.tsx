@@ -55,6 +55,18 @@ export function Club() {
       <h1 className="page-title">Club &amp; Backroom</h1>
 
       {/* Infrastructure & Financial Fair Play */}
+      {club.owner && (
+        <div className="card p-4 border border-amber-500/30">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{club.owner.wealth === 'SUPER_RICH' ? '💎' : '💰'}</span>
+            <div>
+              <div className="text-sm font-semibold text-amber-300">{club.owner.wealth === 'SUPER_RICH' ? 'Super-rich ownership' : 'Wealthy ownership'}</div>
+              <div className="text-xs text-slate-500">Under ambitious owners since {club.owner.since} — the coffers are topped up every summer.</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="card p-4">
         <h2 className="text-sm font-semibold text-slate-400 mb-3">Infrastructure &amp; finances</h2>
         <div className="grid sm:grid-cols-2 gap-4">
