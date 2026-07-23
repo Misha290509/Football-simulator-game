@@ -3,6 +3,7 @@ import { useGameStore } from '../../state/store';
 import { CrestBadge } from '../components/Rating';
 import { computeStandings } from '../../engine/standings';
 import { applyPointsPenalties } from '../../game/ffp';
+import { projectLeague } from '../../game/projections';
 import type { StandingRow } from '../../types/league';
 import type { Match } from '../../types/match';
 
@@ -71,6 +72,15 @@ export function Standings() {
     const d = f.xgf - f.xga; return `${d > 0 ? '+' : ''}${d.toFixed(1)}`;
   };
 
+  const [showProj, setShowProj] = useState(false);
+  const remaining = useMemo(() => seasonMatches.filter((m) => !m.played), [seasonMatches]);
+  const projByClub = useMemo(() => {
+    if (!showProj || comp.conferences) return null;
+    const projs = projectLeague(comp, rows, remaining, clubs, meta.seed);
+    return new Map(projs.map((p) => [p.clubId, p]));
+  }, [showProj, comp, rows, remaining, clubs, meta.seed]);
+  const pct = (x: number) => x >= 0.995 ? '100%' : x < 0.005 ? '—' : `${Math.round(x * 100)}%`;
+
   // Conference-format competitions (MLS) render one table per conference.
   if (comp.conferences) {
     const names = comp.conferences.names;
@@ -138,7 +148,7 @@ export function Standings() {
     <div className="space-y-4">
       <h1 className="page-title">Standings</h1>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-center">
         {competitions.map((c) => (
           <button
             key={c.id}
@@ -148,6 +158,7 @@ export function Standings() {
             {c.name}
           </button>
         ))}
+        <button className={`ml-auto text-xs ${showProj ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setShowProj((v) => !v)} title="Monte-Carlo projection of the remaining fixtures">📊 Projections</button>
       </div>
 
       <div className="overflow-x-auto card">
@@ -156,6 +167,9 @@ export function Standings() {
             <tr>
               <th className="w-8">#</th>
               <th>Club</th>
+              {projByClub && <th className="text-right" title="Probability of winning the league">Title</th>}
+              {projByClub && relegateCount > 0 && <th className="text-right" title="Probability of relegation">Rel</th>}
+              {projByClub && <th className="text-right" title="Projected final points">xPts</th>}
               <th className="text-right">P</th>
               <th className="text-right">W</th>
               <th className="text-right">D</th>
@@ -183,6 +197,9 @@ export function Standings() {
                       </span>
                     </span>
                   </td>
+                  {projByClub && <td className="text-right font-mono text-xs text-emerald-300">{pct(projByClub.get(r.clubId)?.title ?? 0)}</td>}
+                  {projByClub && relegateCount > 0 && <td className="text-right font-mono text-xs text-rose-300">{pct(projByClub.get(r.clubId)?.relegation ?? 0)}</td>}
+                  {projByClub && <td className="text-right font-mono text-xs text-slate-400">{projByClub.get(r.clubId)?.expectedPoints ?? '—'}</td>}
                   <td className="text-right">{r.played}</td>
                   <td className="text-right">{r.won}</td>
                   <td className="text-right">{r.drawn}</td>
