@@ -7,7 +7,7 @@ import { MoneyInput } from '../components/MoneyInput';
 import { ageOf, fullName, formatMoney, formatWage } from '../format';
 import { marketView, eliteKnownIds, scoutStars, clubScoutRating, departmentStars, type MarketView } from '../../engine/marketScout';
 import { clubValuation, type FeeOffer } from '../../game/feeNegotiation';
-import { loanFee } from '../../game/transfers';
+import { loanFee, canAgreePreContract } from '../../game/transfers';
 import { rumourLine } from '../../game/rumours';
 import { agentDemands, evaluateContractOffer, type ContractOffer } from '../../game/contracts';
 import type { Player, SquadRole } from '../../types/player';
@@ -54,8 +54,10 @@ export function TransferMarket() {
     setMinVal(0); setMaxVal(0); setMinOvr(0); setMinPot(0); setMaxWage(0); setFoot('ALL'); setAvail('ALL'); setKnownOnly(false); setHideExpiring(false);
   };
   const [target, setTarget] = useState<Player | null>(null);
+  const [preTarget, setPreTarget] = useState<Player | null>(null);
   const [scoutFor, setScoutFor] = useState<Player | null>(null);
   const [loanTarget, setLoanTarget] = useState<Player | null>(null);
+  const pcCtx = useGameStore((s) => s.preContractContext());
   const [toast, setToast] = useState<string | null>(null);
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 4500); };
 
@@ -182,6 +184,10 @@ export function TransferMarket() {
             {talksOff(p.id)
               ? <span className="text-xs text-rose-400/80 px-2" title="They broke off talks after your last bid — wait for the next window">talks off</span>
               : <button className="btn-primary py-0.5 px-2 text-xs" onClick={() => setTarget(p)}>Bid</button>}
+            {canAgreePreContract(p, meta.managerClubId, pcCtx.seasonYear, pcCtx.month).ok && !p.preContract && (
+              <button className="btn-ghost py-0.5 px-2 text-xs text-emerald-300" title="Agree a free transfer for next summer (Bosman)" onClick={() => setPreTarget(p)}>Pre-sign</button>
+            )}
+            {p.preContract && <span className="text-[10px] text-emerald-400/80 px-1" title="Pre-contract agreed">✓ pre-signed</span>}
             {p.contract.clubId && (v.ovr ?? 0) < 74 && (
               <button className="btn-ghost py-0.5 px-2 text-xs" onClick={() => setLoanTarget(p)}>Loan</button>
             )}
@@ -397,6 +403,12 @@ export function TransferMarket() {
           onBreakOff={() => { void breakOffTalks(target.id); setTarget(null); }} />
       )}
 
+      {preTarget && (
+        <SigningModal player={preTarget} buyer={managerClub} seller={preTarget.contract.clubId ? clubs[preTarget.contract.clubId] ?? null : null}
+          view={viewOf(preTarget)} year={year} onClose={() => setPreTarget(null)} flash={flash}
+          onBreakOff={() => setPreTarget(null)} preContract />
+      )}
+
       {loanTarget && (
         <LoanModal player={loanTarget} onClose={() => setLoanTarget(null)}
           onLoan={async (years, wageSplitParent, optionToBuy) => { const r = await loanIn(loanTarget.id, years, wageSplitParent, optionToBuy); flash(r.message); if (r.ok) setLoanTarget(null); }} />
@@ -432,14 +444,16 @@ function ScoutModal({ player, scouts, assignments, onClose, onAssign }: {
 }
 
 // --- Two-phase signing -----------------------------------------------------
-function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBreakOff }: {
+function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBreakOff, preContract }: {
   player: Player; buyer: import('../../types/club').Club; seller: import('../../types/club').Club | null;
   view: MarketView; year: number; onClose: () => void; flash: (m: string) => void;
-  onBreakOff: () => void;
+  onBreakOff: () => void; preContract?: boolean;
 }) {
   const completeSigning = useGameStore((s) => s.completeSigning);
+  const agreePreContract = useGameStore((s) => s.agreePreContract);
   const submitTransferOffer = useGameStore((s) => s.submitTransferOffer);
-  const [phase, setPhase] = useState<'FEE' | 'TERMS'>(seller ? 'FEE' : 'TERMS');
+  // A pre-contract skips the fee haggle entirely — it is a free transfer.
+  const [phase, setPhase] = useState<'FEE' | 'TERMS'>(seller && !preContract ? 'FEE' : 'TERMS');
   const [agreedFee, setAgreedFee] = useState(0);
   const [dealGrade, setDealGrade] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -485,7 +499,9 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
     const r = evaluateContractOffer(player, buyer, activeTerms, year, leaveCtx);
     setMsg(r.message);
     if (r.outcome === 'ACCEPT') {
-      const done = await completeSigning(player.id, agreedFee, activeTerms, offer.instalmentYears);
+      const done = preContract
+        ? await agreePreContract(player.id, activeTerms)
+        : await completeSigning(player.id, agreedFee, activeTerms, offer.instalmentYears);
       flash(done.message);
       if (done.ok) onClose();
     } else if (r.outcome === 'COUNTER' && r.counter) setTerms(r.counter);
@@ -493,15 +509,21 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
 
   const roles: SquadRole[] = ['KEY', 'FIRST', 'ROTATION', 'BACKUP'];
   return (
-    <Modal onClose={onClose} title={`${phase === 'FEE' ? 'Bid for' : 'Personal terms —'} ${fullName(player)}`} wide>
+    <Modal onClose={onClose} title={`${preContract ? 'Pre-contract —' : phase === 'FEE' ? 'Bid for' : 'Personal terms —'} ${fullName(player)}`} wide>
       <p className="text-sm text-slate-400 mb-3">
         {player.position} · {seller ? seller.name : 'Free agent'} · {view.exact ? `OVR ${view.ovr}` : `estimated OVR ${view.ovr} (${view.stars}★)`}
       </p>
 
-      <div className="flex gap-2 text-xs mb-3">
-        <span className={`px-2 py-0.5 rounded ${phase === 'FEE' ? 'bg-accent text-white' : 'bg-surface-700 text-slate-400'}`}>1 · Club fee</span>
-        <span className={`px-2 py-0.5 rounded ${phase === 'TERMS' ? 'bg-accent text-white' : 'bg-surface-700 text-slate-400'}`}>2 · Personal terms</span>
-      </div>
+      {preContract ? (
+        <div className="rounded bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-xs text-emerald-200 mb-3">
+          🆓 Free transfer — {player.name.last}'s contract expires this summer. Agree terms now and he joins you when the window opens, at no fee.
+        </div>
+      ) : (
+        <div className="flex gap-2 text-xs mb-3">
+          <span className={`px-2 py-0.5 rounded ${phase === 'FEE' ? 'bg-accent text-white' : 'bg-surface-700 text-slate-400'}`}>1 · Club fee</span>
+          <span className={`px-2 py-0.5 rounded ${phase === 'TERMS' ? 'bg-accent text-white' : 'bg-surface-700 text-slate-400'}`}>2 · Personal terms</span>
+        </div>
+      )}
 
       {phase === 'FEE' ? (
         <div className="grid grid-cols-2 gap-3 text-sm">

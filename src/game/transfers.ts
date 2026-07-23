@@ -27,6 +27,27 @@ export function askingPrice(p: Player, year?: number): number {
   return Math.max(50_000, Math.round((p.value * roleMult * discount) / 50_000) * 50_000);
 }
 
+/**
+ * Whether the manager can agree a Bosman pre-contract with a player (§ #34): he
+ * must be under contract at another club, running out at the upcoming summer,
+ * not already pre-agreed, and it must be the pre-contract window (January–May —
+ * the real-world "final six months" rule, since contracts expire in summer).
+ */
+export function canAgreePreContract(
+  p: Player,
+  managerClubId: string,
+  seasonYear: number,
+  month: number, // 0 = January … 11 = December
+): { ok: boolean; reason?: string } {
+  if (!p.contract.clubId) return { ok: false, reason: 'He is a free agent — sign him outright.' };
+  if (p.contract.clubId === managerClubId) return { ok: false, reason: 'He already plays for you — offer a renewal.' };
+  if (p.loan) return { ok: false, reason: 'He is out on loan — no pre-contract.' };
+  if (p.preContract) return { ok: false, reason: 'He has already agreed a pre-contract.' };
+  if (p.contract.expiresYear > seasonYear) return { ok: false, reason: 'His contract runs beyond this season — no Bosman available.' };
+  if (month > 4) return { ok: false, reason: 'Pre-contracts can only be agreed from January (final six months).' };
+  return { ok: true };
+}
+
 /** Weekly wage a player expects to sign (rises with quality & ambition). */
 export function wageDemand(p: Player): number {
   const ambition = 0.95 + (p.hidden.ambition / 100) * 0.3;
@@ -320,6 +341,9 @@ export function runAiTransferWindow(
     const rankOf = new Map(ranked.map((p, i) => [p.id, i]));
     for (const p of [...squad]) {
       if (p.contract.expiresYear > year) continue;
+      // A player who signed a Bosman pre-contract elsewhere is not renewed or
+      // released here — the pending-arrival fulfilment moves him for free.
+      if (p.preContract) continue;
       const age = year - p.born.year;
       const keep = (rankOf.get(p.id) ?? 99) < 20 && age < 33;
       if (keep) {

@@ -143,6 +143,10 @@ export interface Player {
   loanListed?: boolean;
   /** Active loan: the player is owned by parentClubId but playing for contract.clubId. */
   loan?: Loan | null;
+  /** A signed Bosman pre-contract (§ Living market, #34): the player has agreed
+   *  to join `toClubId` on a free next summer. He keeps playing for his current
+   *  club until the window opens; his club won't renew him. */
+  preContract?: { toClubId: string } | null;
   /**
    * Academy ownership. Set on prospects in a club's youth academy. Unpromoted
    * academy players have `contract.clubId = null` and this set, keeping them out

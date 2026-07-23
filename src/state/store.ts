@@ -101,6 +101,7 @@ import {
   applyLoanMove,
   loanFee,
   generateOffers,
+  canAgreePreContract,
   type BidResult,
 } from '../game/transfers';
 import { advanceRumours } from '../game/rumours';
@@ -252,6 +253,10 @@ interface GameState {
   respondToTransferRequest: (playerId: string, grant: boolean) => Promise<void>;
   assignMarketScout: (scoutId: string, playerId: string) => Promise<BidResult>;
   completeSigning: (playerId: string, fee: number, offer: ContractOffer, instalmentYears?: number) => Promise<BidResult>;
+  /** Agree a Bosman pre-contract with an expiring player (free, joins next summer). */
+  agreePreContract: (playerId: string, offer: ContractOffer) => Promise<BidResult>;
+  /** Current season year + calendar month (0–11) — for pre-contract eligibility. */
+  preContractContext: () => { seasonYear: number; month: number };
   /** One round of haggling over a fee. Returns the club's answer + your standing. */
   submitTransferOffer: (playerId: string, offer: FeeOffer) => Promise<FeeTalkResult>;
   /** Abandon an open transfer talk (a small dent to the relationship). */
@@ -1292,6 +1297,56 @@ export const useGameStore = create<GameState>((set, get) => ({
     await putPlayers(meta.id, [signed]);
     await persistMeta(newMeta);
     return { ok: true, message: `${player.name.last} signs!` };
+  },
+
+  preContractContext: () => {
+    const { meta } = get();
+    if (!meta) return { seasonYear: 0, month: 0 };
+    const seasonYear = get().currentSeason()?.year ?? meta.startYear;
+    const month = currentDate(meta, get().seasonRefMaxDay()).getUTCMonth();
+    return { seasonYear, month };
+  },
+
+  agreePreContract: async (playerId, offer) => {
+    const { meta, clubs, players } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    if (challengeBansSignings(meta)) return { ok: false, message: 'Challenge rule: no incoming transfers — build from within.' };
+    if (meta.ffp?.embargo) return { ok: false, message: 'Under an FFP transfer embargo — you cannot sign players.' };
+    const player = players[playerId];
+    if (!player) return { ok: false, message: 'Player not found.' };
+    const { seasonYear, month } = get().preContractContext();
+    const elig = canAgreePreContract(player, meta.managerClubId, seasonYear, month);
+    if (!elig.ok) return { ok: false, message: elig.reason ?? 'He is not available on a pre-contract.' };
+
+    const buyer = clubs[meta.managerClubId];
+    const buyerSquad = get().getClubPlayers(buyer.id);
+    if (weeklyWageBill(buyerSquad) + offer.wage > buyer.finances.wageBudget) {
+      return { ok: false, message: 'Those wages would breach your wage budget.' };
+    }
+    // Free transfer: no fee paid now, he arrives when the summer window opens.
+    const arrival: PendingArrival = {
+      playerId, toClubId: buyer.id, fee: 0, wage: offer.wage, years: offer.years,
+      releaseClause: offer.releaseClause ?? null, playerName: `${player.name.first} ${player.name.last}`,
+      arriveLabel: 'the summer',
+    };
+    const signed: Player = { ...player, preContract: { toClubId: buyer.id } };
+    const seller = player.contract.clubId ? clubs[player.contract.clubId] : null;
+    const news = {
+      id: `news_bosman_${player.id}_${Date.now().toString(36)}`, day: meta.currentDay, category: 'TRANSFER' as const,
+      title: `Pre-contract agreed: ${player.name.first} ${player.name.last}`,
+      body: `${player.name.last} will join on a free transfer from ${seller?.shortName ?? 'his club'} when his contract expires this summer, on ${offer.wage.toLocaleString()}/wk. He stays with his club until then.`,
+      read: false,
+    };
+    const reports = { ...(meta.scoutReports ?? {}) }; delete reports[playerId];
+    const newMeta: SaveMeta = {
+      ...meta, news: [...meta.news, news], scoutReports: reports,
+      pendingArrivals: [...(meta.pendingArrivals ?? []), arrival],
+      playerScoutAssignments: (meta.playerScoutAssignments ?? []).filter((a) => a.playerId !== playerId),
+    };
+    set({ players: { ...players, [playerId]: signed }, meta: newMeta });
+    await putPlayers(meta.id, [signed]);
+    await persistMeta(newMeta);
+    return { ok: true, message: `${player.name.last} agreed a pre-contract — he joins on a free next summer.` };
   },
 
   loanIn: async (playerId, years, wageSplitParent = 0.5, optionToBuy = null) => {
@@ -3531,7 +3586,7 @@ async function playDays(
           const p = playersById[a.playerId];
           if (!p) continue; // player gone — fee already paid, deal lapses
           const prevClub = p.contract.clubId;
-          playersById[a.playerId] = { ...p, contract: { ...p.contract, clubId: a.toClubId, wage: a.wage, startYear: toYear, expiresYear: toYear + a.years, releaseClause: a.releaseClause }, squadRole: 'ROTATION', loan: null, transferListed: false };
+          playersById[a.playerId] = { ...p, contract: { ...p.contract, clubId: a.toClubId, wage: a.wage, startYear: toYear, expiresYear: toYear + a.years, releaseClause: a.releaseClause }, squadRole: 'ROTATION', loan: null, transferListed: false, preContract: null };
           const buyerC = clubsAfter[a.toClubId];
           if (buyerC) clubsAfter[a.toClubId] = { ...buyerC, playerIds: [...new Set([...buyerC.playerIds, a.playerId])] };
           if (prevClub && clubsAfter[prevClub]) clubsAfter[prevClub] = { ...clubsAfter[prevClub], playerIds: clubsAfter[prevClub].playerIds.filter((id) => id !== a.playerId) };
