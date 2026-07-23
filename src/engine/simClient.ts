@@ -142,6 +142,7 @@ export async function simulateMatches(
       awayXg: outcome.awayXg,
       events: outcome.events,
       playerStats: outcome.playerStats,
+      shots: outcome.shots,
       weather: outcome.weather,
       referee: outcome.referee,
     };

@@ -27,6 +27,22 @@ export interface MatchEvent {
   description: string;
 }
 
+/**
+ * A single shot, for the post-match shot map (§ Match visualisation). Positions
+ * are normalised to the attacking half: x 60–100 (100 = the goal-line), y 0–100
+ * (50 = central), derived deterministically from the chance quality. Kept only
+ * for current-season matches (stripped at the season rollover to bound memory).
+ */
+export interface MatchShot {
+  side: 'home' | 'away';
+  minute: number;
+  x: number;
+  y: number;
+  xg: number;
+  outcome: 'GOAL' | 'SAVED' | 'OFF';
+  playerId?: string;
+}
+
 export interface PlayerMatchStat {
   playerId: string;
   minutes: number;
@@ -63,6 +79,8 @@ export interface Match {
   weather?: 'CLEAR' | 'RAIN' | 'WIND' | 'SNOW' | 'HOT';
   /** The match referee (§ Match realism). */
   referee?: string;
+  /** Per-shot data for the post-match shot map (current season only). */
+  shots?: MatchShot[];
 }
 
 /**

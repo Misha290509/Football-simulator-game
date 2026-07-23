@@ -2,9 +2,79 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 import { CrestBadge } from '../components/Rating';
 import { ratingColor, fullName } from '../format';
-import type { MatchEvent } from '../../types/match';
+import type { MatchEvent, MatchShot, Match } from '../../types/match';
+import type { Club } from '../../types/club';
 
 import { commentaryLine, goalFlourish } from '../../game/commentary';
+
+const SHOT_FILL: Record<MatchShot['outcome'], string> = {
+  GOAL: '#34d399', // emerald
+  SAVED: '#38bdf8', // sky
+  OFF: '#64748b', // slate
+};
+
+/**
+ * Post-match shot map (§ Match visualisation). Home attacks the right goal, away
+ * the left; each dot is a shot, sized by xG and coloured by outcome. Positions
+ * are the deterministic locations the engine recorded at simulation time.
+ */
+function ShotMap({ match, home, away }: { match: Match; home?: Club; away?: Club }) {
+  const shots = match.shots ?? [];
+  if (shots.length === 0) return null;
+  const W = 100, H = 64;
+  const r = (xg: number) => 0.9 + Math.min(1, xg / 0.5) * 2.8;
+  // Home shoots toward x=100 (right); away is mirrored toward x=0 (left).
+  const place = (s: MatchShot) => (s.side === 'home' ? { cx: s.x, cy: s.y * H / 100 } : { cx: W - s.x, cy: H - s.y * H / 100 });
+  const count = (side: 'home' | 'away', o: MatchShot['outcome']) => shots.filter((s) => s.side === side && s.outcome === o).length;
+  const Line = ({ side }: { side: 'home' | 'away' }) => (
+    <span className="flex items-center gap-2 text-[11px] text-slate-500">
+      <CrestBadge abbrev={(side === 'home' ? home : away)?.abbrev ?? '?'} color={(side === 'home' ? home : away)?.primaryColor ?? '#888'} size={16} />
+      <span>{shots.filter((s) => s.side === side).length} shots</span>
+      <span className="text-emerald-400">{count(side, 'GOAL')} goals</span>
+      <span className="text-sky-400">{count(side, 'SAVED')} on target</span>
+    </span>
+  );
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-slate-400">Shot map</h2>
+        <span className="text-[11px] text-slate-500">dot size = xG</span>
+      </div>
+      <div className="w-full overflow-x-auto">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-2xl mx-auto block" style={{ background: '#0f2417', borderRadius: 8 }}>
+          {/* Pitch markings */}
+          <g stroke="#2f6f47" strokeWidth={0.4} fill="none">
+            <rect x={1} y={1} width={W - 2} height={H - 2} rx={1} />
+            <line x1={W / 2} y1={1} x2={W / 2} y2={H - 1} />
+            <circle cx={W / 2} cy={H / 2} r={7} />
+            <rect x={1} y={H / 2 - 12} width={13} height={24} />
+            <rect x={W - 14} y={H / 2 - 12} width={13} height={24} />
+            <rect x={1} y={H / 2 - 5} width={5} height={10} />
+            <rect x={W - 6} y={H / 2 - 5} width={5} height={10} />
+          </g>
+          {shots.map((s, i) => {
+            const { cx, cy } = place(s);
+            const isGoal = s.outcome === 'GOAL';
+            return (
+              <circle
+                key={i} cx={cx} cy={cy} r={r(s.xg)}
+                fill={SHOT_FILL[s.outcome]} fillOpacity={isGoal ? 0.95 : 0.55}
+                stroke={isGoal ? '#ecfdf5' : 'none'} strokeWidth={isGoal ? 0.5 : 0}
+              >
+                <title>{`${s.minute}' · xG ${s.xg.toFixed(2)} · ${s.outcome === 'OFF' ? 'off target' : s.outcome.toLowerCase()}`}</title>
+              </circle>
+            );
+          })}
+        </svg>
+      </div>
+      <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
+        <Line side="home" />
+        <Line side="away" />
+      </div>
+    </div>
+  );
+}
 
 const WEATHER_ICON: Record<string, string> = { CLEAR: '☀️', RAIN: '🌧️', WIND: '💨', SNOW: '❄️', HOT: '🔥' };
 
@@ -138,6 +208,8 @@ export function MatchDetail() {
           </div>
         </div>
       </div>
+
+      <ShotMap match={match} home={home} away={away} />
     </div>
   );
 }

@@ -2589,7 +2589,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // to anything the game shows.
       const finished = Object.values(get().matches).filter((m) => m.played && m.events.length > 1);
       if (finished.length) {
-        const stripped = finished.map((m) => ({ ...m, events: m.events.filter((e) => e.type === 'PENALTY') }));
+        const stripped = finished.map((m) => ({ ...m, events: m.events.filter((e) => e.type === 'PENALTY'), shots: undefined }));
         await putMatches(meta.id, stripped);
       }
 
@@ -2849,7 +2849,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       ...base, played: true,
       homeGoals: outcome.homeGoals, awayGoals: outcome.awayGoals,
       homeXg: outcome.homeXg, awayXg: outcome.awayXg,
-      events: outcome.events, playerStats: outcome.playerStats,
+      events: outcome.events, playerStats: outcome.playerStats, shots: outcome.shots,
     };
     const day = liveWork.matchDay;
     // Apply accumulated team-talk morale/form to the manager's squad so it

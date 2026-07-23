@@ -6,8 +6,8 @@
 // interactive match. Pure & deterministic given the same RNG + user actions.
 // ---------------------------------------------------------------------------
 
-import type { LineupProfile, MatchEvent, PlayerMatchStat, BenchEntry } from '../types/match';
-import { Rng, clamp } from './rng';
+import type { LineupProfile, MatchEvent, MatchShot, PlayerMatchStat, BenchEntry } from '../types/match';
+import { Rng, clamp, hashSeed } from './rng';
 import { evaluateTeamTalk, type TalkTone, type TalkContext, type TalkResult } from './morale';
 
 const HOME_ADVANTAGE = 9;
@@ -66,6 +66,7 @@ export interface LiveMatchState {
   home: LiveSideState;
   away: LiveSideState;
   events: MatchEvent[];
+  shots: MatchShot[];
   stats: Record<string, PlayerMatchStat>;
   onMinuteOf: Record<string, number>; // when a player came on (0 = started)
   offMinuteOf: Record<string, number>; // when a player left (undefined = still on)
@@ -149,7 +150,7 @@ export function createLiveMatch(opts: {
     minute: 0, added1: 0, added2: 0, phase: 'PREMATCH',
     home: makeSide(opts.homeClubId, true, opts.homeProfile, opts.managedSide === 'home', rng, opts.homeFormation),
     away: makeSide(opts.awayClubId, false, opts.awayProfile, opts.managedSide === 'away', rng, opts.awayFormation),
-    events: [], stats: {}, onMinuteOf: {}, offMinuteOf: {}, momentum: 0, lastTalk: null, finished: false,
+    events: [], shots: [], stats: {}, onMinuteOf: {}, offMinuteOf: {}, momentum: 0, lastTalk: null, finished: false,
     needsWinner: opts.needsWinner,
     homePenSkill: opts.homePenSkill, awayPenSkill: opts.awayPenSkill,
   };
@@ -187,8 +188,17 @@ function generateChance(state: LiveMatchState, rng: Rng, s: LiveSideState, o: Li
   const gkMod = 1 + (o.profile.gk - 65) / 150;
   const pGoal = clamp(xq * finishMod / gkMod, 0.01, 0.95) as number;
 
+  // Deterministic shot location (shot map) drawn off an independent sub-RNG so
+  // it never perturbs the live match stream. Mirrors the batch engine's mapping.
+  const posRng = new Rng((s.isHome ? 0x5107_0000 : 0x5107_1111) ^ hashSeed(`live_${state.minute}_${s.shots}`));
+  const quality = Math.max(0, Math.min(1, xq / 0.5));
+  const shotX = Math.max(60, Math.min(99, 80 + quality * 18 + posRng.float(-4, 4)));
+  const shotY = Math.max(4, Math.min(96, 50 + posRng.float(-(8 + (1 - quality) * 34), 8 + (1 - quality) * 34)));
+  let outcome: MatchShot['outcome'];
+
   const swing = s.isHome ? 1 : -1;
   if (rng.chance(pGoal)) {
+    outcome = 'GOAL';
     s.goals++;
     const creators = s.creators.filter((c) => c.playerId !== shooter);
     const assist = rng.chance(0.72) ? weightedPick(rng, creators) ?? undefined : undefined;
@@ -200,12 +210,15 @@ function generateChance(state: LiveMatchState, rng: Rng, s: LiveSideState, o: Li
     o.saves++;
     if (o.profile.gkId) stat(state, o.profile.gkId);
     const isSave = rng.chance(0.6);
+    outcome = isSave ? 'SAVED' : 'OFF';
     state.events.push({ minute: state.minute, type: isSave ? 'SAVE' : 'BIG_CHANCE', side: sideKey, playerId: shooter ?? undefined, description: isSave ? pick(rng, SAVE_PHRASES) : pick(rng, CHANCE_PHRASES) });
     state.momentum = clamp(state.momentum + swing * 20, -100, 100) as number;
   } else {
+    outcome = posRng.chance(0.35) ? 'SAVED' : 'OFF';
     state.events.push({ minute: state.minute, type: 'SHOT', side: sideKey, playerId: shooter ?? undefined, description: pick(rng, CHANCE_PHRASES) });
     state.momentum = clamp(state.momentum + swing * 10, -100, 100) as number;
   }
+  state.shots.push({ side: sideKey, minute: state.minute, x: Math.round(shotX * 10) / 10, y: Math.round(shotY * 10) / 10, xg: Math.round(xq * 1000) / 1000, outcome, playerId: shooter ?? undefined });
 }
 
 function maybeCard(state: LiveMatchState, rng: Rng, s: LiveSideState): void {
@@ -484,5 +497,6 @@ export function liveOutcome(state: LiveMatchState) {
     awayXg: Math.round(state.away.xg * 100) / 100,
     events: state.events.filter((e) => e.type !== 'COMMENTARY'),
     playerStats: Object.values(state.stats).filter((s) => s.minutes > 0 || s.goals > 0 || s.shots > 0 || s.yellow || s.red),
+    shots: [...state.shots].sort((a, b) => a.minute - b.minute),
   };
 }

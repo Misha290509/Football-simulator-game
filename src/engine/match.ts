@@ -9,9 +9,10 @@
 import type {
   LineupProfile,
   MatchEvent,
+  MatchShot,
   PlayerMatchStat,
 } from '../types/match';
-import { Rng } from './rng';
+import { Rng, hashSeed } from './rng';
 import { formationMatchup } from './formationMatchup';
 
 export interface MatchOutcome {
@@ -21,6 +22,7 @@ export interface MatchOutcome {
   awayXg: number;
   events: MatchEvent[];
   playerStats: PlayerMatchStat[];
+  shots: MatchShot[];
   weather?: Weather;
   referee?: string;
 }
@@ -135,6 +137,7 @@ function simulateSide(
   events: MatchEvent[],
   statMap: Map<string, PlayerMatchStat>,
   env: MatchEnv,
+  shots: MatchShot[],
 ): void {
   const homeBonus = side.isHome ? HOME_ADVANTAGE : 0;
   const attackQuality = side.profile.attack + 0.35 * side.profile.midfield + homeBonus;
@@ -170,9 +173,21 @@ function simulateSide(
     const shooter = weightedPick(rng, scorers);
     if (shooter) bumpStat(statMap, shooter).shots++;
 
+    // Deterministic shot location for the shot map: a better chance is closer to
+    // goal and more central; weaker chances spray wider and further out. Drawn
+    // from an INDEPENDENT sub-RNG so it never perturbs the main match stream —
+    // scorelines are identical to before the shot map existed.
+    const posRng = new Rng((side.isHome ? 0x5107_0000 : 0x5107_1111) ^ hashSeed(`shot_${i}_${minute}`));
+    const quality = Math.max(0, Math.min(1, xq / 0.5));
+    const x = Math.max(60, Math.min(99, 80 + quality * 18 + posRng.float(-4, 4)));
+    const spread = 8 + (1 - quality) * 34;
+    const y = Math.max(4, Math.min(96, 50 + posRng.float(-spread, spread)));
+
     const pGoal = Math.max(0.01, Math.min(0.95, (xq * finishMod) / gkMod));
 
+    let outcome: MatchShot['outcome'] = 'OFF';
     if (rng.chance(pGoal)) {
+      outcome = 'GOAL';
       side.goals++;
       const creators = activePool(side.profile.creators, side.subs, side.benchCreator, minute)
         .filter((c) => c.playerId !== shooter);
@@ -183,6 +198,7 @@ function simulateSide(
     } else if (xq > 0.3) {
       opp.saves++;
       const isSave = rng.chance(0.6);
+      outcome = isSave ? 'SAVED' : 'OFF';
       // Credit the goalkeeper with the save (a missed "big chance" is not one).
       if (opp.profile.gkId) {
         const gs = bumpStat(statMap, opp.profile.gkId);
@@ -195,7 +211,13 @@ function simulateSide(
         playerId: shooter ?? undefined,
         description: rng.chance(0.6) ? 'Big save' : 'Big chance missed',
       });
+    } else {
+      // A tame effort: mostly off/blocked, occasionally a routine save. Decided
+      // on the sub-RNG so the main stream is untouched.
+      outcome = posRng.chance(0.35) ? 'SAVED' : 'OFF';
     }
+
+    shots.push({ side: sideKey, minute, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, xg: Math.round(xq * 1000) / 1000, outcome, playerId: shooter ?? undefined });
   }
 }
 
@@ -302,11 +324,12 @@ export function simulateMatch(
 
   const events: MatchEvent[] = [];
   const statMap = new Map<string, PlayerMatchStat>();
+  const shots: MatchShot[] = [];
 
   events.push({ minute: 0, type: 'KICKOFF', side: 'home', description: 'Kick-off' });
 
-  simulateSide(rng, home, away, events, statMap, env);
-  simulateSide(rng, away, home, events, statMap, env);
+  simulateSide(rng, home, away, events, statMap, env, shots);
+  simulateSide(rng, away, home, events, statMap, env, shots);
   simulateCards(rng, homeProfile, 'home', events, statMap, env.strictness);
   simulateCards(rng, awayProfile, 'away', events, statMap, env.strictness);
 
@@ -326,6 +349,7 @@ export function simulateMatch(
     awayXg: Math.round(away.xg * 100) / 100,
     events,
     playerStats: [...statMap.values()],
+    shots: shots.sort((a, b) => a.minute - b.minute),
     weather: env.weather,
     referee: env.referee,
   };
