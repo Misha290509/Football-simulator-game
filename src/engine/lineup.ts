@@ -11,6 +11,7 @@ import { overallAt } from './ratings';
 import { traitSimBoost } from './traits';
 import { egoOf } from './morale';
 import { chemistryMod } from './chemistry';
+import { roleModFor, type RoleMod } from './roles';
 import { POSITION_GROUP, MIRROR_POSITION } from '../types/attributes';
 
 // Formation → ordered slot positions (GK first, then by pitch row). All use a
@@ -237,6 +238,9 @@ export interface ProfileOptions extends SelectOptions {
   bench?: (string | null)[];
   /** Designated set-piece takers — get a share of goals/assists. */
   setPieces?: { penaltyTakerId?: string | null; freeKickTakerId?: string | null; cornerTakerId?: string | null };
+  /** Per-formation-slot player roles (§ Tactics depth), index-aligned to the
+   *  formation's slots. Absent slots default to the position's neutral role. */
+  roles?: (string | null)[];
 }
 
 export function buildLineupProfile(
@@ -245,7 +249,13 @@ export function buildLineupProfile(
   formation: string,
   opts: ProfileOptions = {},
 ): LineupProfile {
-  const xi = selectXI(players, formation, opts);
+  // Index-aligned assignment so each starter keeps its formation-slot index —
+  // needed to look up the per-slot role (§ Tactics depth). selectXI == this
+  // filtered, so behaviour is identical when no roles are set.
+  const assigned = assignXI(players, formation, opts);
+  const xi = assigned
+    .map((a, i) => (a ? { slot: a.slot, player: a.player, role: roleModFor(a.slot, opts.roles?.[i]) } : null))
+    .filter((x): x is { slot: Position; player: Player; role: RoleMod } => x !== null);
 
   // Effective ability folds in match condition: fitness matters a lot, morale a
   // lot, form only a little (ego doesn't change ability — it shifts selfishness,
@@ -268,6 +278,18 @@ export function buildLineupProfile(
     ...mids.map((s) => ratingAt(s.slot, s.player) * 0.5),
   ]) || 50;
   let midfield = mean(mids.map((s) => ratingAt(s.slot, s.player))) || 50;
+
+  // Roles reshape HOW ability is spent, across position groups: a wing-back
+  // pushes his rating toward attack (and off defence); a false 9 drops into
+  // midfield; a ball-playing CB adds to build-up. An additive nudge scaled by
+  // the player's rating — neutral roles contribute exactly zero, so a team with
+  // no roles set plays identically.
+  const roleAdj = (key: 'atk' | 'def' | 'mid'): number =>
+    mean(xi.map((e) => ratingAt(e.slot, e.player) * (e.role[key] - 1))) || 0;
+  attack += roleAdj('atk');
+  defense += roleAdj('def');
+  midfield += roleAdj('mid');
+
   const gkRating = gk ? ratingAt('GK', gk.player) : 45;
   const aggression = mean(xi.map((s) => s.player.attributes.mental.aggression)) || 50;
 
@@ -282,8 +304,12 @@ export function buildLineupProfile(
   attack *= dm.atk * chem;
   defense *= dm.def * chem;
   midfield *= chem;
-  const shotVolumeMod = dm.vol * om.vol;
-  const chanceQualityMod = om.qual;
+  // Roles add team-level texture: wing-backs and inside-forwards raise the shot
+  // count/quality, a false 9 trades box presence for better chances, etc.
+  const roleShotVol = xi.reduce((s, e) => s + e.role.shotVol, 0);
+  const roleChanceQual = xi.reduce((s, e) => s + e.role.chanceQual, 0);
+  const shotVolumeMod = dm.vol * om.vol * (1 + roleShotVol);
+  const chanceQualityMod = om.qual * (1 + roleChanceQual);
 
   // Designated set-piece takers claim a share of goals (penalties, free-kicks)
   // and assists (free-kicks, corners) when they're on the pitch.
@@ -303,14 +329,14 @@ export function buildLineupProfile(
     const tb = traitSimBoost(s.player);
     return {
       playerId: s.player.id,
-      weight: scorerWeight(POSITION_GROUP[s.slot], s.player.attributes.technical.finishing) * (1 + scorerBoost(s.player.id)) * tb.scorer * egoScorer(s.player),
+      weight: scorerWeight(POSITION_GROUP[s.slot], s.player.attributes.technical.finishing) * (1 + scorerBoost(s.player.id)) * tb.scorer * egoScorer(s.player) * s.role.scorer,
     };
   });
   const creators = xi.map((s) => {
     const tb = traitSimBoost(s.player);
     return {
       playerId: s.player.id,
-      weight: creatorWeight(POSITION_GROUP[s.slot], s.player.attributes.mental.vision, s.player.attributes.technical.crossing) * (1 + creatorBoost(s.player.id)) * tb.creator * egoCreator(s.player),
+      weight: creatorWeight(POSITION_GROUP[s.slot], s.player.attributes.mental.vision, s.player.attributes.technical.crossing) * (1 + creatorBoost(s.player.id)) * tb.creator * egoCreator(s.player) * s.role.creator,
     };
   });
 

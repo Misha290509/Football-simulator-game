@@ -319,6 +319,7 @@ interface GameState {
   setAutoMode: (on: boolean) => Promise<void>;
   setLockFormation: (on: boolean) => Promise<void>;
   setLineupSlot: (index: number, playerId: string | null) => Promise<void>;
+  setSlotRole: (index: number, roleId: string | null) => Promise<void>;
   autoFillLineup: () => Promise<void>;
   /** Persist a manually-edited starting XI + bench (drag-and-drop). */
   saveSquad: (lineup: (string | null)[], bench: (string | null)[]) => Promise<void>;
@@ -2106,6 +2107,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     lineup[index] = playerId;
     const updated = { ...club, lineup, autoMode: false };
+    set({ clubs: { ...clubs, [club.id]: updated } });
+    await putClubs(meta.id, [updated]);
+  },
+
+  setSlotRole: async (index, roleId) => {
+    const { meta, clubs } = get();
+    if (!meta) return;
+    const club = clubs[meta.managerClubId];
+    const slots = FORMATIONS[club.formation] ?? FORMATIONS['4-3-3'];
+    const roles: (string | null)[] = slots.map((_, i) => club.roles?.[i] ?? null);
+    roles[index] = roleId;
+    const updated = { ...club, roles };
     set({ clubs: { ...clubs, [club.id]: updated } });
     await putClubs(meta.id, [updated]);
   },

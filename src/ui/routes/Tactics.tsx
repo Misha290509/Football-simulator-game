@@ -11,6 +11,7 @@ import {
   FORMATIONS,
 } from '../../engine/lineup';
 import { overallAt } from '../../engine/ratings';
+import { ROLES_BY_POSITION, defaultRoleFor } from '../../engine/roles';
 import { ratingColor, fullName, playerStatus } from '../format';
 import type { Player } from '../../types/player';
 
@@ -32,6 +33,7 @@ export function Tactics() {
   const setSetPieceTaker = useGameStore((s) => s.setSetPieceTaker);
   const setAutoMode = useGameStore((s) => s.setAutoMode);
   const setLockFormation = useGameStore((s) => s.setLockFormation);
+  const setSlotRole = useGameStore((s) => s.setSlotRole);
   const autoFillLineup = useGameStore((s) => s.autoFillLineup);
   const saveSquad = useGameStore((s) => s.saveSquad);
   const saveLineupPreset = useGameStore((s) => s.saveLineupPreset);
@@ -150,6 +152,20 @@ export function Tactics() {
           <>
             <div className="text-xs font-medium truncate max-w-[82px]">{p.name.last}</div>
             <div className={`text-xs font-mono ${ratingColor(overallAt(p.attributes, slot))}`}>{overallAt(p.attributes, slot)}</div>
+            {(ROLES_BY_POSITION[slot]?.length ?? 0) > 1 && (
+              <select
+                className="mt-1 w-full bg-surface-700 border border-surface-600 rounded text-[9px] px-0.5 py-0.5 text-slate-300"
+                value={club.roles?.[slotIndex] ?? defaultRoleFor(slot)}
+                draggable={false}
+                onMouseDown={(e) => e.stopPropagation()}
+                onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => { const v = e.target.value; void setSlotRole(slotIndex, v === defaultRoleFor(slot) ? null : v); }}
+                title="Player role"
+              >
+                {ROLES_BY_POSITION[slot].map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+              </select>
+            )}
           </>
         ) : (
           <div className="text-xs text-slate-500 italic">empty</div>

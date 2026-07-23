@@ -67,6 +67,7 @@ function buildProfiles(
       club?.formation ?? '4-3-3',
       {
         tactics: club?.tactics, lineup: club?.lineup, bench: club?.bench, autoMode: club?.autoMode,
+        roles: club?.roles,
         setPieces: { penaltyTakerId: club?.penaltyTakerId, freeKickTakerId: club?.freeKickTakerId, cornerTakerId: club?.cornerTakerId },
         selectionBias,
       },
