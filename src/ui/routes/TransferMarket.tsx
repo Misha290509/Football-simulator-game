@@ -93,11 +93,37 @@ export function TransferMarket() {
   const scoutRating = useMemo(() => clubScoutRating(managerClub.staff), [managerClub.staff]);
   const viewOf = (p: Player): MarketView => marketView(p, { managerClubId: meta.managerClubId, eliteIds, report: reports[p.id], scoutRating });
 
+  const shortlist = meta.shortlist ?? [];
+  const shortlistSet = useMemo(() => new Set(shortlist), [shortlist]);
+  const toggleShortlist = useGameStore((s) => s.toggleShortlist);
+
+  // Alerts on your shortlisted players — a lightweight watch-list feed so a
+  // tracked target's contract running down or a purple patch doesn't slip by.
+  const watchAlerts = useMemo(() => {
+    const out: { p: Player; tags: string[] }[] = [];
+    for (const id of shortlist) {
+      const p = players[id];
+      if (!p) continue;
+      const tags: string[] = [];
+      if (p.transferListed) tags.push('Transfer-listed');
+      if (p.loanListed) tags.push('Loan-listed');
+      if (!p.contract.clubId) tags.push('Free agent');
+      else if (p.contract.expiresYear - year <= 0) tags.push('Out of contract');
+      else if (p.contract.expiresYear - year <= 1) tags.push('Expiring (Bosman soon)');
+      if (p.form >= 30) tags.push('Red-hot form');
+      else if (p.form <= -30) tags.push('Poor form');
+      if (p.injury) tags.push('Injured');
+      if (tags.length) out.push({ p, tags });
+    }
+    return out;
+  }, [shortlist, players, year]);
+
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     const out: { p: Player; v: MarketView }[] = [];
     for (const p of Object.values(players)) {
       if (p.contract.clubId === meta.managerClubId) continue;
+      if (avail === 'SHORTLIST' && !shortlistSet.has(p.id)) continue;
       if (p.academyClubId && !p.contract.clubId) continue; // hidden academy prospects
       if (posFilter !== 'ALL') {
         if (['GK', 'DEF', 'MID', 'ATT'].includes(posFilter)) {
@@ -125,7 +151,7 @@ export function TransferMarket() {
     // Sort by shown (estimated) value, high to low.
     out.sort((a, b) => b.v.value - a.v.value);
     return out.slice(0, 250);
-  }, [players, meta.managerClubId, posFilter, minAge, maxAge, leagueFilter, search, knownOnly, hideExpiring, minVal, maxVal, minOvr, minPot, maxWage, foot, avail, year, reports, eliteIds, leagueByClub, clubs, scoutRating]);
+  }, [players, meta.managerClubId, posFilter, minAge, maxAge, leagueFilter, search, knownOnly, hideExpiring, minVal, maxVal, minOvr, minPot, maxWage, foot, avail, shortlistSet, year, reports, eliteIds, leagueByClub, clubs, scoutRating]);
 
   const RatingCell = ({ v }: { v: MarketView }) => {
     if (v.exact) return <Rating value={v.ovr} />;
@@ -146,7 +172,8 @@ export function TransferMarket() {
       render: ({ p, v }) => {
         const busy = assignedPlayerIds.has(p.id);
         return (
-          <span className="flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
+          <span className="flex gap-1 justify-end items-center" onClick={(e) => e.stopPropagation()}>
+            <button className={`text-sm px-1 ${shortlistSet.has(p.id) ? 'text-amber-400' : 'text-slate-600 hover:text-amber-400'}`} title={shortlistSet.has(p.id) ? 'Remove from shortlist' : 'Add to shortlist'} onClick={() => void toggleShortlist(p.id)}>{shortlistSet.has(p.id) ? '★' : '☆'}</button>
             {busy ? <span className="text-xs text-sky-400 px-2">scouting…</span>
               : v.level !== 'OWN' && v.level !== 'ELITE' && (
                 <button className="btn-ghost py-0.5 px-2 text-xs" onClick={() => setScoutFor(p)}>{v.level === 'REPORT' ? 'Re-scout' : 'Scout'}</button>
@@ -288,6 +315,7 @@ export function TransferMarket() {
           <option value="LISTED">Transfer/loan-listed</option>
           <option value="EXPIRING">Contract expiring (≤1y)</option>
           <option value="FREE">Free agents</option>
+          <option value="SHORTLIST">★ Shortlisted only</option>
         </select>
         <label className="flex items-center gap-1"><span className="text-slate-400">Age</span>
           <input type="number" placeholder="min" className="bg-surface-700 border border-surface-600 rounded px-2 py-1 w-16" value={minAge > 15 ? minAge : ''} onChange={(e) => setMinAge(Number(e.target.value) || 15)} />
@@ -314,6 +342,23 @@ export function TransferMarket() {
       </div>
 
       <p className="text-xs text-slate-500">Every player in the world is visible. Figures you haven't confirmed are your scouting department's estimates (currently {departmentStars(scoutRating)}/5★ — better scouts read closer to the truth), so a weak department's read can be well off. Dispatch a scout for a sharper report before you bid.</p>
+
+      {watchAlerts.length > 0 && (
+        <div className="card p-3 border border-amber-500/30 bg-amber-500/5">
+          <div className="text-xs uppercase tracking-wide text-amber-400/90 mb-2">★ Shortlist alerts</div>
+          <div className="space-y-1">
+            {watchAlerts.map(({ p, tags }) => (
+              <button key={p.id} className="w-full flex items-center gap-2 text-sm text-left hover:bg-surface-700/50 rounded px-1 py-0.5" onClick={() => navigate(`/player/${p.id}`)}>
+                <span className="text-slate-200 w-44 truncate">{fullName(p)}</span>
+                <span className="text-slate-500 text-xs">{p.contract.clubId ? clubs[p.contract.clubId]?.shortName : 'free'}</span>
+                <span className="flex flex-wrap gap-1 ml-auto">
+                  {tags.map((t) => <span key={t} className={`text-[10px] rounded px-1.5 py-0.5 ${/hot|listed|Bosman|Free|Out of/i.test(t) ? 'bg-emerald-500/15 text-emerald-300' : 'bg-surface-700 text-slate-400'}`}>{t}</span>)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <DataTable columns={columns} rows={rows} rowKey={({ p }) => p.id} onRowClick={({ p }) => navigate(`/player/${p.id}`)} initialSort={{ key: 'val', dir: 'desc' }} />
 
