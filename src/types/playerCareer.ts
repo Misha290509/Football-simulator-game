@@ -184,6 +184,33 @@ export interface PlayerCareer {
   sponsorships: Sponsorship[];
   international: InternationalRecord;
 
+  /** The avatar's hired agent (null/absent ⇒ self-represented). */
+  agent?: import('./playerOffPitch').PlayerAgent | null;
+  /** AI clubs' standing interest in signing the avatar (earned by form). */
+  transferInterest?: import('./playerOffPitch').ClubInterest[];
+  /** Live transfer pursuits (rumour → bid → personal terms). */
+  activeSagas?: import('./playerOffPitch').TransferSaga[];
+  /** Concrete contract offers on the table (renewals + transfers). */
+  contractOffers?: import('./playerOffPitch').ContractOffer[];
+  /** Has the avatar handed in a transfer request? (raises interest, drops rel.) */
+  transferRequestPending?: boolean;
+  /** Active loan away from the parent club, if any. */
+  loanSpell?: import('./playerOffPitch').LoanSpell | null;
+  /** Loan offers awaiting a decision. */
+  loanOffers?: import('./playerOffPitch').LoanOffer[];
+  /** Public persona + controversy meter. */
+  publicImage?: import('./playerOffPitch').PublicImage;
+  /** History of press answers (for narrative callbacks). */
+  pressHistory?: import('./playerOffPitch').PressRecord[];
+  /** A press prompt awaiting the player's answer. */
+  pendingPress?: import('./playerOffPitch').PressPrompt[];
+  /** Sponsorship offers awaiting a decision. */
+  pendingSponsorOffers?: import('./playerOffPitch').SponsorOffer[];
+  /** Weekly set-and-forget time budget. */
+  lifestyle?: import('./playerOffPitch').Lifestyle;
+  /** Lifetime career earnings (wages + bonuses + sponsorships). */
+  careerEarnings?: number;
+
   // --- Manager relationship & standing (Tier 2) ------------------------------
   /** Optional breakdown of what's driving trust, for the UI. */
   trustFactors?: { ratings: number; objectives: number; talks: number; discipline: number; form: number };

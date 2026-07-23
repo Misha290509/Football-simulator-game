@@ -67,6 +67,10 @@ import type {
 } from '../types/interactiveMatch';
 import { progressPlayerCareer, statusRank } from '../game/playerProgression';
 import {
+  advanceOffPitch, executeContractOffer, executeLoanOffer, hireAgent, agentById, derivePersona,
+} from '../game/playerOffPitch';
+import type { SquadStatus } from '../types/playerCareer';
+import {
   postDropConversation, evaluatePromises, resolveConversation, requestMinutesOutcome, roleMeetingConversation,
 } from '../game/playerConversations';
 import { simulateMatches } from '../engine/simClient';
@@ -196,6 +200,20 @@ interface GameState {
   finishPlayerMatch: () => Promise<void>;
   cancelInteractive: () => void;
   setCareerSettings: (patch: Partial<CareerSettings>) => Promise<void>;
+  // --- Off-pitch life (Tier 4) ---
+  hireAgentAction: (agentId: string) => Promise<void>;
+  fireAgentAction: () => Promise<void>;
+  setAutoNegotiate: (patch: Partial<{ enabled: boolean; minWage: number; minRole: SquadStatus }>) => Promise<void>;
+  acceptContractOffer: (offerId: string) => Promise<string>;
+  rejectContractOffer: (offerId: string) => Promise<void>;
+  acceptLoanOffer: (offerId: string) => Promise<string>;
+  rejectLoanOffer: (offerId: string) => Promise<void>;
+  acceptSponsorOffer: (offerId: string) => Promise<void>;
+  rejectSponsorOffer: (offerId: string) => Promise<void>;
+  answerPlayerPress: (promptId: string, choiceIdx: number) => Promise<void>;
+  requestTransfer: () => Promise<void>;
+  cancelTransferRequest: () => Promise<void>;
+  setLifestyle: (routine: Record<string, number>, autoManage: boolean) => Promise<void>;
   load: (saveId: string) => Promise<boolean>;
   remove: (saveId: string) => Promise<void>;
   persist: () => Promise<void>;
@@ -560,6 +578,197 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!meta) return;
     const careerSettings: CareerSettings = { ...(meta.careerSettings ?? DEFAULT_CAREER_SETTINGS), ...patch };
     const newMeta: SaveMeta = { ...meta, careerSettings };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  // --- Off-pitch life (Tier 4) -------------------------------------------
+  hireAgentAction: async (agentId) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const base = agentById(agentId);
+    const avatar = players[pc.playerId];
+    if (!base || !avatar) return;
+    const agent = hireAgent(base, avatar);
+    const news: NewsItem[] = [{ id: `news_pc_agent_${meta.currentDay}`, day: meta.currentDay, category: 'GENERAL', title: `${agent.name} signs on`, body: `${agent.name} is now representing you — expect bigger clubs to come calling, for a ${agent.commissionPct}% cut.`, read: false }];
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, agent, agentId }, news: [...meta.news, ...news] };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  fireAgentAction: async () => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc || !pc.agent) return;
+    const news: NewsItem[] = [{ id: `news_pc_agentfire_${meta.currentDay}`, day: meta.currentDay, category: 'GENERAL', title: `Parted ways with ${pc.agent.name}`, body: `You're self-represented again — you'll handle every negotiation yourself.`, read: false }];
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, agent: null, agentId: undefined }, news: [...meta.news, ...news] };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  setAutoNegotiate: async (patch) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc || !pc.agent) return;
+    const agent = { ...pc.agent, autoNegotiate: { ...pc.agent.autoNegotiate, ...patch } };
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, agent } };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  acceptContractOffer: async (offerId) => {
+    const { meta, players, clubs } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No career.';
+    const offer = (pc.contractOffers ?? []).find((o) => o.id === offerId);
+    const avatar = players[pc.playerId];
+    if (!offer || !avatar) return 'That offer is no longer available.';
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const ex = executeContractOffer(pc, avatar, offer, clubs, year, meta.currentDay);
+    const newPlayers = { ...players, [avatar.id]: ex.avatar };
+    const newClubs = { ...clubs, ...ex.clubPatches };
+    const newMeta: SaveMeta = { ...meta, playerCareer: ex.career, news: [...meta.news, ...ex.news] };
+    set({ meta: newMeta, players: newPlayers, clubs: newClubs });
+    await putPlayers(meta.id, [ex.avatar]);
+    if (Object.keys(ex.clubPatches).length) await putClubs(meta.id, Object.values(ex.clubPatches));
+    await persistMeta(newMeta);
+    return ex.news[0]?.title ?? 'Signed.';
+  },
+
+  rejectContractOffer: async (offerId) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const offer = (pc.contractOffers ?? []).find((o) => o.id === offerId);
+    const contractOffers = (pc.contractOffers ?? []).filter((o) => o.id !== offerId);
+    // A rejected transfer collapses its saga; a rejected renewal just lapses.
+    const activeSagas = offer?.kind === 'TRANSFER'
+      ? (pc.activeSagas ?? []).map((s) => s.clubId === offer.clubId ? { ...s, stage: 'COLLAPSED' as const, deadline: meta.currentDay } : s)
+      : pc.activeSagas;
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, contractOffers, activeSagas } };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  acceptLoanOffer: async (offerId) => {
+    const { meta, players, clubs } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No career.';
+    const offer = (pc.loanOffers ?? []).find((o) => o.id === offerId);
+    const avatar = players[pc.playerId];
+    if (!offer || !avatar) return 'That loan is off the table.';
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const ex = executeLoanOffer(pc, avatar, offer, clubs, year, meta.currentDay);
+    const newPlayers = { ...players, [avatar.id]: ex.avatar };
+    const newClubs = { ...clubs, ...ex.clubPatches };
+    const newMeta: SaveMeta = { ...meta, playerCareer: ex.career, news: [...meta.news, ...ex.news] };
+    set({ meta: newMeta, players: newPlayers, clubs: newClubs });
+    await putPlayers(meta.id, [ex.avatar]);
+    if (Object.keys(ex.clubPatches).length) await putClubs(meta.id, Object.values(ex.clubPatches));
+    await persistMeta(newMeta);
+    return ex.news[0]?.title ?? 'Loan agreed.';
+  },
+
+  rejectLoanOffer: async (offerId) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const loanOffers = (pc.loanOffers ?? []).filter((o) => o.id !== offerId);
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, loanOffers } };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  acceptSponsorOffer: async (offerId) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const offer = (pc.pendingSponsorOffers ?? []).find((o) => o.id === offerId);
+    if (!offer) return;
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const sponsorships = [...(pc.sponsorships ?? []), { brand: offer.brand, value: offer.value, until: year + offer.length }];
+    const pendingSponsorOffers = (pc.pendingSponsorOffers ?? []).filter((o) => o.id !== offerId);
+    const news: NewsItem[] = [{ id: `news_pc_sponin_${offerId}`, day: meta.currentDay, category: 'GENERAL', title: `${offer.brand} deal signed`, body: `A ${offer.length}-year, €${Math.round(offer.value / 1000)}k/yr endorsement with ${offer.brand} is done.`, read: false }];
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, sponsorships, pendingSponsorOffers }, news: [...meta.news, ...news] };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  rejectSponsorOffer: async (offerId) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const pendingSponsorOffers = (pc.pendingSponsorOffers ?? []).filter((o) => o.id !== offerId);
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, pendingSponsorOffers } };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  answerPlayerPress: async (promptId, choiceIdx) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const prompt = (pc.pendingPress ?? []).find((p) => p.id === promptId);
+    if (!prompt) return;
+    const choice = prompt.choices[choiceIdx];
+    if (!choice) return;
+    const image = { ...(pc.publicImage ?? { persona: 'Unknown', controversy: 0 }) };
+    image.controversy = clamp(image.controversy + (choice.controversy ?? 0), 0, 100) as number;
+    image.persona = derivePersona(image, pc);
+    const avatar = players[pc.playerId];
+    let rival = pc.rival;
+    if (rival && choice.rival) rival = { ...rival, relationship: clamp(rival.relationship + choice.rival, -100, 100) as number };
+    const newPc = {
+      ...pc,
+      fanRating: clamp((pc.fanRating ?? 50) + (choice.fanRating ?? 0), 0, 100) as number,
+      managerTrust: clamp((pc.managerTrust ?? 50) + (choice.trust ?? 0), 0, 100) as number,
+      clubRelationship: clamp((pc.clubRelationship ?? 55) + (choice.relationship ?? 0), 0, 100) as number,
+      following: Math.max(0, (pc.following ?? 0) + (choice.following ?? 0)),
+      publicImage: image,
+      rival,
+      pendingPress: (pc.pendingPress ?? []).filter((p) => p.id !== promptId),
+      pressHistory: [...(pc.pressHistory ?? []), { day: meta.currentDay, topic: prompt.topic, choice: choice.text }],
+    };
+    const news: NewsItem[] = [{ id: `news_pc_press_${promptId}`, day: meta.currentDay, category: 'GENERAL', title: 'You faced the media', body: `"${choice.text}" — the ${choice.tone.toLowerCase()} line does the rounds.`, read: false }];
+    let newPlayers = players;
+    if (avatar && choice.tone === 'CONTROVERSIAL') { const np = { ...avatar, morale: clamp(avatar.morale + 2) as number }; newPlayers = { ...players, [avatar.id]: np }; await putPlayers(meta.id, [np]); }
+    const newMeta: SaveMeta = { ...meta, playerCareer: newPc, news: [...meta.news, ...news] };
+    set({ meta: newMeta, players: newPlayers });
+    await persistMeta(newMeta);
+  },
+
+  requestTransfer: async () => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const avatar = players[pc.playerId];
+    const news: NewsItem[] = [{ id: `news_pc_treq_${meta.currentDay}`, day: meta.currentDay, category: 'TRANSFER', title: 'Transfer request handed in', body: `${avatar ? `${avatar.name.first} ${avatar.name.last}` : 'You'} asked to leave. The relationship with the club takes a hit, but suitors will circle.`, read: false }];
+    let newPlayers = players;
+    if (avatar) { const np = { ...avatar, morale: clamp(avatar.morale - 6) as number, transferListed: true }; newPlayers = { ...players, [avatar.id]: np }; await putPlayers(meta.id, [np]); }
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, transferRequestPending: true, clubRelationship: clamp((pc.clubRelationship ?? 55) - 20, 0, 100) as number }, news: [...meta.news, ...news] };
+    set({ meta: newMeta, players: newPlayers });
+    await persistMeta(newMeta);
+  },
+
+  cancelTransferRequest: async () => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const avatar = players[pc.playerId];
+    let newPlayers = players;
+    if (avatar) { const np = { ...avatar, transferListed: false }; newPlayers = { ...players, [avatar.id]: np }; await putPlayers(meta.id, [np]); }
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, transferRequestPending: false, clubRelationship: clamp((pc.clubRelationship ?? 55) + 5, 0, 100) as number } };
+    set({ meta: newMeta, players: newPlayers });
+    await persistMeta(newMeta);
+  },
+
+  setLifestyle: async (routine, autoManage) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const r = routine as unknown as import('../types/playerOffPitch').Lifestyle['routine'];
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, lifestyle: { routine: r, autoManage } } };
     set({ meta: newMeta });
     await persistMeta(newMeta);
   },
@@ -2118,6 +2327,24 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
         }
         newMeta.news = [...newMeta.news, ...intlNews];
+
+        // Off-pitch rollover (Tier 4): a loan spell that's run its course returns
+        // the avatar to his parent club; expired sponsorships drop off. Interest,
+        // sagas and offers are cleared for a clean new-season slate.
+        let loanSpell = pc.loanSpell ?? null;
+        if (loanSpell && avatar && result.newSeason.year >= loanSpell.until) {
+          const parent = result.clubs[loanSpell.parentClubId];
+          const loanClub = result.clubs[loanSpell.loanClubId];
+          if (parent) {
+            result.clubs[parent.id] = { ...parent, playerIds: [...new Set([...parent.playerIds, avatar.id])] };
+            if (loanClub) result.clubs[loanClub.id] = { ...loanClub, playerIds: loanClub.playerIds.filter((id) => id !== avatar.id) };
+            result.players[avatar.id] = { ...avatar, contract: { ...avatar.contract, clubId: parent.id }, loan: null, squadRole: 'ROTATION' };
+            newMeta.news = [...newMeta.news, { id: `news_pc_loanback_${result.newSeason.year}`, day: 0, category: 'MILESTONE', title: 'Back from loan', body: `${avatar.name.first} ${avatar.name.last} returns to ${parent.name} after a season out — ${pc.seasonApps} apps, ${pc.seasonGoals} goals — ready to fight for a place.`, read: false }];
+          }
+          loanSpell = null;
+        }
+        const survivingSponsors = (pc.sponsorships ?? []).filter((s) => s.until >= result.newSeason.year);
+
         newMeta.playerCareer = {
           ...pc,
           seasonHistory: [...pc.seasonHistory, {
@@ -2131,6 +2358,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           international, tournamentSquads,
           confidence: 60, matchSharpness: 100,
           pendingConversations: [...(pc.pendingConversations ?? []), roleMeetingConversation(0)],
+          // Off-pitch: fresh market slate; keep agent, image, following, lifestyle, earnings.
+          loanSpell, sponsorships: survivingSponsors,
+          transferInterest: [], activeSagas: [], contractOffers: [], loanOffers: [],
+          pendingPress: [], pendingSponsorOffers: [], transferRequestPending: false,
         };
       }
 
@@ -3133,12 +3364,26 @@ async function playDays(
         const prom = evaluatePromises(pc, avatar, to);
         pc = prom.career; newsItems.push(...prom.news); moraleDelta += prom.moraleDelta;
 
-        // Apply the avatar's form + morale nudges.
+        // 5) Off-pitch life (Tier 4): market interest, sagas, renewals, loans,
+        //    sponsors, press triggers, wealth. Event-driven + deterministic;
+        //    may execute an auto-negotiated move (patches avatar + clubs).
+        const off = advanceOffPitch({
+          career: pc, avatar, clubs: clubsAfter, year: toYear, day: to,
+          daysElapsed: Math.max(1, to - from), seed: meta.seed, newSummary: pc.lastMatch,
+        });
+        pc = off.career; newsItems.push(...off.news); moraleDelta += off.moraleDelta;
+        if (off.clubPatches) {
+          clubsAfter = { ...clubsAfter, ...off.clubPatches };
+          await putClubs(meta.id, Object.values(off.clubPatches));
+        }
+
+        // Apply the avatar's form + morale nudges (+ any off-pitch player patch).
         const newForm = clamp(avatar.form + prog.formDelta) as number;
         const newMorale = clamp(avatar.morale + moraleDelta) as number;
-        if (newForm !== avatar.form || newMorale !== avatar.morale) {
+        const offPatch = off.playerPatch ?? {};
+        if (newForm !== avatar.form || newMorale !== avatar.morale || Object.keys(offPatch).length) {
           playersById = { ...playersById };
-          playersById[avatar.id] = { ...playersById[avatar.id], form: newForm, morale: newMorale };
+          playersById[avatar.id] = { ...playersById[avatar.id], ...offPatch, form: newForm, morale: newMorale };
           changedIds.add(avatar.id);
         }
 

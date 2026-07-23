@@ -19,7 +19,7 @@ import { fillAcademyBands } from '../game/academy';
 import { injectSpecialPlayers } from '../game/specialPlayers';
 import { generateSeasonObjectives } from '../game/playerObjectives';
 
-export const CURRENT_SCHEMA_VERSION = 11;
+export const CURRENT_SCHEMA_VERSION = 12;
 
 export interface MigrationResult {
   meta: SaveMeta;
@@ -124,9 +124,34 @@ export function migrateSave(
   if (fromVersion < 9) migrateToV9(meta, players);
   if (fromVersion < 10) migrateToV10(meta);
   if (fromVersion < 11) migrateToV11(meta);
+  if (fromVersion < 12) migrateToV12(meta);
 
   meta.schemaVersion = CURRENT_SCHEMA_VERSION;
   return { meta, clubs, players, changed: true };
+}
+
+/**
+ * v11 → v12: Tier-4 off-pitch life. Backfill the agent/interest/saga/offer/loan/
+ * media/sponsor/lifestyle fields on existing Player saves so the off-pitch engine
+ * has state to work with. Every field is additive with a benign default (no
+ * agent, no interest, neutral routine, unknown persona). Manager saves untouched.
+ */
+function migrateToV12(meta: SaveMeta): void {
+  if (meta.careerMode !== 'PLAYER' || !meta.playerCareer) return;
+  const pc = meta.playerCareer;
+  pc.agent = pc.agent ?? null;
+  pc.transferInterest = pc.transferInterest ?? [];
+  pc.activeSagas = pc.activeSagas ?? [];
+  pc.contractOffers = pc.contractOffers ?? [];
+  pc.transferRequestPending = pc.transferRequestPending ?? false;
+  pc.loanSpell = pc.loanSpell ?? null;
+  pc.loanOffers = pc.loanOffers ?? [];
+  pc.publicImage = pc.publicImage ?? { persona: 'Unknown', controversy: 0 };
+  pc.pressHistory = pc.pressHistory ?? [];
+  pc.pendingPress = pc.pendingPress ?? [];
+  pc.pendingSponsorOffers = pc.pendingSponsorOffers ?? [];
+  pc.lifestyle = pc.lifestyle ?? { routine: { TRAINING: 1, REST: 1, MEDIA: 1, COMMUNITY: 1, PERSONAL: 1 }, autoManage: true };
+  pc.careerEarnings = pc.careerEarnings ?? 0;
 }
 
 /**

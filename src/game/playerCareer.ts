@@ -22,6 +22,7 @@ import {
 } from './playerObjectives';
 import { roleMeetingConversation } from './playerConversations';
 import { DEFAULT_CAREER_SETTINGS, EMPTY_MOMENT_STATS } from '../types/interactiveMatch';
+import { DEFAULT_LIFESTYLE, DEFAULT_PUBLIC_IMAGE } from '../types/playerOffPitch';
 
 /** The career mode of a save. Absent flag ⇒ 'MANAGER' (every legacy save). */
 export function careerModeOf(meta: Pick<SaveGame, 'careerMode'> | null | undefined): CareerMode {
@@ -194,6 +195,20 @@ export function initialPlayerCareer(
     matchSharpness: 100,
     traitProgress: {},
     momentStats: { ...EMPTY_MOMENT_STATS },
+    // Off-pitch (Tier 4) — starts self-represented, unknown, with a neutral routine.
+    agent: null,
+    transferInterest: [],
+    activeSagas: [],
+    contractOffers: [],
+    transferRequestPending: false,
+    loanSpell: null,
+    loanOffers: [],
+    publicImage: { ...DEFAULT_PUBLIC_IMAGE },
+    pressHistory: [],
+    pendingPress: [],
+    pendingSponsorOffers: [],
+    lifestyle: { routine: { ...DEFAULT_LIFESTYLE.routine }, autoManage: true },
+    careerEarnings: 0,
     milestones: [{ day: startDay, text: originMilestone(origin, clubName) }],
     seasonHistory: [],
   };

@@ -57,6 +57,7 @@ const PLAYER_NAV_GROUPS: { title: string; items: { to: string; label: string }[]
     items: [
       { to: '/my-player', label: 'My Player' },
       { to: '/training', label: 'Training' },
+      { to: '/off-pitch', label: 'Off-Pitch' },
       { to: '/career', label: 'Career' },
     ],
   },

@@ -107,9 +107,30 @@ Migration v10 backfills Tier-2 fields on existing Player saves.
   fold the interactive result into `playDays` (extraPlayed), so aftermath +
   other fixtures run exactly as before.
 
-**Tier 4 — Off-pitch life & narrative:** agent, inverted contracts/transfers +
-role promises, loans out for game time, sponsorships, media/press,
-social/following, lifestyle time-budget, storyline-engine integration.
+**Tier 4 — Off-pitch life & narrative — ✅ COMPLETE:**
+All event-driven through the inbox, deterministic under the seed, and always
+skippable/automatable — a football-only player hires an agent, ticks
+auto-manage, and ignores every menu with a coherent career. Engine in
+`game/playerOffPitch.ts`, folded into `playDays` via `advanceOffPitch`.
+- **Agent** — hireable roster (negotiation/network/mediaSavvy/commission);
+  sweetens terms + widens interest; an auto-negotiate floor (min wage/role) is
+  the escape hatch that signs qualifying offers for you.
+- **Inverted transfer market** — clubs earn interest from real performance
+  (`marketHeat`); an interest board; sagas play out over weeks in the inbox
+  (RUMOUR → BID → PERSONAL_TERMS → move / collapse), paced by each saga's clock.
+- **Contracts** — renewals in the final year; a role promise from a new club
+  becomes a Tier-2 promise to keep; transfer requests (relationship hit, suitors
+  circle); release clauses.
+- **Loans** — buried youngsters get game-time loan offers; the spell returns the
+  avatar to his parent club at the rollover.
+- **Media/press** — event-driven prompts (hat-trick, red card, thrashing…);
+  choices move fan rating / trust / following / controversy → a `persona`.
+- **Sponsorships** — following crosses LOCAL/NATIONAL/GLOBAL tiers → tiered
+  offers; expired deals drop at the rollover.
+- **Lifestyle** — a set-and-forget weekly routine (auto-managed by default) that
+  drifts personality + controversy; lifetime `careerEarnings` (wage less agent
+  commission + sponsorships).
+Migration v12 backfills every field on existing Player saves; MANAGER untouched.
 
 **Tier 5 — Legacy & endgame:** dream-club moves, trophies, Ballon-d'Or,
 retirement + testimonial + Hall of Fame, optional player→manager transition

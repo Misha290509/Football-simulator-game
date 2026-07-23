@@ -16,6 +16,7 @@ export function PlayerHome() {
   const nextMatch = useGameStore((s) => s.managerNextMatch());
   const answerConversation = useGameStore((s) => s.answerConversation);
   const requestMeeting = useGameStore((s) => s.requestMeeting);
+  const answerPlayerPress = useGameStore((s) => s.answerPlayerPress);
   const career = playerCareerOf(meta);
   const currentYear = season?.year ?? meta?.startYear ?? new Date().getFullYear();
 
@@ -84,6 +85,31 @@ export function PlayerHome() {
           </div>
         );
       })()}
+
+      {/* Press prompt (event-driven media moment) */}
+      {(career.pendingPress ?? []).length > 0 && (() => {
+        const pr = career.pendingPress![0];
+        return (
+          <div className="card p-4 border border-sky-500/30 bg-sky-500/5">
+            <div className="text-xs uppercase tracking-wide text-sky-400 mb-1">🎙 The press want a word</div>
+            <p className="text-sm text-slate-200 mb-3">{pr.prompt}</p>
+            <div className="flex flex-col gap-2">
+              {pr.choices.map((c, i) => (
+                <button key={i} className="btn-ghost text-left text-sm" onClick={() => void answerPlayerPress(pr.id, i)}>
+                  “{c.text}” <span className="text-[11px] text-slate-500">({c.tone.toLowerCase()})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Off-pitch nudge — decisions waiting elsewhere */}
+      {((career.contractOffers ?? []).length > 0 || (career.loanOffers ?? []).length > 0 || (career.pendingSponsorOffers ?? []).length > 0) && (
+        <button className="card p-3 w-full text-left border border-accent/30 bg-accent/5 hover:bg-accent/10 transition-colors" onClick={() => navigate('/off-pitch')}>
+          <span className="text-sm text-accent-200">📩 You have decisions waiting off the pitch — offers on the table.</span>
+        </button>
+      )}
 
       {/* Selection read + next fixture */}
       <div className="grid sm:grid-cols-2 gap-3">
