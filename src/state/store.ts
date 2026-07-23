@@ -141,6 +141,11 @@ function godScale(p: Player, delta: number): Player {
   };
 }
 
+// Tactical familiarity (§ Tactics depth): a freshly-changed shape starts at the
+// floor and climbs FAMILIARITY_GAIN per match played in it until fully drilled.
+const FAMILIARITY_FLOOR = 0.35;
+const FAMILIARITY_GAIN = 0.08; // ~8 matches from the floor to full fluency
+
 /** Scale a lineup profile's strength by a Club-DNA multiplier (matches simWorker). */
 function scaleProfile(p: LineupProfile, mod: number): LineupProfile {
   if (!mod || mod === 1) return p;
@@ -2022,8 +2027,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { meta, clubs } = get();
     if (!meta) return;
     const club = clubs[meta.managerClubId];
-    // Changing shape invalidates the slot-indexed manual lineup.
-    const updated = { ...club, formation, lineup: undefined };
+    // Changing shape invalidates the slot-indexed manual lineup, and resets
+    // tactical familiarity to its floor — the squad has to be drilled in the new
+    // system before it clicks (re-selecting the same shape keeps its progress).
+    const familiarity = formation === club.formation
+      ? club.familiarity
+      : { formation, level: FAMILIARITY_FLOOR };
+    const updated = { ...club, formation, lineup: undefined, familiarity };
     set({ clubs: { ...clubs, [club.id]: updated } });
     await putClubs(meta.id, [updated]);
   },
@@ -3650,6 +3660,33 @@ async function playDays(
         if (nextM) pc = ensureAdvanceObjectives(pc, playersById[avatar.id], [nextM], meta.seed);
 
         playerCareer = pc;
+      }
+    }
+
+    // Tactical familiarity (§ Tactics depth): the manager's squad drills its
+    // current shape a little more with every match played in it, closing on full
+    // fluency. Only counts while the familiarity record still tracks the shape
+    // being played, so an auto-optimized formation swap stays neutral.
+    {
+      const mgrId = meta.managerClubId;
+      const mgrClub = clubsAfter[mgrId];
+      const fam = mgrClub?.familiarity;
+      if (mgrClub && fam && fam.formation === mgrClub.formation && fam.level < 1) {
+        const mgrMatches = playedMerged.filter((m) => m.homeClubId === mgrId || m.awayClubId === mgrId).length;
+        if (mgrMatches > 0) {
+          const level = Math.min(1, fam.level + mgrMatches * FAMILIARITY_GAIN);
+          const updated = { ...mgrClub, familiarity: { formation: mgrClub.formation, level } };
+          clubsAfter = { ...clubsAfter, [mgrId]: updated };
+          await putClubs(meta.id, [updated]);
+          if (level >= 1) {
+            newsItems.push({
+              id: `news_fam_${mgrClub.formation}_${to}`, day: to, category: 'GENERAL',
+              title: 'System clicks into place',
+              body: `The squad now look fully fluent in the ${mgrClub.formation} — no more settling-in rust.`,
+              read: false,
+            });
+          }
+        }
       }
     }
 

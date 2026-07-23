@@ -241,6 +241,11 @@ export interface ProfileOptions extends SelectOptions {
   /** Per-formation-slot player roles (§ Tactics depth), index-aligned to the
    *  formation's slots. Absent slots default to the position's neutral role. */
   roles?: (string | null)[];
+  /** Tactical familiarity with the shape being played, 0–1. Absent ⇒ 1 (fully
+   *  familiar, neutral) so untouched clubs are unaffected. A freshly-changed
+   *  shape sits low and the side plays slightly below its raw ability until it
+   *  is drilled in. */
+  familiarity?: number;
 }
 
 export function buildLineupProfile(
@@ -301,9 +306,12 @@ export function buildLineupProfile(
   const tactics = opts.tactics ?? DEFAULT_TACTICS;
   const dm = DEF_MODS[tactics.defensive];
   const om = OFF_MODS[tactics.offensive];
-  attack *= dm.atk * chem;
-  defense *= dm.def * chem;
-  midfield *= chem;
+  // Tactical familiarity: a settled side plays at full ability; a squad still
+  // learning a freshly-changed shape is a touch off the pace (−4% at the floor).
+  const fam = opts.familiarity == null ? 1 : 0.96 + 0.04 * Math.max(0, Math.min(1, opts.familiarity));
+  attack *= dm.atk * chem * fam;
+  defense *= dm.def * chem * fam;
+  midfield *= chem * fam;
   // Roles add team-level texture: wing-backs and inside-forwards raise the shot
   // count/quality, a false 9 trades box presence for better chances, etc.
   const roleShotVol = xi.reduce((s, e) => s + e.role.shotVol, 0);

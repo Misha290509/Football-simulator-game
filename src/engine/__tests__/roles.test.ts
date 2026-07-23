@@ -71,6 +71,22 @@ describe('player roles', () => {
     expect(highPress.aggression).toBeGreaterThan(base.aggression);
   });
 
+  it('tactical familiarity: absent/full is neutral, a freshly-changed shape plays below itself', () => {
+    const players = squad();
+    const base = buildLineupProfile('C', players, '4-3-3', { autoMode: true });
+    const full = buildLineupProfile('C', players, '4-3-3', { autoMode: true, familiarity: 1 });
+    expect(full.attack).toBeCloseTo(base.attack, 6);
+    expect(full.defense).toBeCloseTo(base.defense, 6);
+    expect(full.midfield).toBeCloseTo(base.midfield, 6);
+
+    const rusty = buildLineupProfile('C', players, '4-3-3', { autoMode: true, familiarity: 0.35 });
+    expect(rusty.attack).toBeLessThan(base.attack);
+    expect(rusty.defense).toBeLessThan(base.defense);
+    expect(rusty.midfield).toBeLessThan(base.midfield);
+    // Never a big swing — a couple of percent at the floor.
+    expect(rusty.attack).toBeGreaterThan(base.attack * 0.95);
+  });
+
   it('every position has a neutral default role first', () => {
     for (const [pos, roles] of Object.entries(ROLES_BY_POSITION)) {
       const first = roles[0];

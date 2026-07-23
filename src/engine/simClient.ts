@@ -68,6 +68,11 @@ function buildProfiles(
       {
         tactics: club?.tactics, lineup: club?.lineup, bench: club?.bench, autoMode: club?.autoMode,
         roles: club?.roles,
+        // Only apply familiarity when it tracks the shape actually being played
+        // (a stale record from a since-abandoned formation stays neutral).
+        familiarity: club?.familiarity && club.familiarity.formation === (club?.formation ?? '4-3-3')
+          ? club.familiarity.level
+          : undefined,
         setPieces: { penaltyTakerId: club?.penaltyTakerId, freeKickTakerId: club?.freeKickTakerId, cornerTakerId: club?.cornerTakerId },
         selectionBias,
       },

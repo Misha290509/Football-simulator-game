@@ -77,6 +77,11 @@ export interface Club {
   /** Per-formation-slot player roles (§ Tactics depth), index-aligned to the
    *  slots. Absent ⇒ each slot plays its position's neutral role. */
   roles?: (string | null)[];
+  /** Tactical familiarity (§ Tactics depth): how drilled the squad is in the
+   *  shape it is playing. `level` runs 0–1 and climbs as matches are played in
+   *  `formation`; a formation change drops it to a floor. Absent ⇒ fully
+   *  familiar (neutral), so AI clubs and untouched saves are unaffected. */
+  familiarity?: { formation: string; level: number };
   /** When true, the best XI is auto-selected every match. */
   autoMode?: boolean;
   /** When true, Auto-Mode keeps the chosen formation instead of optimizing it. */

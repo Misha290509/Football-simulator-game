@@ -210,6 +210,19 @@ export function Tactics() {
           <input type="checkbox" checked={club.lockFormation ?? false} onChange={(e) => setLockFormation(e.target.checked)} />
           <span className="text-slate-300">Lock formation</span>
         </label>
+        {(() => {
+          const fam = club.familiarity?.formation === formation ? club.familiarity.level : 1;
+          const pct = Math.round(fam * 100);
+          const settled = pct >= 100;
+          return (
+            <div className="text-sm w-40" title="Squad familiarity with the current shape. A settled side plays at full ability; a freshly-changed formation needs drilling in.">
+              <span className="block text-xs text-slate-400 mb-1">Familiarity <span className={settled ? 'text-emerald-400' : 'text-amber-400'}>({settled ? 'Settled' : `${pct}%`})</span></span>
+              <div className="h-2 rounded bg-surface-700 overflow-hidden">
+                <div className={`h-full ${settled ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          );
+        })()}
         <label className="text-sm">
           <span className="block text-xs text-slate-400 mb-1">Defensive</span>
           <select className="bg-surface-700 border border-surface-600 rounded px-2 py-1.5" value={club.tactics?.defensive ?? 'BALANCED'} onChange={(e) => setTactic('defensive', e.target.value)}>
