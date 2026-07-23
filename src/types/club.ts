@@ -19,6 +19,10 @@ export type ClubTrait =
 export interface Tactics {
   defensive: DefensiveTactic;
   offensive: OffensiveTactic;
+  /** Fine-tuning sliders, 0–100, 50 = neutral (absent ⇒ neutral). */
+  width?: number;    // narrow ↔ wide
+  tempo?: number;    // patient ↔ high-tempo
+  pressing?: number; // contain ↔ press high
 }
 
 /** A saved team sheet the manager can switch to on the Tactics page. */

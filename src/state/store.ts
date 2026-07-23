@@ -314,6 +314,7 @@ interface GameState {
   // Tactics & formation (§8)
   setFormation: (formation: string) => Promise<void>;
   setTactic: (kind: 'defensive' | 'offensive', value: string) => Promise<void>;
+  setTacticSlider: (kind: 'width' | 'tempo' | 'pressing', value: number) => Promise<void>;
   setSetPieceTaker: (role: 'penalty' | 'freeKick' | 'corner', playerId: string) => Promise<void>;
   expandStadium: (seats: number) => Promise<BidResult>;
   setAutoMode: (on: boolean) => Promise<void>;
@@ -2033,6 +2034,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     const club = clubs[meta.managerClubId];
     const tactics = { ...(club.tactics ?? { defensive: 'BALANCED', offensive: 'POSSESSION' }), [kind]: value };
     const updated = { ...club, tactics: tactics as typeof club.tactics };
+    set({ clubs: { ...clubs, [club.id]: updated } });
+    await putClubs(meta.id, [updated]);
+  },
+
+  setTacticSlider: async (kind, value) => {
+    const { meta, clubs } = get();
+    if (!meta) return;
+    const club = clubs[meta.managerClubId];
+    const base = club.tactics ?? { defensive: 'BALANCED' as const, offensive: 'POSSESSION' as const };
+    const updated = { ...club, tactics: { ...base, [kind]: value } };
     set({ clubs: { ...clubs, [club.id]: updated } });
     await putClubs(meta.id, [updated]);
   },

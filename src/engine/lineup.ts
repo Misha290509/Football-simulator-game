@@ -291,7 +291,7 @@ export function buildLineupProfile(
   midfield += roleAdj('mid');
 
   const gkRating = gk ? ratingAt('GK', gk.player) : 45;
-  const aggression = mean(xi.map((s) => s.player.attributes.mental.aggression)) || 50;
+  let aggression = mean(xi.map((s) => s.player.attributes.mental.aggression)) || 50;
 
   // Dressing-room chemistry: a gelled XI plays a touch above the sum of its
   // parts, a fractured one below (±4% team-wide).
@@ -308,8 +308,19 @@ export function buildLineupProfile(
   // count/quality, a false 9 trades box presence for better chances, etc.
   const roleShotVol = xi.reduce((s, e) => s + e.role.shotVol, 0);
   const roleChanceQual = xi.reduce((s, e) => s + e.role.chanceQual, 0);
-  const shotVolumeMod = dm.vol * om.vol * (1 + roleShotVol);
-  const chanceQualityMod = om.qual * (1 + roleChanceQual);
+
+  // Fine-tuning sliders (0–100, 50 = neutral): tempo trades chance quality for
+  // volume; width trades a little central quality for wide volume; pressing
+  // lifts aggression and nicks the ball higher (small attack gain, defensive
+  // risk). All no-ops at 50, so a default team is unchanged.
+  const tempo = ((tactics.tempo ?? 50) - 50) / 50;     // −1 … +1
+  const width = ((tactics.width ?? 50) - 50) / 50;
+  const pressing = ((tactics.pressing ?? 50) - 50) / 50;
+  const shotVolumeMod = dm.vol * om.vol * (1 + roleShotVol) * (1 + tempo * 0.16 + width * 0.06);
+  const chanceQualityMod = om.qual * (1 + roleChanceQual) * (1 - tempo * 0.08 - Math.abs(width) * 0.03);
+  attack *= 1 + pressing * 0.04;
+  defense *= 1 - pressing * 0.04;
+  aggression *= 1 + pressing * 0.15;
 
   // Designated set-piece takers claim a share of goals (penalties, free-kicks)
   // and assists (free-kicks, corners) when they're on the pitch.

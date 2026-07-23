@@ -58,6 +58,19 @@ describe('player roles', () => {
     expect(stScorerF9!.weight).toBeLessThan(stScorerBase!.weight);
   });
 
+  it('tactic sliders at 50 (or absent) are neutral; extremes shift the profile', () => {
+    const players = squad();
+    const base = buildLineupProfile('C', players, '4-3-3', { autoMode: true, tactics: { defensive: 'BALANCED', offensive: 'POSSESSION' } });
+    const neutral = buildLineupProfile('C', players, '4-3-3', { autoMode: true, tactics: { defensive: 'BALANCED', offensive: 'POSSESSION', width: 50, tempo: 50, pressing: 50 } });
+    expect(neutral.shotVolumeMod).toBeCloseTo(base.shotVolumeMod, 6);
+    expect(neutral.aggression).toBeCloseTo(base.aggression, 6);
+
+    const highTempo = buildLineupProfile('C', players, '4-3-3', { autoMode: true, tactics: { defensive: 'BALANCED', offensive: 'POSSESSION', tempo: 100 } });
+    expect(highTempo.shotVolumeMod).toBeGreaterThan(base.shotVolumeMod);
+    const highPress = buildLineupProfile('C', players, '4-3-3', { autoMode: true, tactics: { defensive: 'BALANCED', offensive: 'POSSESSION', pressing: 100 } });
+    expect(highPress.aggression).toBeGreaterThan(base.aggression);
+  });
+
   it('every position has a neutral default role first', () => {
     for (const [pos, roles] of Object.entries(ROLES_BY_POSITION)) {
       const first = roles[0];

@@ -30,6 +30,7 @@ export function Tactics() {
   const squad = useGameStore((s) => s.getClubPlayers(club.id));
   const setFormation = useGameStore((s) => s.setFormation);
   const setTactic = useGameStore((s) => s.setTactic);
+  const setTacticSlider = useGameStore((s) => s.setTacticSlider);
   const setSetPieceTaker = useGameStore((s) => s.setSetPieceTaker);
   const setAutoMode = useGameStore((s) => s.setAutoMode);
   const setLockFormation = useGameStore((s) => s.setLockFormation);
@@ -221,6 +222,13 @@ export function Tactics() {
             {OFF_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </label>
+        {([['width', 'Width', 'Narrow', 'Wide'], ['tempo', 'Tempo', 'Patient', 'High'], ['pressing', 'Pressing', 'Contain', 'Press']] as const).map(([k, label, lo, hi]) => (
+          <label key={k} className="text-sm w-36">
+            <span className="block text-xs text-slate-400 mb-1">{label} <span className="text-slate-600">({club.tactics?.[k] ?? 50})</span></span>
+            <input type="range" min={0} max={100} step={5} className="w-full" value={club.tactics?.[k] ?? 50} onChange={(e) => void setTacticSlider(k, Number(e.target.value))} />
+            <span className="flex justify-between text-[9px] text-slate-600"><span>{lo}</span><span>{hi}</span></span>
+          </label>
+        ))}
         <label className="text-sm flex items-center gap-2 pb-1.5">
           <input type="checkbox" checked={autoMode} onChange={(e) => setAutoMode(e.target.checked)} />
           <span className="text-slate-300">Auto-Mode</span>
