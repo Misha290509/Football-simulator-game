@@ -6,7 +6,7 @@
 import type { Player } from '../types/player';
 import type { Position } from '../types/attributes';
 import type { LineupProfile } from '../types/match';
-import type { Tactics, DefensiveTactic, OffensiveTactic } from '../types/club';
+import type { Tactics, DefensiveTactic, OffensiveTactic, SetPieceRoutine } from '../types/club';
 import { overallAt } from './ratings';
 import { traitSimBoost } from './traits';
 import { egoOf } from './morale';
@@ -238,6 +238,8 @@ export interface ProfileOptions extends SelectOptions {
   bench?: (string | null)[];
   /** Designated set-piece takers — get a share of goals/assists. */
   setPieces?: { penaltyTakerId?: string | null; freeKickTakerId?: string | null; cornerTakerId?: string | null };
+  /** Drilled set-piece routines (§ Tactics depth, #13). Absent ⇒ neutral. */
+  setPieceRoutine?: SetPieceRoutine;
   /** Per-formation-slot player roles (§ Tactics depth), index-aligned to the
    *  formation's slots. Absent slots default to the position's neutral role. */
   roles?: (string | null)[];
@@ -246,6 +248,55 @@ export interface ProfileOptions extends SelectOptions {
    *  shape sits low and the side plays slightly below its raw ability until it
    *  is drilled in. */
   familiarity?: number;
+}
+
+/**
+ * Set-piece routine modifiers (§ Tactics depth, #13). Attacking routines lift
+ * chance quality when they suit the designated taker and the aerial threat in
+ * the box; the marking scheme firms up (or, if it suits the defenders poorly,
+ * slightly weakens) the defence. All measured against a 65-OVR baseline, so a
+ * well-drilled top side gains a few percent and a mismatched one can lose a
+ * touch — net-neutral across a league, and exactly zero when nothing is set.
+ */
+function setPieceMods(
+  xi: { slot: Position; player: Player }[],
+  routine: SetPieceRoutine | undefined,
+  setPieces: ProfileOptions['setPieces'],
+): { threat: number; solidity: number } {
+  if (!routine) return { threat: 0, solidity: 0 };
+  const byId = new Map(xi.map((e) => [e.player.id, e.player]));
+  const outfield = xi.filter((e) => e.slot !== 'GK');
+  const defs = xi.filter((e) => POSITION_GROUP[e.slot] === 'DEF');
+  const aerial = mean(outfield.map((e) => e.player.attributes.technical.headingAccuracy * 0.6 + e.player.attributes.physical.jumping * 0.4));
+
+  let threat = 0;
+  if (routine.corner) {
+    const t = setPieces?.cornerTakerId ? byId.get(setPieces.cornerTakerId) : undefined;
+    const delivery = t ? (t.attributes.technical.crossing + t.attributes.technical.curve) / 2 : 62;
+    const worked = t ? (t.attributes.technical.shortPassing + t.attributes.mental.vision) / 2 : 62;
+    const base = routine.corner === 'SHORT' ? worked
+      : routine.corner === 'MIXED' ? (delivery + aerial) / 2
+      : (delivery + aerial * 1.2) / 2.2; // NEAR / FAR are aimed, aerial-heavy
+    threat += (base - 65) / 100 * 0.03;
+  }
+  if (routine.freeKick) {
+    const t = setPieces?.freeKickTakerId ? byId.get(setPieces.freeKickTakerId) : undefined;
+    const shoot = t ? (t.attributes.technical.fkAccuracy + t.attributes.technical.shotPower) / 2 : 62;
+    const whip = t ? (t.attributes.technical.crossing + aerial) / 2 : (62 + aerial) / 2;
+    const base = routine.freeKick === 'SHOOT' ? shoot : routine.freeKick === 'CROSS' ? whip : (shoot + whip) / 2;
+    threat += (base - 65) / 100 * 0.03;
+  }
+  threat = Math.max(-0.03, Math.min(0.06, threat));
+
+  let solidity = 0;
+  if (routine.marking && defs.length) {
+    const dm = (fn: (p: Player) => number) => mean(defs.map((e) => fn(e.player)));
+    const base = routine.marking === 'ZONAL'
+      ? dm((p) => p.attributes.physical.jumping * 0.4 + p.attributes.technical.headingAccuracy * 0.35 + p.attributes.mental.positioning * 0.25)
+      : dm((p) => p.attributes.mental.marking * 0.5 + p.attributes.physical.strength * 0.3 + p.attributes.mental.aggression * 0.2);
+    solidity = Math.max(-0.025, Math.min(0.04, (base - 65) / 100 * 0.03));
+  }
+  return { threat, solidity };
 }
 
 export function buildLineupProfile(
@@ -325,9 +376,12 @@ export function buildLineupProfile(
   const width = ((tactics.width ?? 50) - 50) / 50;
   const pressing = ((tactics.pressing ?? 50) - 50) / 50;
   const shotVolumeMod = dm.vol * om.vol * (1 + roleShotVol) * (1 + tempo * 0.16 + width * 0.06);
-  const chanceQualityMod = om.qual * (1 + roleChanceQual) * (1 - tempo * 0.08 - Math.abs(width) * 0.03);
+  // Drilled set-piece routines lift chance quality (attacking threat) and firm
+  // up the defence (marking scheme) — both neutral when nothing is set.
+  const spm = setPieceMods(xi, opts.setPieceRoutine, opts.setPieces);
+  const chanceQualityMod = om.qual * (1 + roleChanceQual) * (1 - tempo * 0.08 - Math.abs(width) * 0.03) * (1 + spm.threat);
   attack *= 1 + pressing * 0.04;
-  defense *= 1 - pressing * 0.04;
+  defense *= (1 - pressing * 0.04) * (1 + spm.solidity);
   aggression *= 1 + pressing * 0.15;
 
   // Designated set-piece takers claim a share of goals (penalties, free-kicks)

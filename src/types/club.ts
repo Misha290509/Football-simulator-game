@@ -25,6 +25,20 @@ export interface Tactics {
   pressing?: number; // contain ↔ press high
 }
 
+/**
+ * Set-piece routines (§ Tactics depth, #13). Each choice shifts set-piece goal
+ * probability tied to the relevant taker/defender attributes. Absent ⇒ no drilled
+ * routine (neutral), so untouched clubs and the AI are unaffected.
+ */
+export interface SetPieceRoutine {
+  /** Corner delivery: aimed near/far post, worked short, or a mix. */
+  corner?: 'MIXED' | 'NEAR' | 'FAR' | 'SHORT';
+  /** Free-kick intent: shoot on target, whip it in, or mix. */
+  freeKick?: 'MIXED' | 'SHOOT' | 'CROSS';
+  /** How the box is defended at set pieces. */
+  marking?: 'ZONAL' | 'MAN';
+}
+
 /** A saved team sheet the manager can switch to on the Tactics page. */
 export interface LineupPreset {
   name: string;
@@ -101,4 +115,6 @@ export interface Club {
   penaltyTakerId?: string | null;
   freeKickTakerId?: string | null;
   cornerTakerId?: string | null;
+  /** Drilled set-piece routines (§ Tactics depth, #13). Absent ⇒ neutral. */
+  setPieceRoutine?: SetPieceRoutine;
 }

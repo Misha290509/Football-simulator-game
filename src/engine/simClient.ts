@@ -74,6 +74,7 @@ function buildProfiles(
           ? club.familiarity.level
           : undefined,
         setPieces: { penaltyTakerId: club?.penaltyTakerId, freeKickTakerId: club?.freeKickTakerId, cornerTakerId: club?.cornerTakerId },
+        setPieceRoutine: club?.setPieceRoutine,
         selectionBias,
       },
     );

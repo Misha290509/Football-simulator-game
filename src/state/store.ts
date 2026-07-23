@@ -321,6 +321,7 @@ interface GameState {
   setTactic: (kind: 'defensive' | 'offensive', value: string) => Promise<void>;
   setTacticSlider: (kind: 'width' | 'tempo' | 'pressing', value: number) => Promise<void>;
   setSetPieceTaker: (role: 'penalty' | 'freeKick' | 'corner', playerId: string) => Promise<void>;
+  setSetPieceRoutine: (kind: 'corner' | 'freeKick' | 'marking', value: string | null) => Promise<void>;
   expandStadium: (seats: number) => Promise<BidResult>;
   setAutoMode: (on: boolean) => Promise<void>;
   setLockFormation: (on: boolean) => Promise<void>;
@@ -2085,6 +2086,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     await putClubs(meta.id, [updated]);
   },
 
+  setSetPieceRoutine: async (kind, value) => {
+    const { meta, clubs } = get();
+    if (!meta) return;
+    const club = clubs[meta.managerClubId];
+    const routine = { ...(club.setPieceRoutine ?? {}), [kind]: value || undefined };
+    const updated = { ...club, setPieceRoutine: routine };
+    set({ clubs: { ...clubs, [club.id]: updated } });
+    await putClubs(meta.id, [updated]);
+  },
+
   setAutoMode: async (on) => {
     const { meta, clubs } = get();
     if (!meta) return;
@@ -2639,7 +2650,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       club.id, playersOf(club.id), club.formation ?? '4-3-3',
       {
         tactics: club.tactics, lineup: club.lineup, bench: club.bench, autoMode: club.autoMode,
+        roles: club.roles,
+        familiarity: club.familiarity && club.familiarity.formation === (club.formation ?? '4-3-3') ? club.familiarity.level : undefined,
         setPieces: { penaltyTakerId: club.penaltyTakerId, freeKickTakerId: club.freeKickTakerId, cornerTakerId: club.cornerTakerId },
+        setPieceRoutine: club.setPieceRoutine,
       },
     );
 

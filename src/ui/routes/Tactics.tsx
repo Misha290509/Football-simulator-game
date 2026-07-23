@@ -32,6 +32,7 @@ export function Tactics() {
   const setTactic = useGameStore((s) => s.setTactic);
   const setTacticSlider = useGameStore((s) => s.setTacticSlider);
   const setSetPieceTaker = useGameStore((s) => s.setSetPieceTaker);
+  const setSetPieceRoutine = useGameStore((s) => s.setSetPieceRoutine);
   const setAutoMode = useGameStore((s) => s.setAutoMode);
   const setLockFormation = useGameStore((s) => s.setLockFormation);
   const setSlotRole = useGameStore((s) => s.setSlotRole);
@@ -269,6 +270,30 @@ export function Tactics() {
                 {[...squad].sort((a, b) => b.overall - a.overall).map((p) => (
                   <option key={p.id} value={p.id}>{p.name.first[0]}. {p.name.last} ({p.position})</option>
                 ))}
+              </select>
+            </label>
+          );
+        })}
+      </div>
+
+      {/* Set-piece routines (§ Tactics depth) */}
+      <div className="card p-4 flex flex-wrap items-end gap-4">
+        <span className="text-sm font-semibold text-slate-400 w-full sm:w-auto" title="Drilled routines shift set-piece goal probability, tied to your takers and defenders. Leave on Auto for no drilled routine.">Set-piece routines</span>
+        {([
+          ['corner', 'Corners', [['', '— auto —'], ['MIXED', 'Mixed'], ['NEAR', 'Near post'], ['FAR', 'Far post'], ['SHORT', 'Worked short']]],
+          ['freeKick', 'Free-kicks', [['', '— auto —'], ['MIXED', 'Mixed'], ['SHOOT', 'Shoot'], ['CROSS', 'Whip it in']]],
+          ['marking', 'Defending', [['', '— auto —'], ['ZONAL', 'Zonal'], ['MAN', 'Man-marking']]],
+        ] as const).map(([kind, label, opts]) => {
+          const cur = club.setPieceRoutine?.[kind] ?? '';
+          return (
+            <label key={kind} className="text-sm">
+              <span className="block text-xs text-slate-400 mb-1">{label}</span>
+              <select
+                className="bg-surface-700 border border-surface-600 rounded px-2 py-1.5 min-w-[9rem]"
+                value={cur}
+                onChange={(e) => void setSetPieceRoutine(kind, e.target.value)}
+              >
+                {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </label>
           );
