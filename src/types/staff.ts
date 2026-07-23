@@ -32,6 +32,16 @@ export interface Facilities {
   training: number; // 1–5, scales development speed
 }
 
+/** A long-term board philosophy judged over several seasons (§ #43). */
+export type VisionMandate = 'SILVERWARE' | 'ATTACKING' | 'YOUTH' | 'PRUDENCE' | 'STABILITY';
+
+export interface ClubVision {
+  mandates: VisionMandate[];
+  /** Running 0–100 rating per mandate, updated each season (EMA). */
+  scores: Record<string, number>;
+  seasonsJudged: number;
+}
+
 export interface BoardState {
   targetPosition: number; // expected league finish
   objectiveText: string;
@@ -40,4 +50,6 @@ export interface BoardState {
    *  signings and sales; sustained fan unrest drags the board down. Absent ⇒
    *  treated as 60 (neutral) so existing saves migrate cleanly. */
   fanConfidence?: number;
+  /** Multi-season club vision judged over time (§ #43). Absent on old saves. */
+  vision?: ClubVision;
 }

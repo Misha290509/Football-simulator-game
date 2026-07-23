@@ -12,7 +12,7 @@ import { hashSeed, Rng, clamp } from '../engine/rng';
 import { generateSchedule } from '../engine/schedule';
 import { generateStaffFor } from '../engine/staff';
 import { facilityLevelFor } from '../engine/academy';
-import { setObjective } from './board';
+import { setObjective, pickVision } from './board';
 import { installNewGameAcademies, fillAcademyBands } from './academy';
 import { injectSpecialPlayers } from './specialPlayers';
 import { challengeById } from './challenges';
@@ -146,7 +146,7 @@ export function createNewGame(config: NewGameConfig): WorldSnapshot {
       balance: Math.round(f.balance * budgetMult),
     };
   }
-  const boardState = { ...setObjective(managerClub, managerComp), confidence: startConfidence };
+  const boardState = { ...setObjective(managerClub, managerComp), confidence: startConfidence, vision: pickVision(managerClub) };
 
   const meta: SaveGame = {
     id: `save_${seed.toString(36)}_${Date.now().toString(36)}`,

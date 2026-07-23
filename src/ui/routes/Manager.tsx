@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGameStore } from '../../state/store';
 import { BOARD_REQUEST_LABEL, type BoardRequestKind } from '../../game/boardroom';
+import { MANDATE_LABEL } from '../../game/board';
 import { styleTags } from '../../game/aiManagers';
 
 export function Manager() {
@@ -126,6 +127,24 @@ export function Manager() {
             );
           })()}
           <p className="text-xs text-slate-500 mb-3">The board judge you on results and expectations; the supporters also want entertaining football and marquee signings — and a mutinous crowd erodes the board's patience.</p>
+          {meta.board?.vision && meta.board.vision.mandates.length > 0 && (
+            <div className="mb-3 rounded bg-surface-700/60 px-3 py-2">
+              <div className="text-xs font-semibold text-slate-300 mb-1.5">Club vision <span className="text-slate-500 font-normal">· judged over the seasons ({meta.board.vision.seasonsJudged} reviewed)</span></div>
+              <div className="space-y-1">
+                {meta.board.vision.mandates.map((m) => {
+                  const v = meta.board!.vision!.scores[m] ?? 50;
+                  const color = v >= 65 ? 'text-emerald-400' : v >= 45 ? 'text-amber-400' : 'text-rose-400';
+                  const tag = v >= 65 ? 'on track' : v >= 45 ? 'patchy' : 'off track';
+                  return (
+                    <div key={m} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">{MANDATE_LABEL[m]}</span>
+                      <span className={color}>{tag} · {v}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             {(['TRANSFER_BUDGET', 'WAGE_BUDGET', 'FACILITIES'] as BoardRequestKind[]).map((k) => (
               <button key={k} className="btn-ghost text-sm" onClick={async () => flash((await requestFromBoard(k)).message)}>

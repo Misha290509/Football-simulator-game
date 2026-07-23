@@ -20,7 +20,7 @@ import { Rng } from '../engine/rng';
 import { developPlayer, shouldRetire, type SeasonPerf } from '../engine/development';
 import { computeSeasonFinances, deriveBudgets } from '../engine/finances';
 import { coachingFactor, trainingBias } from '../engine/staff';
-import { evaluateObjective, setObjective, SACK_THRESHOLD, fanConfidenceOf } from './board';
+import { evaluateObjective, setObjective, SACK_THRESHOLD, fanConfidenceOf, pickVision, reviewVision } from './board';
 import type { BoardState } from '../types/staff';
 import { runAiTransferWindow, weeklyWageBill } from './transfers';
 import { runAiToAiTransfers } from './aiTransfers';
@@ -641,7 +641,20 @@ export async function resolveAndRollover(
     const where = positionOf(meta.managerClubId);
     if (where) {
       const outcome = evaluateObjective(where.pos, meta.board);
-      const confidence = Math.max(0, Math.min(100, meta.board.confidence + outcome.confidenceDelta));
+      // Long-term club vision judged over the campaign (§ #43): fold this season
+      // into each mandate and let it nudge the board's confidence.
+      const currentVision = meta.board.vision ?? pickVision(finalClubs[meta.managerClubId] ?? clubs[meta.managerClubId]);
+      const mgrRow = finalStandings[where.compId]?.[where.pos - 1];
+      const wonTrophy = allAwards.some((a) => a.clubId === meta.managerClubId && (a.type === 'LEAGUE_CHAMPION' || a.type === 'DOMESTIC_CUP' || a.type === 'CONTINENTAL'));
+      const youthCount = (finalSquadIndex.get(meta.managerClubId) ?? []).filter((p) => p.academyGraduateOf === meta.managerClubId).length;
+      const relegated = where.pos > (competitions[where.compId].numClubs - (competitions[where.compId].promotion?.autoRelegate ?? 3));
+      const visionReview = reviewVision(currentVision, {
+        goalsFor: mgrRow?.goalsFor ?? 0, played: mgrRow?.played ?? 0, position: where.pos,
+        leagueSize: competitions[where.compId].numClubs, wonTrophy, youthCount,
+        balance: (finalClubs[meta.managerClubId] ?? clubs[meta.managerClubId]).finances.balance, relegated,
+      });
+      const confidence = Math.max(0, Math.min(100, meta.board.confidence + outcome.confidenceDelta + visionReview.confidenceDelta));
+      news.push(mkNews(meta.currentDay, 'BOARD', 'Board vision review', visionReview.summary));
       // Supporters judge the campaign too, a touch more sharply than the board,
       // and carry that mood into the new season (§ #42).
       const fanConfidence = Math.max(0, Math.min(100, fanConfidenceOf(meta.board) + Math.round(outcome.confidenceDelta * 1.1)));
@@ -656,8 +669,8 @@ export async function resolveAndRollover(
         const managerComp = Object.values(competitions).find((c) =>
           c.clubIds.includes(meta.managerClubId));
         board = managerComp
-          ? { ...setObjective(finalClubs[meta.managerClubId] ?? clubs[meta.managerClubId], managerComp), confidence, fanConfidence }
-          : { ...meta.board, confidence, fanConfidence };
+          ? { ...setObjective(finalClubs[meta.managerClubId] ?? clubs[meta.managerClubId], managerComp), confidence, fanConfidence, vision: visionReview.vision }
+          : { ...meta.board, confidence, fanConfidence, vision: visionReview.vision };
       }
     }
   }

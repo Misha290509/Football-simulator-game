@@ -4,7 +4,7 @@
 // confidence meter, and confidence hitting bottom gets the manager sacked.
 // ---------------------------------------------------------------------------
 
-import type { BoardState } from '../types/staff';
+import type { BoardState, ClubVision, VisionMandate } from '../types/staff';
 import type { Club, Tactics } from '../types/club';
 import type { Competition } from '../types/competition';
 
@@ -122,4 +122,83 @@ export function tickBoardConfidence(
 /** Board mood band, worse = higher (0 calm · 1 concerned · 2 reviewing you). */
 export function confidenceBand(confidence: number): 0 | 1 | 2 {
   return confidence < 15 ? 2 : confidence < 30 ? 1 : 0;
+}
+
+// --- Club vision / philosophy mandates (§ #43) ------------------------------
+
+export const MANDATE_LABEL: Record<VisionMandate, string> = {
+  SILVERWARE: 'Compete for silverware',
+  ATTACKING: 'Play attacking football',
+  YOUTH: 'Develop academy talent',
+  PRUDENCE: 'Run a financially sound club',
+  STABILITY: 'Establish the club in this division',
+};
+
+/** The board's long-term philosophy, chosen from the club's standing. Bigger
+ *  clubs are told to win and entertain; smaller ones to build and balance the
+ *  books. Deterministic, so it is stable for a given club. */
+export function pickVision(club: Club): ClubVision {
+  const rep = club.reputation;
+  const mandates: VisionMandate[] =
+    rep >= 80 ? ['SILVERWARE', 'ATTACKING'] :
+    rep >= 68 ? ['ATTACKING', 'YOUTH'] :
+    rep >= 55 ? ['YOUTH', 'STABILITY'] :
+    ['YOUTH', 'PRUDENCE'];
+  const scores: Record<string, number> = {};
+  for (const m of mandates) scores[m] = 50; // neutral until judged
+  return { mandates, scores, seasonsJudged: 0 };
+}
+
+export interface VisionContext {
+  goalsFor: number;
+  played: number;
+  position: number;
+  leagueSize: number;
+  wonTrophy: boolean;
+  youthCount: number; // academy graduates integrated in the squad
+  balance: number;
+  relegated: boolean;
+}
+
+/** This season's raw 0–100 rating for a single mandate. */
+function mandateSeasonScore(m: VisionMandate, ctx: VisionContext): number {
+  switch (m) {
+    case 'SILVERWARE': return ctx.wonTrophy ? 100 : ctx.position <= 3 ? 55 : 25;
+    case 'ATTACKING': return clamp01to100((ctx.played ? ctx.goalsFor / ctx.played : 0) * 45 - 0.4 * 45 + 27);
+    case 'YOUTH': return clamp01to100((ctx.youthCount / 3) * 100);
+    case 'PRUDENCE': return ctx.balance >= 0 ? clamp01to100(65 + ctx.balance / 5_000_000) : clamp01to100(40 + ctx.balance / 3_000_000);
+    case 'STABILITY': return ctx.relegated ? 10 : ctx.position <= Math.ceil(ctx.leagueSize * 0.5) ? 82 : 55;
+  }
+}
+
+export interface VisionReview {
+  vision: ClubVision;
+  confidenceDelta: number;
+  summary: string;
+}
+
+/**
+ * Fold a completed season into the club vision: update each mandate's running
+ * rating (EMA) and derive a small board-confidence nudge for how faithfully the
+ * philosophy is being pursued over time.
+ */
+export function reviewVision(vision: ClubVision, ctx: VisionContext): VisionReview {
+  const scores: Record<string, number> = { ...vision.scores };
+  const parts: string[] = [];
+  let sum = 0;
+  for (const m of vision.mandates) {
+    const season = mandateSeasonScore(m, ctx);
+    const prev = scores[m] ?? 50;
+    const next = vision.seasonsJudged === 0 ? season : Math.round(prev * 0.6 + season * 0.4);
+    scores[m] = next;
+    sum += next;
+    parts.push(`${MANDATE_LABEL[m]} — ${next >= 65 ? 'on track' : next >= 45 ? 'patchy' : 'off track'}`);
+  }
+  const avg = vision.mandates.length ? sum / vision.mandates.length : 50;
+  const confidenceDelta = Math.round((avg - 55) * 0.25); // ±~11 at the extremes
+  return {
+    vision: { mandates: vision.mandates, scores, seasonsJudged: vision.seasonsJudged + 1 },
+    confidenceDelta,
+    summary: `Board vision review: ${parts.join('; ')}.`,
+  };
 }
