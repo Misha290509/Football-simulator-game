@@ -672,8 +672,10 @@ export async function resolveAndRollover(
       const confidence = Math.max(0, Math.min(100, meta.board.confidence + outcome.confidenceDelta + visionReview.confidenceDelta));
       news.push(mkNews(meta.currentDay, 'BOARD', 'Board vision review', visionReview.summary));
       // Supporters judge the campaign too, a touch more sharply than the board,
-      // and carry that mood into the new season (§ #42).
-      const fanConfidence = Math.max(0, Math.min(100, fanConfidenceOf(meta.board) + Math.round(outcome.confidenceDelta * 1.1)));
+      // and carry that mood into the new season (§ #42). Ticket pricing (§ #40)
+      // colours the mood — cheap tickets please the crowd, premium prices grate.
+      const ticketFanDelta = Math.round((50 - ((finalClubs[meta.managerClubId] ?? clubs[meta.managerClubId]).ticketLevel ?? 50)) / 50 * 4);
+      const fanConfidence = Math.max(0, Math.min(100, fanConfidenceOf(meta.board) + Math.round(outcome.confidenceDelta * 1.1) + ticketFanDelta));
       news.push(mkNews(meta.currentDay, 'BOARD', `Season review: objective ${outcome.verdict}`,
         `${outcome.summary} Finished ${where.pos} (target ${meta.board.targetPosition}). Board confidence: ${confidence}%, supporters ${fanConfidence}%.`));
       if (confidence < SACK_THRESHOLD) {

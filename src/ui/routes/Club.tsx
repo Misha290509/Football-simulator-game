@@ -26,6 +26,7 @@ export function Club() {
   const upgradeFacility = useGameStore((s) => s.upgradeFacility);
   const setTrainingFocus = useGameStore((s) => s.setTrainingFocus);
   const expandStadium = useGameStore((s) => s.expandStadium);
+  const setTicketLevel = useGameStore((s) => s.setTicketLevel);
   const [toast, setToast] = useState<string | null>(null);
   const [seats, setSeats] = useState(5000);
   const [negotiating, setNegotiating] = useState<{ staff: Staff; mode: 'hire' | 'renew' } | null>(null);
@@ -81,6 +82,17 @@ export function Club() {
             </div>
           </div>
           <div>
+            {(() => {
+              const level = club.ticketLevel ?? 50;
+              const label = level < 33 ? 'Cheap — fans love it, less income' : level < 67 ? 'Standard' : 'Premium — more income, fans grumble';
+              return (
+                <div className="mb-3">
+                  <div className="text-sm">Ticket pricing <span className="text-slate-500 text-xs">· {label}</span></div>
+                  <input type="range" min={0} max={100} step={5} value={level} onChange={(e) => void setTicketLevel(Number(e.target.value))} className="w-full mt-1" />
+                  <div className="flex justify-between text-[9px] text-slate-600"><span>Cheap</span><span>Standard</span><span>Premium</span></div>
+                </div>
+              );
+            })()}
             <div className="text-sm">Financial Fair Play</div>
             {meta.ffp?.embargo ? (
               <div className="text-xs text-rose-300 mt-1">⛔ Transfer embargo in force — you cannot sign players this season.</div>

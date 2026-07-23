@@ -340,6 +340,8 @@ interface GameState {
   setTacticSlider: (kind: 'width' | 'tempo' | 'pressing', value: number) => Promise<void>;
   setSetPieceTaker: (role: 'penalty' | 'freeKick' | 'corner', playerId: string) => Promise<void>;
   setSetPieceRoutine: (kind: 'corner' | 'freeKick' | 'marking', value: string | null) => Promise<void>;
+  /** Set match-day ticket pricing (§ #40), 0–100 (50 = standard). */
+  setTicketLevel: (level: number) => Promise<void>;
   expandStadium: (seats: number) => Promise<BidResult>;
   setAutoMode: (on: boolean) => Promise<void>;
   setLockFormation: (on: boolean) => Promise<void>;
@@ -2265,6 +2267,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const club = clubs[meta.managerClubId];
     const routine = { ...(club.setPieceRoutine ?? {}), [kind]: value || undefined };
     const updated = { ...club, setPieceRoutine: routine };
+    set({ clubs: { ...clubs, [club.id]: updated } });
+    await putClubs(meta.id, [updated]);
+  },
+
+  setTicketLevel: async (level) => {
+    const { meta, clubs } = get();
+    if (!meta) return;
+    const club = clubs[meta.managerClubId];
+    const updated = { ...club, ticketLevel: Math.max(0, Math.min(100, Math.round(level))) };
     set({ clubs: { ...clubs, [club.id]: updated } });
     await putClubs(meta.id, [updated]);
   },

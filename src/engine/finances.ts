@@ -64,9 +64,14 @@ export function computeSeasonFinances(
 ): SeasonFinances {
   const rep = club.reputation;
 
-  // Gate: attendance scales with reputation; price with tier & reputation.
-  const fillRate = Math.min(1, 0.55 + rep / 220);
-  const ticket = (tier === 1 ? 38 : 22) + rep * 0.4;
+  // Gate: attendance scales with reputation; price with tier & reputation. The
+  // manager's ticket-pricing choice (§ #40) raises the price but, by elasticity,
+  // softens attendance — so revenue peaks a little above standard, not at the top.
+  const level = club.ticketLevel ?? 50;
+  const priceMult = 0.6 + (level / 100) * 0.8;        // 0 → 0.6 · 50 → 1.0 · 100 → 1.4
+  const fillMult = Math.min(1.12, 1 + (50 - level) / 100 * 0.3); // cheaper fills seats
+  const fillRate = Math.min(1, (0.55 + rep / 220) * fillMult);
+  const ticket = ((tier === 1 ? 38 : 22) + rep * 0.4) * priceMult;
   const gate = Math.round(club.stadium.capacity * fillRate * ticket * HOME_LEAGUE_GAMES);
 
   // Broadcast: large flat tier pool; merit by finishing position.

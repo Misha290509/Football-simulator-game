@@ -114,6 +114,10 @@ export interface Club {
   /** Wealthy owner from a takeover (§ Living world, #38). Drives budget top-ups
    *  and rising ambition over the seasons. Absent ⇒ ordinary ownership. */
   owner?: { wealth: 'RICH' | 'SUPER_RICH'; since: number };
+  /** Match-day ticket pricing (§ #40), 0–100, 50 = standard. Higher prices lift
+   *  gate income but soften attendance and annoy the supporters; cheaper tickets
+   *  do the reverse. Absent ⇒ standard pricing. */
+  ticketLevel?: number;
   /** Designated set-piece takers (player ids). */
   penaltyTakerId?: string | null;
   freeKickTakerId?: string | null;
