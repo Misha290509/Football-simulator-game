@@ -413,6 +413,8 @@ export async function resolveAndRollover(
 
   const updatedPlayers: Record<string, Player> = {};
   const retiredIds: string[] = [];
+  // Decorated retirees who might re-enter as managers (§ Legends, #52).
+  const legendCandidates: { name: string; peakOvr: number }[] = [];
   // Parallel-roster academy players (owned via academyClubId, no first-team
   // contract) bypass senior development and the AI transfer window; carried
   // through untouched so they survive rollover. Aged/developed in Phase 2.
@@ -456,6 +458,7 @@ export async function resolveAndRollover(
       const peakOvr = Math.max(base.overall, ...base.developmentLog.map((d) => d.ovr));
       const awards = awardCount.get(base.id) ?? 0;
       if (peakOvr >= 82 || awards >= 1) {
+        legendCandidates.push({ name: `${base.name.first} ${base.name.last}`, peakOvr });
         hallOfFameAdds.push({
           playerId: base.id,
           name: `${base.name.first} ${base.name.last}`,
@@ -900,7 +903,7 @@ export async function resolveAndRollover(
 
   // --- Rival managers: reputations move with results; strugglers get sacked.
   const managerChurn = rolloverAiManagers(
-    meta.aiManagers, finalClubs, finalStandings, meta.managerClubId, seasonYear, meta.seed,
+    meta.aiManagers, finalClubs, finalStandings, meta.managerClubId, seasonYear, meta.seed, legendCandidates,
   );
   news.push(...managerChurn.news);
 

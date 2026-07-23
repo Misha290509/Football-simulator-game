@@ -371,6 +371,9 @@ interface GameState {
   advanceMatchday: () => Promise<void>;
   simToNextManagerMatch: () => Promise<void>;
   simToSeasonEnd: () => Promise<void>;
+  /** Auto-play (§ #56): fast-forward whole seasons, rolling each over, watching
+   *  the world evolve. Stops early on a Stop request, a sack, or a block. */
+  holiday: (seasons: number) => Promise<void>;
   startNextSeason: () => Promise<void>;
 
   // Living Match Day (§ interactive live match)
@@ -2579,6 +2582,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (stop > meta.currentDay) await playDays(get, set, meta.currentDay, stop);
       else if (!(await progressKnockouts(get, set))) return; // nothing left to advance
     }
+  },
+
+  holiday: async (seasons) => {
+    set({ stopRequested: false });
+    for (let i = 0; i < seasons; i++) {
+      if (get().meta?.sacked || get().stopRequested) break;
+      // Finish the current season (respects a Stop mid-way), then roll over.
+      await get().simToSeasonEnd();
+      if (get().stopRequested || get().meta?.sacked) break;
+      if (!get().seasonComplete()) break; // stopped or otherwise blocked
+      await get().startNextSeason();
+      if (get().meta?.sacked) break; // dismissed at the review — stop here
+    }
+    set({ stopRequested: false });
   },
 
   startNextSeason: async () => {

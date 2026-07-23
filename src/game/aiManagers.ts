@@ -20,6 +20,14 @@ export interface AiManager {
   reputation: number; // 0–100
   appointedYear: number;
   titles: number;
+  /** True when a retired star stepped into the dugout (§ Legends, #52). */
+  formerPlayer?: boolean;
+}
+
+/** A retired player available to take a managerial job (§ Legends, #52). */
+export interface ManagerCandidate {
+  name: string;
+  peakOvr: number;
 }
 
 /** The (stored or deterministically derived) manager of an AI club. */
@@ -56,11 +64,14 @@ export function rolloverAiManagers(
   managerClubId: string,
   year: number,
   seed: number,
+  /** Recently-retired stars who may step into the dugout (§ Legends, #52). */
+  legendPool: ManagerCandidate[] = [],
 ): ManagerChurnResult {
   const rng = new Rng((seed ^ (year * 0x9e3779b1) ^ 0x5aca55) >>> 0);
   const managers: Record<string, AiManager> = { ...(stored ?? {}) };
   const news: NewsItem[] = [];
   const get = (clubId: string) => managers[clubId] ?? aiManagerOf(clubId, clubs[clubId], seed, managers);
+  const legends = [...legendPool];
 
   for (const rows of Object.values(finalStandings)) {
     if (rows.length < 6) continue;
@@ -76,18 +87,21 @@ export function rolloverAiManagers(
       if (!rng.chance(0.45)) continue;
       const old = get(row.clubId);
       const club = clubs[row.clubId];
-      const next: AiManager = {
-        name: `${rng.pick(FIRST_NAMES)} ${rng.pick(LAST_NAMES)}`,
-        reputation: clamp((club?.reputation ?? 50) + rng.int(-10, 4), 18, 88),
-        appointedYear: year,
-        titles: 0,
-      };
+      // A recent legend sometimes steps in — a marquee appointment carrying the
+      // stature (and expectation) of his playing days.
+      const legendIdx = legends.length > 0 && rng.chance(0.4) ? rng.int(0, legends.length - 1) : -1;
+      const legend = legendIdx >= 0 ? legends.splice(legendIdx, 1)[0] : null;
+      const next: AiManager = legend
+        ? { name: legend.name, reputation: clamp(Math.round(legend.peakOvr * 0.75) + rng.int(-4, 8), 30, 90), appointedYear: year, titles: 0, formerPlayer: true }
+        : { name: `${rng.pick(FIRST_NAMES)} ${rng.pick(LAST_NAMES)}`, reputation: clamp((club?.reputation ?? 50) + rng.int(-10, 4), 18, 88), appointedYear: year, titles: 0 };
       managers[row.clubId] = next;
       if (club) {
         news.push({
           id: `news_mgrsack_${row.clubId}_${year}`, day: 0, category: 'BOARD',
-          title: `${club.shortName} sack ${old.name}`,
-          body: `A ${row.points}-point season costs ${old.name} his job. ${next.name} takes over at ${club.name}.`,
+          title: legend ? `${club.shortName} appoint ${next.name}` : `${club.shortName} sack ${old.name}`,
+          body: legend
+            ? `${club.name} turn to the dugout newcomer ${next.name} — a decorated former player stepping into management for the first time.`
+            : `A ${row.points}-point season costs ${old.name} his job. ${next.name} takes over at ${club.name}.`,
           read: false,
         });
       }

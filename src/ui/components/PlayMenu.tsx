@@ -12,6 +12,7 @@ export function PlayMenu() {
   const advance = useGameStore((s) => s.advanceMatchday);
   const toNext = useGameStore((s) => s.simToNextManagerMatch);
   const toEnd = useGameStore((s) => s.simToSeasonEnd);
+  const holiday = useGameStore((s) => s.holiday);
   const startNext = useGameStore((s) => s.startNextSeason);
   const beginLiveMatch = useGameStore((s) => s.beginLiveMatch);
   const complete = useGameStore((s) => s.seasonComplete());
@@ -69,9 +70,16 @@ export function PlayMenu() {
         {dayLabel}
       </span>
       {complete ? (
-        <button className="btn-primary" disabled={simming} onClick={() => startNext()}>
-          {simming ? 'Processing…' : 'Start Next Season ▸'}
-        </button>
+        <>
+          <button className="btn-primary" disabled={simming} onClick={() => startNext()}>
+            {simming ? 'Processing…' : 'Start Next Season ▸'}
+          </button>
+          {!simming && (
+            <button className="btn-ghost" title="Auto-play the next few seasons and watch the world evolve" onClick={() => holiday(3)}>
+              Holiday 3 seasons ⏩⏩
+            </button>
+          )}
+        </>
       ) : simming ? (
         <button className="btn-ghost text-rose-300" onClick={() => stopSim()}>■ Stop</button>
       ) : (
@@ -101,6 +109,9 @@ export function PlayMenu() {
           </button>
           <button className="btn-primary" onClick={() => toEnd()}>
             To Season End ⏩
+          </button>
+          <button className="btn-ghost" title="Auto-play several seasons and watch the world evolve" onClick={() => holiday(3)}>
+            Holiday ⏩⏩
           </button>
         </>
       )}

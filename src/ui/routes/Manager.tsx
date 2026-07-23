@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useGameStore } from '../../state/store';
 import { BOARD_REQUEST_LABEL, type BoardRequestKind } from '../../game/boardroom';
 import { MANDATE_LABEL } from '../../game/board';
-import { styleTags } from '../../game/aiManagers';
+import { styleTags, aiManagerOf } from '../../game/aiManagers';
 
 export function Manager() {
   const meta = useGameStore((s) => s.meta)!;
@@ -28,6 +28,14 @@ export function Manager() {
   const repTier = rep >= 80 ? 'World-class' : rep >= 65 ? 'Highly rated' : rep >= 50 ? 'Established' : rep >= 35 ? 'Up-and-coming' : 'Unproven';
   const tags = styleTags(meta.managerStyle);
   const styleWins = meta.managerStyle?.wins ?? 0;
+
+  // Rival managers in your division — named, with reputations and honours (§ #51).
+  const mgrComp = Object.values(meta.competitions).find((c) => c.clubIds.includes(meta.managerClubId));
+  const rivalManagers = (mgrComp?.clubIds ?? [])
+    .filter((id) => id !== meta.managerClubId)
+    .map((id) => ({ clubId: id, mgr: aiManagerOf(id, clubs[id], meta.seed, meta.aiManagers) }))
+    .sort((a, b) => b.mgr.reputation - a.mgr.reputation || b.mgr.titles - a.mgr.titles)
+    .slice(0, 10);
 
   return (
     <div className="space-y-6">
@@ -151,6 +159,27 @@ export function Manager() {
                 {BOARD_REQUEST_LABEL[k]}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {rivalManagers.length > 0 && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-3">Rival managers in your division</h2>
+          <div className="overflow-x-auto">
+            <table className="data-table w-full">
+              <thead><tr><th>Manager</th><th>Club</th><th className="text-right">Reputation</th><th className="text-right">Titles</th></tr></thead>
+              <tbody>
+                {rivalManagers.map(({ clubId, mgr }) => (
+                  <tr key={clubId}>
+                    <td className="font-medium">{mgr.name}{mgr.formerPlayer && <span className="ml-1 text-[10px] text-amber-400/80" title="A former player turned manager">★ ex-pro</span>}</td>
+                    <td className="text-slate-400">{clubs[clubId]?.shortName ?? clubId}</td>
+                    <td className="text-right font-mono">{mgr.reputation}</td>
+                    <td className="text-right font-mono">{mgr.titles > 0 ? mgr.titles : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
