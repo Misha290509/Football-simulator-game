@@ -871,6 +871,8 @@ export async function resolveAndRollover(
   const newAchievements = checkAchievements({
     managerClubId: meta.managerClubId, year: seasonYear, seasonAwards: allAwards,
     managerLeagueRow, managerStints, history: meta.history ?? [],
+    finishPosition: mgrRowWhere?.pos,
+    leagueSize: mgrRowWhere ? finalStandings[mgrRowWhere.compId]?.length : undefined,
     wonWorldCupAsManager, unlocked: meta.achievements ?? {},
   });
 

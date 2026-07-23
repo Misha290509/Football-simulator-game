@@ -1971,10 +1971,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       const used = prev && prev.windowKey === wk ? prev.used : 0;
       if (used >= 3) return 'No refreshes left this window (3 per window).';
     }
-    const rng = new Rng((meta.seed ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0);
+    const usedNow = firstSeed ? 0 : (meta.staffRefreshes && meta.staffRefreshes.windowKey === wk ? meta.staffRefreshes.used : 0) + 1;
+    // Deterministic per (save seed · window · refresh count) — a fresh pool each
+    // click, but fully reproducible from the seed (no escape to Math.random).
+    const rng = new Rng((meta.seed ^ hashSeed(`staff_${wk ?? 'init'}_${usedNow}`)) >>> 0);
     const staffRefreshes = firstSeed
       ? meta.staffRefreshes
-      : { windowKey: wk!, used: (meta.staffRefreshes && meta.staffRefreshes.windowKey === wk ? meta.staffRefreshes.used : 0) + 1 };
+      : { windowKey: wk!, used: usedNow };
     const newMeta: SaveMeta = { ...meta, staffMarket: generateStaffPool(12, rng), staffRefreshes };
     set({ meta: newMeta });
     await persistMeta(newMeta);

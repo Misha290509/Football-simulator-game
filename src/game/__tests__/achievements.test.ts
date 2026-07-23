@@ -37,4 +37,37 @@ describe('Achievements', () => {
     const got = checkAchievements({ ...base, seasonAwards: [], managerStints: ['a', 'b', 'c', 'd', 'e'].map((c) => stint(c)) });
     expect(got.JOURNEYMAN).toBe(2025);
   });
+
+  it('awards points/goals/defensive milestones from the league row', () => {
+    const got = checkAchievements({ ...base, seasonAwards: [], managerLeagueRow: row(1) });
+    expect(got.CENTURION).toBeUndefined(); // 98 points
+    const hundred = checkAchievements({ ...base, seasonAwards: [], managerLeagueRow: { ...row(1), points: 100 } });
+    expect(hundred.CENTURION).toBe(2025);
+    expect(got.GOAL_MACHINE).toBeUndefined(); // 90 goals
+    expect(got.IRON_WALL).toBeUndefined(); // 20 conceded (needs < 20)
+    const wall = checkAchievements({ ...base, seasonAwards: [], managerLeagueRow: { ...row(1), goalsAgainst: 18, goalsFor: 101 } });
+    expect(wall.IRON_WALL).toBe(2025);
+    expect(wall.GOAL_MACHINE).toBe(2025);
+  });
+
+  it('awards the Great Escape for a bottom-five survival', () => {
+    const safe = checkAchievements({ ...base, seasonAwards: [], finishPosition: 17, leagueSize: 20 });
+    expect(safe.GREAT_ESCAPE).toBe(2025);
+    const relegated = checkAchievements({ ...base, seasonAwards: [], finishPosition: 18, leagueSize: 20 });
+    expect(relegated.GREAT_ESCAPE).toBeUndefined();
+    const midtable = checkAchievements({ ...base, seasonAwards: [], finishPosition: 10, leagueSize: 20 });
+    expect(midtable.GREAT_ESCAPE).toBeUndefined();
+  });
+
+  it('awards continental and cup doubles', () => {
+    const awards: Award[] = [
+      { type: 'LEAGUE_CHAMPION', label: 'PL', seasonId: 's', clubId: 'me' },
+      { type: 'CONTINENTAL', label: 'Europa League', seasonId: 's', clubId: 'me' },
+      { type: 'DOMESTIC_CUP', label: 'GB Cup', seasonId: 's', clubId: 'me' },
+      { type: 'DOMESTIC_CUP', label: 'GB League Cup', seasonId: 's', clubId: 'me' },
+    ];
+    const got = checkAchievements({ ...base, seasonAwards: awards, managerLeagueRow: row(3) });
+    expect(got.CONTINENTAL_TREBLE).toBe(2025);
+    expect(got.CUP_TREBLE).toBe(2025);
+  });
 });
