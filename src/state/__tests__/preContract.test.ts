@@ -23,7 +23,10 @@ async function freshGame() {
   await useGameStore.getState().load(snap.meta.id);
 }
 
-const terms = (): ContractOffer => ({ wage: 20_000, years: 3, signingBonus: 0, releaseClause: null, squadRole: 'ROTATION' });
+const terms = (): ContractOffer => ({ wage: 20_000, years: 3, signingBonus: 0, releaseClause: null, squadRole: 'ROTATION', loyaltyBonus: 0, appearanceBonus: 0, goalBonus: 0 });
+
+const asPlayer = (contract: { clubId: string | null; expiresYear: number }, extra: Record<string, unknown> = {}) =>
+  ({ contract, loan: null, ...extra }) as unknown as import('../../types/player').Player;
 
 describe('Bosman pre-contracts (#34)', () => {
   beforeEach(() => {
@@ -32,17 +35,16 @@ describe('Bosman pre-contracts (#34)', () => {
 
   it('eligibility: only an expiring player at another club, in Jan–May', () => {
     const seasonYear = 2024;
-    const base = { contract: { clubId: 'OTHER', expiresYear: 2024 }, loan: null } as never;
     // Expiring this summer, in March → eligible.
-    expect(canAgreePreContract({ ...base } as never, 'ME', seasonYear, 2).ok).toBe(true);
+    expect(canAgreePreContract(asPlayer({ clubId: 'OTHER', expiresYear: 2024 }), 'ME', seasonYear, 2).ok).toBe(true);
     // Contract runs beyond this season → not eligible.
-    expect(canAgreePreContract({ contract: { clubId: 'OTHER', expiresYear: 2026 } } as never, 'ME', seasonYear, 2).ok).toBe(false);
+    expect(canAgreePreContract(asPlayer({ clubId: 'OTHER', expiresYear: 2026 }), 'ME', seasonYear, 2).ok).toBe(false);
     // Autumn (September) → outside the window.
-    expect(canAgreePreContract({ ...base } as never, 'ME', seasonYear, 8).ok).toBe(false);
+    expect(canAgreePreContract(asPlayer({ clubId: 'OTHER', expiresYear: 2024 }), 'ME', seasonYear, 8).ok).toBe(false);
     // Already at the manager's club → renewal, not a Bosman.
-    expect(canAgreePreContract({ contract: { clubId: 'ME', expiresYear: 2024 } } as never, 'ME', seasonYear, 2).ok).toBe(false);
+    expect(canAgreePreContract(asPlayer({ clubId: 'ME', expiresYear: 2024 }), 'ME', seasonYear, 2).ok).toBe(false);
     // Free agent → sign outright, not a pre-contract.
-    expect(canAgreePreContract({ contract: { clubId: null, expiresYear: 2024 } } as never, 'ME', seasonYear, 2).ok).toBe(false);
+    expect(canAgreePreContract(asPlayer({ clubId: null, expiresYear: 2024 }), 'ME', seasonYear, 2).ok).toBe(false);
   });
 
   it('agreeing a pre-contract stages a free arrival and flags the player', async () => {

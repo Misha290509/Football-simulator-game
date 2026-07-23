@@ -48,6 +48,8 @@ export function TransferMarket() {
   const [hideExpiring, setHideExpiring] = useState(false);
   const [counterFor, setCounterFor] = useState<string | null>(null);
   const [counterVal, setCounterVal] = useState(0);
+  const [bbFor, setBbFor] = useState<string | null>(null);
+  const [bbVal, setBbVal] = useState(0);
 
   const resetFilters = () => {
     setSearch(''); setPosFilter('ALL'); setLeagueFilter('ALL'); setMinAge(15); setMaxAge(40);
@@ -55,9 +57,15 @@ export function TransferMarket() {
   };
   const [target, setTarget] = useState<Player | null>(null);
   const [preTarget, setPreTarget] = useState<Player | null>(null);
+  const [buyBackTarget, setBuyBackTarget] = useState<Player | null>(null);
   const [scoutFor, setScoutFor] = useState<Player | null>(null);
   const [loanTarget, setLoanTarget] = useState<Player | null>(null);
   const pcCtx = useGameStore((s) => s.preContractContext());
+  // Players the manager sold with a still-live buy-back clause.
+  const buyBacks = useMemo(
+    () => Object.values(players).filter((p) => p.buyBack && p.buyBack.clubId === meta.managerClubId && p.contract.clubId !== meta.managerClubId && year <= p.buyBack.untilYear),
+    [players, meta.managerClubId, year],
+  );
   const [toast, setToast] = useState<string | null>(null);
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 4500); };
 
@@ -246,6 +254,25 @@ export function TransferMarket() {
         </div>
       )}
 
+      {buyBacks.length > 0 && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-2">🔁 Buy-back rights</h2>
+          <div className="space-y-1.5">
+            {buyBacks.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 text-sm">
+                <span>
+                  <span className="font-medium">{fullName(p)}</span>
+                  <span className="text-slate-500"> — now at {clubs[p.contract.clubId ?? '']?.shortName ?? 'another club'} · </span>
+                  <span className="text-sky-300">{formatMoney(p.buyBack!.price)}</span>
+                  <span className="text-slate-600"> (until {p.buyBack!.untilYear})</span>
+                </span>
+                <button className="btn-primary py-0.5 px-2 text-xs" onClick={() => setBuyBackTarget(p)}>Buy back</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {(meta.rumours?.length ?? 0) > 0 && (
         <div className="card p-4">
           <h2 className="text-sm font-semibold text-slate-400 mb-2">🗞️ Rumour mill</h2>
@@ -289,6 +316,9 @@ export function TransferMarket() {
                       {o.type === 'BUY' && (
                         <button className="btn-ghost text-xs py-1" onClick={() => { setCounterFor(counterFor === o.id ? null : o.id); setCounterVal(Math.round(o.fee * 1.15)); }}>Negotiate</button>
                       )}
+                      {o.type === 'BUY' && (
+                        <button className="btn-ghost text-xs py-1" title="Accept, keeping a right to re-sign him at a fixed price" onClick={() => { setBbFor(bbFor === o.id ? null : o.id); setBbVal(Math.round(o.fee * 1.6)); }}>Buy-back…</button>
+                      )}
                       <button className="btn-ghost text-xs py-1" onClick={() => rejectOffer(o.id)}>Reject</button>
                     </div>
                   </div>
@@ -298,6 +328,21 @@ export function TransferMarket() {
                       <input type="number" step={100000} className="bg-surface-800 border border-surface-600 rounded px-2 py-1 w-32 text-sm" value={counterVal} onChange={(e) => setCounterVal(Math.max(0, Number(e.target.value)))} />
                       <button className="btn-primary text-xs py-1" onClick={async () => { const r = await counterOffer(o.id, counterVal); flash(r); setCounterFor(null); }}>Send counter</button>
                       <span className="text-xs text-slate-500">they bid {formatMoney(o.fee)}</span>
+                    </div>
+                  )}
+                  {bbFor === o.id && (
+                    <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-surface-600">
+                      <span className="text-xs text-slate-400">Sell with a buy-back of</span>
+                      <input type="number" step={100000} className="bg-surface-800 border border-surface-600 rounded px-2 py-1 w-32 text-sm" value={bbVal} onChange={(e) => setBbVal(Math.max(0, Number(e.target.value)))} />
+                      <span className="text-xs text-slate-400">for</span>
+                      <select className="bg-surface-800 border border-surface-600 rounded px-2 py-1 text-sm" defaultValue={3} id={`bbyears_${o.id}`}>
+                        {[1, 2, 3, 4, 5].map((y) => <option key={y} value={y}>{y} yr{y > 1 ? 's' : ''}</option>)}
+                      </select>
+                      <button className="btn-primary text-xs py-1" onClick={async () => {
+                        const yrs = Number((document.getElementById(`bbyears_${o.id}`) as HTMLSelectElement)?.value ?? 3);
+                        await acceptOffer(o.id, { price: bbVal, years: yrs }); setBbFor(null);
+                        flash(`Sold with a ${formatMoney(bbVal)} buy-back.`);
+                      }}>Sell with clause</button>
                     </div>
                   )}
                 </div>
@@ -409,6 +454,12 @@ export function TransferMarket() {
           onBreakOff={() => setPreTarget(null)} preContract />
       )}
 
+      {buyBackTarget && (
+        <SigningModal player={buyBackTarget} buyer={managerClub} seller={buyBackTarget.contract.clubId ? clubs[buyBackTarget.contract.clubId] ?? null : null}
+          view={viewOf(buyBackTarget)} year={year} onClose={() => setBuyBackTarget(null)} flash={flash}
+          onBreakOff={() => setBuyBackTarget(null)} buyBack />
+      )}
+
       {loanTarget && (
         <LoanModal player={loanTarget} onClose={() => setLoanTarget(null)}
           onLoan={async (years, wageSplitParent, optionToBuy) => { const r = await loanIn(loanTarget.id, years, wageSplitParent, optionToBuy); flash(r.message); if (r.ok) setLoanTarget(null); }} />
@@ -444,16 +495,17 @@ function ScoutModal({ player, scouts, assignments, onClose, onAssign }: {
 }
 
 // --- Two-phase signing -----------------------------------------------------
-function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBreakOff, preContract }: {
+function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBreakOff, preContract, buyBack }: {
   player: Player; buyer: import('../../types/club').Club; seller: import('../../types/club').Club | null;
   view: MarketView; year: number; onClose: () => void; flash: (m: string) => void;
-  onBreakOff: () => void; preContract?: boolean;
+  onBreakOff: () => void; preContract?: boolean; buyBack?: boolean;
 }) {
   const completeSigning = useGameStore((s) => s.completeSigning);
   const agreePreContract = useGameStore((s) => s.agreePreContract);
+  const triggerBuyBack = useGameStore((s) => s.triggerBuyBack);
   const submitTransferOffer = useGameStore((s) => s.submitTransferOffer);
-  // A pre-contract skips the fee haggle entirely — it is a free transfer.
-  const [phase, setPhase] = useState<'FEE' | 'TERMS'>(seller && !preContract ? 'FEE' : 'TERMS');
+  // A pre-contract (free) or a buy-back (fixed fee) skips the fee haggle entirely.
+  const [phase, setPhase] = useState<'FEE' | 'TERMS'>(seller && !preContract && !buyBack ? 'FEE' : 'TERMS');
   const [agreedFee, setAgreedFee] = useState(0);
   const [dealGrade, setDealGrade] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -499,9 +551,11 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
     const r = evaluateContractOffer(player, buyer, activeTerms, year, leaveCtx);
     setMsg(r.message);
     if (r.outcome === 'ACCEPT') {
-      const done = preContract
-        ? await agreePreContract(player.id, activeTerms)
-        : await completeSigning(player.id, agreedFee, activeTerms, offer.instalmentYears);
+      const done = buyBack
+        ? await triggerBuyBack(player.id, activeTerms)
+        : preContract
+          ? await agreePreContract(player.id, activeTerms)
+          : await completeSigning(player.id, agreedFee, activeTerms, offer.instalmentYears);
       flash(done.message);
       if (done.ok) onClose();
     } else if (r.outcome === 'COUNTER' && r.counter) setTerms(r.counter);
@@ -509,12 +563,16 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
 
   const roles: SquadRole[] = ['KEY', 'FIRST', 'ROTATION', 'BACKUP'];
   return (
-    <Modal onClose={onClose} title={`${preContract ? 'Pre-contract —' : phase === 'FEE' ? 'Bid for' : 'Personal terms —'} ${fullName(player)}`} wide>
+    <Modal onClose={onClose} title={`${buyBack ? 'Buy-back —' : preContract ? 'Pre-contract —' : phase === 'FEE' ? 'Bid for' : 'Personal terms —'} ${fullName(player)}`} wide>
       <p className="text-sm text-slate-400 mb-3">
         {player.position} · {seller ? seller.name : 'Free agent'} · {view.exact ? `OVR ${view.ovr}` : `estimated OVR ${view.ovr} (${view.stars}★)`}
       </p>
 
-      {preContract ? (
+      {buyBack ? (
+        <div className="rounded bg-sky-500/10 border border-sky-500/30 px-3 py-2 text-xs text-sky-200 mb-3">
+          🔁 Buy-back clause — re-sign {player.name.last} for the agreed {formatMoney(player.buyBack?.price ?? 0)} fee. Just settle personal terms.
+        </div>
+      ) : preContract ? (
         <div className="rounded bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-xs text-emerald-200 mb-3">
           🆓 Free transfer — {player.name.last}'s contract expires this summer. Agree terms now and he joins you when the window opens, at no fee.
         </div>

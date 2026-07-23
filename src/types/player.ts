@@ -147,6 +147,9 @@ export interface Player {
    *  to join `toClubId` on a free next summer. He keeps playing for his current
    *  club until the window opens; his club won't renew him. */
   preContract?: { toClubId: string } | null;
+  /** A buy-back clause (§ Living market, #33): the club that sold him keeps the
+   *  right to re-sign him at a fixed price through `untilYear`. */
+  buyBack?: { clubId: string; price: number; untilYear: number } | null;
   /**
    * Academy ownership. Set on prospects in a club's youth academy. Unpromoted
    * academy players have `contract.clubId = null` and this set, keeping them out

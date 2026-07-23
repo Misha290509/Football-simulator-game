@@ -266,7 +266,9 @@ interface GameState {
   loanIn: (playerId: string, years: number, wageSplitParent?: number, optionToBuy?: number | null) => Promise<BidResult>;
   triggerLoanOption: (playerId: string) => Promise<BidResult>;
   enquireLoanBuy: (playerId: string, fee: number) => Promise<FeeTalkResult>;
-  acceptOffer: (offerId: string) => Promise<void>;
+  acceptOffer: (offerId: string, buyBack?: { price: number; years: number }) => Promise<void>;
+  /** Re-sign a player under a buy-back clause the manager holds (fixed fee). */
+  triggerBuyBack: (playerId: string, offer: ContractOffer) => Promise<BidResult>;
   rejectOffer: (offerId: string) => Promise<void>;
   /** Counter an incoming transfer bid with a higher fee; the AI accepts, improves or walks. */
   counterOffer: (offerId: string, counterFee: number) => Promise<string>;
@@ -1513,7 +1515,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { ok: false, outcome: 'COUNTER', message: resp.message, counterFee: resp.ask, tension: resp.tension };
   },
 
-  acceptOffer: async (offerId) => {
+  acceptOffer: async (offerId, buyBack) => {
     const { meta, clubs, players } = get();
     if (!meta) return;
     const offer = (meta.pendingOffers ?? []).find((o) => o.id === offerId);
@@ -1535,6 +1537,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (upd.seller) newClubs[managerClub.id] = upd.seller;
       newPlayers[player.id] = upd.player;
       body = `Sold ${player.name.first} ${player.name.last} to ${aiClub.shortName} for ${offer.fee.toLocaleString()}.`;
+      // Optional buy-back clause: the manager keeps the right to re-sign him at a
+      // fixed price for a few years (a small premium over the sale fee).
+      if (buyBack && buyBack.price > 0 && buyBack.years > 0) {
+        newPlayers[player.id] = { ...newPlayers[player.id], buyBack: { clubId: managerClub.id, price: Math.round(buyBack.price), untilYear: year + Math.min(5, Math.max(1, Math.round(buyBack.years))) } };
+        body += ` A buy-back clause of ${buyBack.price.toLocaleString()} is inserted until ${year + Math.min(5, Math.max(1, Math.round(buyBack.years)))}.`;
+      }
       // Sell-on of an academy product: near-pure profit + a reputation boost for
       // the academy (the flywheel), recorded in the graduate's legacy (Idea 14).
       if (player.academyGraduateOf === managerClub.id && meta.academies?.[managerClub.id]) {
@@ -1564,6 +1572,42 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newMeta: SaveMeta = { ...meta, pendingOffers: (meta.pendingOffers ?? []).filter((o) => o.id !== offerId) };
     set({ meta: newMeta });
     await persistMeta(newMeta);
+  },
+
+  triggerBuyBack: async (playerId, offer) => {
+    const { meta, clubs, players } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    if (meta.ffp?.embargo) return { ok: false, message: 'Under an FFP transfer embargo — you cannot sign players.' };
+    if (!get().transferWindow().open) return { ok: false, message: 'The transfer window is shut — buy-backs can only be triggered when it is open.' };
+    const player = players[playerId];
+    if (!player) return { ok: false, message: 'Player not found.' };
+    const bb = player.buyBack;
+    const buyer = clubs[meta.managerClubId];
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    if (!bb || bb.clubId !== buyer.id) return { ok: false, message: 'You hold no buy-back clause for this player.' };
+    if (year > bb.untilYear) return { ok: false, message: 'The buy-back clause has expired.' };
+    if (player.contract.clubId === buyer.id) return { ok: false, message: 'He already plays for you.' };
+    if (bb.price > buyer.finances.transferBudget) return { ok: false, message: `The buy-back fee (${bb.price.toLocaleString()}) exceeds your transfer budget.` };
+    const buyerSquad = get().getClubPlayers(buyer.id);
+    if (weeklyWageBill(buyerSquad) + offer.wage > buyer.finances.wageBudget) return { ok: false, message: 'Those wages would breach your wage budget.' };
+
+    const seller = player.contract.clubId ? clubs[player.contract.clubId] ?? null : null;
+    const upd = applyTransfer(buyer, seller, player, bb.price, offer.wage, year);
+    const signed = applyContractOffer({ ...upd.player, buyBack: null }, offer, year);
+    const newClubs = { ...clubs, [upd.buyer.id]: upd.buyer };
+    if (upd.seller) newClubs[upd.seller.id] = upd.seller;
+    const news = {
+      id: `news_buyback_${player.id}_${Date.now().toString(36)}`, day: meta.currentDay, category: 'TRANSFER' as const,
+      title: `Buy-back triggered: ${player.name.first} ${player.name.last}`,
+      body: `Re-signed ${player.name.last} from ${seller?.shortName ?? 'his club'} for the agreed ${bb.price.toLocaleString()} buy-back fee.`,
+      read: false,
+    };
+    const newMeta: SaveMeta = { ...meta, news: [...meta.news, news] };
+    set({ clubs: newClubs, players: { ...players, [playerId]: signed }, meta: newMeta });
+    await putClubs(meta.id, [upd.buyer, ...(upd.seller ? [upd.seller] : [])]);
+    await putPlayers(meta.id, [signed]);
+    await persistMeta(newMeta);
+    return { ok: true, message: `${player.name.last} is back!` };
   },
 
   counterOffer: async (offerId, counterFee) => {
