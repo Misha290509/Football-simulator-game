@@ -11,6 +11,7 @@ import type { Competition } from '../../types/competition';
 import type { DomesticCupState, CupKind } from '../../types/cup';
 import { Rng } from '../../engine/rng';
 import { resolveKnockoutTie } from '../knockout';
+import { cupName, superCupName, hasLeagueCup } from './cupNames';
 import { buildKnockoutRound } from '../continental/schedule';
 import { DAY_CLASS, slotsInClass, nextDayInClass } from '../calendar';
 
@@ -84,8 +85,11 @@ export function createDomesticCups(
     for (const kind of ['MAJOR', 'LEAGUE'] as const) {
       const field = cupField(comps, countryId, kind);
       if (field.length < 4) continue;
+      // A secondary league cup only exists in a few countries (§ #18); elsewhere
+      // just the primary cup runs.
+      if (kind === 'LEAGUE' && !hasLeagueCup(countryId)) continue;
       const id = `cup_${countryId}_${kind}`;
-      const name = `${countryId} ${kind === 'LEAGUE' ? 'League Cup' : 'Cup'}`;
+      const name = cupName(countryId, kind);
       // Seed by reputation so the big clubs are spread through the bracket.
       const seeds = [...field].sort((a, b) => (clubs[b]?.reputation ?? 0) - (clubs[a]?.reputation ?? 0));
       const rng = new Rng((seed ^ hashId(id)) >>> 0);
@@ -110,7 +114,7 @@ export function createSuperCup(
   if (!leagueChampion || !cupWinner || leagueChampion === cupWinner) return { states: {}, matches: [] };
   const id = `supercup_${countryId}`;
   const state: DomesticCupState = {
-    id, name: `${countryId} Super Cup`, countryId, kind: 'SUPER', seasonId, year,
+    id, name: superCupName(countryId), countryId, kind: 'SUPER', seasonId, year,
     clubIds: [leagueChampion, cupWinner], stage: 'KO', roundLabel: 'Final', koDays: [],
   };
   const rng = new Rng((seed ^ hashId(id)) >>> 0);

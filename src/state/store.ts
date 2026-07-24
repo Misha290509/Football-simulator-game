@@ -31,7 +31,7 @@ import {
   createLiveMatch, kickOff, tickLiveMatch, startSecondHalf, applyManagerChange, applyTeamTalk, liveOutcome, tickShootout, takeShootoutKick,
   type LiveMatchState, type Side as LiveSide,
 } from '../engine/liveMatch';
-import { evaluateInteraction, egoOf, type TalkTone, type InteractKind } from '../engine/morale';
+import { evaluateInteraction, evaluateTeamTalk, egoOf, type TalkTone, type InteractKind } from '../engine/morale';
 import { switchClub, fallbackJobOffers } from '../game/careers';
 import { setObjective, tickBoardConfidence, confidenceBand, tickFanConfidence, fanBand, fanConfidenceOf, attackingScore, applyFanPressure } from '../game/board';
 import { evaluateBoardRequest, generatePressQuestion, evaluatePressAnswer, type BoardRequestKind } from '../game/boardroom';
@@ -106,6 +106,7 @@ import {
   type BidResult,
 } from '../game/transfers';
 import { advanceRumours } from '../game/rumours';
+import { gbeCheck } from '../game/registration';
 import { buildDeadlineFeed } from '../game/deadlineDay';
 import { generateSponsorOffers, generateStadiumOffers } from '../game/sponsorship';
 import { accrueHonours } from '../game/dynasty';
@@ -267,6 +268,8 @@ interface GameState {
   respondToTransferRequest: (playerId: string, grant: boolean) => Promise<void>;
   /** Promise a player regular playing time (§ #49); judged at the season's end. */
   promisePlayingTime: (playerId: string) => Promise<{ ok: boolean; message: string }>;
+  /** Give a pre-match team talk (§ #48): nudges squad morale/form, once per fixture. */
+  giveTeamTalk: (tone: TalkTone) => Promise<{ ok: boolean; message: string }>;
   assignMarketScout: (scoutId: string, playerId: string) => Promise<BidResult>;
   completeSigning: (playerId: string, fee: number, offer: ContractOffer, instalmentYears?: number) => Promise<BidResult>;
   /** Agree a Bosman pre-contract with an expiring player (free, joins next summer). */
@@ -1221,6 +1224,27 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { ok: true, message: `${player.name.last} is delighted by your promise of regular football — deliver on it.` };
   },
 
+  giveTeamTalk: async (tone) => {
+    const { meta, clubs, players } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    const next = get().managerNextMatch();
+    if (!next) return { ok: false, message: 'No upcoming match to prepare for.' };
+    if (meta.lastTeamTalkDay === next.day) return { ok: false, message: 'You have already spoken to the squad before this match.' };
+    const squad = get().getClubPlayers(meta.managerClubId);
+    if (squad.length === 0) return { ok: false, message: 'No squad to address.' };
+    const prof = squad.reduce((s, p) => s + p.hidden.professionalism, 0) / squad.length;
+    const oppId = next.homeClubId === meta.managerClubId ? next.awayClubId : next.homeClubId;
+    const weAreFavourite = (clubs[meta.managerClubId]?.reputation ?? 50) >= (clubs[oppId]?.reputation ?? 50);
+    const res = evaluateTeamTalk(tone, { phase: 'PRE', scoreDiff: 0, weAreFavourite }, prof);
+    const newPlayers = { ...players };
+    for (const p of squad) newPlayers[p.id] = { ...p, morale: clamp(p.morale + res.moraleDelta), form: clamp(p.form + res.formDelta) };
+    const newMeta: SaveMeta = { ...meta, lastTeamTalkDay: next.day };
+    set({ players: newPlayers, meta: newMeta });
+    await putPlayers(meta.id, squad.map((p) => newPlayers[p.id]));
+    await persistMeta(newMeta);
+    return { ok: true, message: res.message };
+  },
+
   assignMarketScout: async (scoutId, playerId) => {
     const { meta, clubs, players } = get();
     if (!meta) return { ok: false, message: 'No active save.' };
@@ -1262,6 +1286,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = players[playerId];
     if (!player) return { ok: false, message: 'Player not found.' };
     const buyer = clubs[meta.managerClubId];
+    // Work permit / GBE (§ #21): an English club needs an endorsement for a
+    // non-domestic player.
+    const gbe = gbeCheck(player, buyer);
+    if (!gbe.allowed) return { ok: false, message: gbe.reason };
     // With installments only this year's slice counts against the budget now.
     const years = Math.max(1, Math.min(4, Math.round(instalmentYears)));
     const perYear = years > 1 ? Math.round(fee / years) : fee;
@@ -1366,6 +1394,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { seasonYear, month } = get().preContractContext();
     const elig = canAgreePreContract(player, meta.managerClubId, seasonYear, month);
     if (!elig.ok) return { ok: false, message: elig.reason ?? 'He is not available on a pre-contract.' };
+    const gbePre = gbeCheck(player, clubs[meta.managerClubId]);
+    if (!gbePre.allowed) return { ok: false, message: gbePre.reason };
 
     const buyer = clubs[meta.managerClubId];
     const buyerSquad = get().getClubPlayers(buyer.id);
@@ -1407,6 +1437,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = players[playerId];
     if (!player) return { ok: false, message: 'Player not found.' };
     const toClub = clubs[meta.managerClubId];
+    const gbeLoan = gbeCheck(player, toClub);
+    if (!gbeLoan.allowed) return { ok: false, message: gbeLoan.reason };
     const fromClub = player.contract.clubId ? clubs[player.contract.clubId] : null;
     if (!fromClub || fromClub.id === toClub.id) return { ok: false, message: 'Cannot loan this player.' };
     // Soured relations shut the door on loans too, until the freeze lifts.

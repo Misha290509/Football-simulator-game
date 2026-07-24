@@ -7,6 +7,7 @@ import { computeStandings } from '../../engine/standings';
 import { computeSeasonSummary } from '../../game/seasonReview';
 import { buildOppositionReport } from '../../game/oppositionReport';
 import { aiManagerOf } from '../../game/aiManagers';
+import { TONE_LABEL } from '../../engine/morale';
 import { matchDate, formatShort, formatFull, currentDate } from '../../game/gameCalendar';
 
 const NEWS_CATEGORY: Record<string, { color: string; icon: string }> = {
@@ -27,11 +28,13 @@ export function Dashboard() {
   const players = useGameStore((s) => s.getClubPlayers(club.id));
   const seasonMatches = useGameStore((s) => s.currentSeasonMatches());
   const nextMatch = useGameStore((s) => s.managerNextMatch());
+  const giveTeamTalk = useGameStore((s) => s.giveTeamTalk);
   const answerPress = useGameStore((s) => s.answerPress);
   const transferWindow = useGameStore((s) => s.transferWindow);
   const allPlayers = useGameStore((s) => s.players);
   const complete = useGameStore((s) => s.seasonComplete());
   const [pressToast, setPressToast] = useState<string | null>(null);
+  const [talkMsg, setTalkMsg] = useState<string | null>(null);
 
   const season = useGameStore((s) => s.currentSeason());
   const currentYear = season?.year ?? meta.startYear;
@@ -270,6 +273,21 @@ export function Dashboard() {
                     )}
                   </div>
                 )}
+                <div className="border-t border-surface-700 pt-2">
+                  {meta.lastTeamTalkDay === nextMatch.day ? (
+                    <p className="text-xs text-slate-500">✓ You've addressed the squad before this match.</p>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs text-slate-500 mr-1">Team talk:</span>
+                      {(['CALM', 'FIRED_UP', 'PLEASED', 'RELAXED'] as const).map((tone) => (
+                        <button key={tone} className="btn-ghost text-xs py-0.5 px-2" onClick={async () => setTalkMsg((await giveTeamTalk(tone)).message)}>
+                          {TONE_LABEL[tone]}
+                        </button>
+                      ))}
+                      {talkMsg && <span className="text-xs text-emerald-300 ml-1">{talkMsg}</span>}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })() : (

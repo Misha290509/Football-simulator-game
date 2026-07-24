@@ -389,6 +389,9 @@ export interface SaveGame {
   youthCompetitions?: Record<string, YouthCompetition>;
   /** Man-management: last day the manager interacted with a player (cooldown). */
   lastInteraction?: Record<string, number>;
+  /** The matchday of the manager's last pre-match team talk (§ #48), so a talk is
+   *  limited to once per fixture. */
+  lastTeamTalkDay?: number;
   /** Player ids the manager has shortlisted (QoL). */
   shortlist?: string[];
 
