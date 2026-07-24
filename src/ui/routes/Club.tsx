@@ -28,6 +28,7 @@ export function Club() {
   const expandStadium = useGameStore((s) => s.expandStadium);
   const setTicketLevel = useGameStore((s) => s.setTicketLevel);
   const acceptSponsor = useGameStore((s) => s.acceptSponsor);
+  const acceptStadiumNaming = useGameStore((s) => s.acceptStadiumNaming);
   const [toast, setToast] = useState<string | null>(null);
   const [seats, setSeats] = useState(5000);
   const [negotiating, setNegotiating] = useState<{ staff: Staff; mode: 'hire' | 'renew' } | null>(null);
@@ -66,6 +67,28 @@ export function Club() {
               <div className="text-xs text-slate-500">Under ambitious owners since {club.owner.since} — the coffers are topped up every summer.</div>
             </div>
           </div>
+        </div>
+      )}
+
+      {(club.stadiumSponsor || (meta.stadiumOffers?.length ?? 0) > 0) && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-3">🏟️ Stadium naming rights</h2>
+          {club.stadiumSponsor ? (
+            <div className="text-sm">
+              Ground known as <strong className="text-slate-200">{club.stadiumSponsor.name}</strong>
+              <span className="text-slate-500"> · {club.stadiumSponsor.annual.toLocaleString()}/season through {club.stadiumSponsor.untilYear}</span>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500">Sell the naming rights to <strong>{club.stadium.name}</strong> — big money, but you lose the traditional name.</p>
+              {(meta.stadiumOffers ?? []).map((o) => (
+                <div key={o.id} className="flex items-center justify-between bg-surface-700 rounded px-3 py-2 text-sm">
+                  <span><strong>{o.name}</strong> <span className="text-slate-500">— {o.annual.toLocaleString()}/season for {o.years} years</span></span>
+                  <button className="btn-primary text-xs py-1" onClick={async () => { await acceptStadiumNaming(o.id); flash(`Naming rights sold to ${o.name}.`); }}>Accept</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

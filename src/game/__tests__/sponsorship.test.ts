@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateSponsorOffers } from '../sponsorship';
+import { generateSponsorOffers, generateStadiumOffers } from '../sponsorship';
 import { computeSeasonFinances } from '../../engine/finances';
 import { Rng } from '../../engine/rng';
 import type { Club } from '../../types/club';
@@ -37,5 +37,16 @@ describe('shirt sponsorship (#37)', () => {
     const base = computeSeasonFinances(club(), 8, 20, 1, 500_000, 50_000).income;
     const withSponsor = computeSeasonFinances(club({ sponsor: { name: 'X', annual: 25_000_000, untilYear: 2030 } }), 8, 20, 1, 500_000, 50_000).income;
     expect(withSponsor - base).toBe(25_000_000);
+  });
+
+  it('stadium naming rights (#41): longer deals, venue-named, adding to income', () => {
+    const offers = generateStadiumOffers(club(), new Rng(3));
+    expect(offers.length).toBe(3);
+    // Longer terms than a shirt deal, and each names the venue.
+    expect(Math.max(...offers.map((o) => o.years))).toBeGreaterThanOrEqual(8);
+    for (const o of offers) expect(o.name).toMatch(/Arena|Stadium|Park|Ground|Field/);
+    const base = computeSeasonFinances(club(), 8, 20, 1, 500_000, 50_000).income;
+    const withNaming = computeSeasonFinances(club({ stadiumSponsor: { name: 'Y Arena', annual: 18_000_000, untilYear: 2033 } }), 8, 20, 1, 500_000, 50_000).income;
+    expect(withNaming - base).toBe(18_000_000);
   });
 });

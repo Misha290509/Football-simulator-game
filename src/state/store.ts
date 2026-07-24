@@ -107,7 +107,7 @@ import {
 } from '../game/transfers';
 import { advanceRumours } from '../game/rumours';
 import { buildDeadlineFeed } from '../game/deadlineDay';
-import { generateSponsorOffers } from '../game/sponsorship';
+import { generateSponsorOffers, generateStadiumOffers } from '../game/sponsorship';
 import { accrueHonours } from '../game/dynasty';
 import { agentDemands, evaluateContractOffer, applyContractOffer, leaveWillingness, type ContractOffer, type NegotiationResult } from '../game/contracts';
 import { transferFloor, overpricedAsk, respondToTransferOffer, type FeeOffer } from '../game/feeNegotiation';
@@ -151,6 +151,10 @@ function godScale(p: Player, delta: number): Player {
 // floor and climbs FAMILIARITY_GAIN per match played in it until fully drilled.
 const FAMILIARITY_FLOOR = 0.35;
 const FAMILIARITY_GAIN = 0.08; // ~8 matches from the floor to full fluency
+
+/** Agent fee on a signing (§ #35): a cut of the fee plus a wage-based component,
+ *  so even free transfers cost something to broker. */
+const agentFee = (fee: number, weeklyWage: number): number => Math.round(0.08 * fee + 12 * weeklyWage);
 
 /** Nudge supporter confidence on the board state (§ #42), clamped 0–100. */
 function bumpFan<T extends { fanConfidence?: number } | undefined>(board: T, delta: number): T {
@@ -346,6 +350,8 @@ interface GameState {
   setTicketLevel: (level: number) => Promise<void>;
   /** Accept a shirt-sponsorship offer (§ #37). */
   acceptSponsor: (offerId: string) => Promise<void>;
+  /** Accept a stadium naming-rights offer (§ #41). */
+  acceptStadiumNaming: (offerId: string) => Promise<void>;
   expandStadium: (seats: number) => Promise<BidResult>;
   setAutoMode: (on: boolean) => Promise<void>;
   setLockFormation: (on: boolean) => Promise<void>;
@@ -1255,8 +1261,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Window shut → deal is done now (fee paid, terms agreed) but the player
     // registers when the next window opens. He keeps playing for his club.
     if (!win.open) {
-      // Pre-agreed while shut: pay only this year's slice now; stage the rest.
-      const paidBuyer: Club = { ...buyer, finances: { ...buyer.finances, balance: buyer.finances.balance - perYear, transferBudget: buyer.finances.transferBudget - perYear } };
+      // Pre-agreed while shut: pay this year's slice + the agent fee now; stage the rest.
+      const preAgent = agentFee(fee, offer.wage);
+      const paidBuyer: Club = { ...buyer, finances: { ...buyer.finances, balance: buyer.finances.balance - perYear - preAgent, transferBudget: Math.max(0, buyer.finances.transferBudget - perYear - preAgent) } };
       const paidSeller = seller ? { ...seller, finances: { ...seller.finances, balance: seller.finances.balance + perYear, transferBudget: seller.finances.transferBudget + Math.round(perYear * 0.6) } } : null;
       const staged: InstalmentPayment[] = [];
       for (let i = 1; i < years; i++) {
@@ -1292,8 +1299,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Move the player and pay only this year's slice up front (perYear === fee
     // when not staged); the rest is scheduled to fall due in future summers.
     const upd = applyTransfer(buyer, seller, player, perYear, offer.wage, year);
+    const agent = agentFee(fee, offer.wage);
+    const buyerPaid = { ...upd.buyer, finances: { ...upd.buyer.finances, balance: upd.buyer.finances.balance - agent, transferBudget: Math.max(0, upd.buyer.finances.transferBudget - agent) } };
     const signed = applyContractOffer(upd.player, offer, year);
-    const newClubs = { ...clubs, [upd.buyer.id]: upd.buyer };
+    const newClubs = { ...clubs, [buyerPaid.id]: buyerPaid };
     if (upd.seller) newClubs[upd.seller.id] = upd.seller;
     const staged: InstalmentPayment[] = [];
     for (let i = 1; i < years; i++) {
@@ -1303,7 +1312,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const news = {
       id: `news_sign_${player.id}_${Date.now().toString(36)}`, day: meta.currentDay, category: 'TRANSFER' as const,
       title: `Signed ${player.name.first} ${player.name.last}`,
-      body: `${player.position} joins from ${seller?.shortName ?? 'free agency'} for ${feeText} on ${offer.wage.toLocaleString()}/wk.`,
+      body: `${player.position} joins from ${seller?.shortName ?? 'free agency'} for ${feeText} on ${offer.wage.toLocaleString()}/wk. Agent fee ${agent.toLocaleString()}.`,
       read: false,
     };
     // Clear any scout report/assignment now that he's ours.
@@ -1317,7 +1326,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       playerScoutAssignments: (meta.playerScoutAssignments ?? []).filter((a) => a.playerId !== playerId),
     };
     set({ clubs: newClubs, players: { ...players, [playerId]: signed }, meta: newMeta });
-    await putClubs(meta.id, [upd.buyer, ...(upd.seller ? [upd.seller] : [])]);
+    await putClubs(meta.id, [buyerPaid, ...(upd.seller ? [upd.seller] : [])]);
     await putPlayers(meta.id, [signed]);
     await persistMeta(newMeta);
     return { ok: true, message: `${player.name.last} signs!` };
@@ -2304,6 +2313,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     await persistMeta(newMeta);
   },
 
+  acceptStadiumNaming: async (offerId) => {
+    const { meta, clubs } = get();
+    if (!meta) return;
+    const offer = (meta.stadiumOffers ?? []).find((o) => o.id === offerId);
+    if (!offer) return;
+    const club = clubs[meta.managerClubId];
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const updated = { ...club, stadiumSponsor: { name: offer.name, annual: offer.annual, untilYear: year + offer.years } };
+    const news = { id: `news_stadiumname_${offerId}`, day: meta.currentDay, category: 'BOARD' as const,
+      title: `${club.stadium.name} renamed the ${offer.name}`,
+      body: `A ${offer.years}-year naming-rights deal worth ${offer.annual.toLocaleString()}/season is signed — the ground will be known as the ${offer.name}.`, read: false };
+    const newMeta: SaveMeta = { ...meta, stadiumOffers: undefined, news: [...meta.news, news] };
+    set({ clubs: { ...clubs, [club.id]: updated }, meta: newMeta });
+    await putClubs(meta.id, [updated]);
+    await persistMeta(newMeta);
+  },
+
   setAutoMode: async (on) => {
     const { meta, clubs } = get();
     if (!meta) return;
@@ -2694,6 +2720,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             newMeta.news = [...newMeta.news, { id: `news_sponsor_${newYear}`, day: 0, category: 'BOARD', title: 'Shirt sponsorship offers', body: 'Commercial partners are courting the club — choose a shirt sponsor on the Club screen.', read: false }];
           } else {
             newMeta.sponsorOffers = undefined; // a live deal — no open offers
+          }
+          // Stadium naming rights (§ #41) — same lifecycle as the shirt deal.
+          if (mgrClub.stadiumSponsor && mgrClub.stadiumSponsor.untilYear < newYear) {
+            result.clubs[meta.managerClubId] = { ...result.clubs[meta.managerClubId], stadiumSponsor: undefined };
+          }
+          if (!result.clubs[meta.managerClubId].stadiumSponsor) {
+            newMeta.stadiumOffers = generateStadiumOffers(result.clubs[meta.managerClubId], new Rng((meta.seed ^ (newYear * 0x5ada17e)) >>> 0));
+          } else {
+            newMeta.stadiumOffers = undefined;
           }
         }
       }

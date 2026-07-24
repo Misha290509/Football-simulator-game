@@ -121,6 +121,9 @@ export interface Club {
   /** A negotiated shirt sponsorship (§ #37) paying `annual` on top of baseline
    *  commercial income, through `untilYear`. Absent ⇒ no headline sponsor. */
   sponsor?: { name: string; annual: number; untilYear: number };
+  /** Sold stadium naming rights (§ #41): a renamed ground paying `annual` through
+   *  `untilYear`. Absent ⇒ the stadium keeps its own name. */
+  stadiumSponsor?: { name: string; annual: number; untilYear: number };
   /** Designated set-piece takers (player ids). */
   penaltyTakerId?: string | null;
   freeKickTakerId?: string | null;

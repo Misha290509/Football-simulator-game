@@ -354,6 +354,9 @@ export interface SaveGame {
   history?: SeasonHistory[];
   /** All-time club honours tally (§ Dynasty, #53), keyed by clubId. */
   allTimeHonours?: Record<string, ClubHonours>;
+  /** Market inflation multiplier (§ #36), 1.0 at the start, rising each season so
+   *  fees, wages and revenues grow over the decades. Absent ⇒ 1.0. */
+  marketInflation?: number;
   /** Hall of Fame inductees (§8, M6). */
   hallOfFame?: HallOfFameEntry[];
   /** Retired shirt numbers honouring player-career legends (Tier 5), by club. */
@@ -370,6 +373,8 @@ export interface SaveGame {
   deadlineFeed?: DeadlineFeed;
   /** Open shirt-sponsorship offers for the manager to choose from (§ #37). */
   sponsorOffers?: SponsorOffer[];
+  /** Open stadium naming-rights offers (§ #41). */
+  stadiumOffers?: SponsorOffer[];
 
   // --- Academy system (§ Academy) ----------------------------------------
   /** Per-club youth academies, keyed by clubId. */

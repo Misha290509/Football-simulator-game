@@ -61,6 +61,9 @@ export function computeSeasonFinances(
   tier: number,
   weeklyWageBill: number,
   staffWeeklyWage = 0,
+  /** Market-inflation multiplier (§ #36): scales income so revenue tracks the
+   *  inflating wage/fee economy over the decades. Default 1 (no inflation). */
+  inflation = 1,
 ): SeasonFinances {
   const rep = club.reputation;
 
@@ -84,9 +87,9 @@ export function computeSeasonFinances(
 
   // Sponsorship & commercial: baseline plus any negotiated headline shirt deal
   // the manager has landed (§ #37). Expired deals are cleared at the rollover.
-  const sponsorship = Math.round(rep * rep * (tier === 1 ? 5_200 : 1_400)) + (club.sponsor?.annual ?? 0);
+  const sponsorship = Math.round(rep * rep * (tier === 1 ? 5_200 : 1_400)) + (club.sponsor?.annual ?? 0) + (club.stadiumSponsor?.annual ?? 0);
 
-  const income = gate + broadcast + prize + sponsorship;
+  const income = Math.round((gate + broadcast + prize + sponsorship) * inflation);
 
   const wages = Math.round((weeklyWageBill + staffWeeklyWage) * 52);
   const running = Math.round(income * 0.12 + 4_000_000); // facilities, ops
@@ -101,11 +104,14 @@ export function deriveBudgets(
   weeklyWageBill: number,
   reputation: number,
   _tier: number,
+  /** Market-inflation multiplier (§ #36): inflates the reputation-based floors so
+   *  budgets keep pace with the wage/fee economy. Default 1 (no inflation). */
+  inflation = 1,
 ): { transferBudget: number; wageBudget: number } {
   // Wage budget = current bill plus headroom, never below the club's standing.
-  const wageBudget = round100(Math.max(weeklyWageBill * 1.12, marketWage(reputation - 6) * 16));
+  const wageBudget = round100(Math.max(weeklyWageBill * 1.12, marketWage(reputation - 6) * 16 * inflation));
   // Transfer kitty: a slice of cash, floored by the club's reputation tier.
   const fromCash = Math.max(0, balance) * 0.35;
-  const transferBudget = round100k(Math.max(fromCash, transferBudgetFor(reputation) * 0.5));
+  const transferBudget = round100k(Math.max(fromCash, transferBudgetFor(reputation) * 0.5 * inflation));
   return { transferBudget, wageBudget };
 }
