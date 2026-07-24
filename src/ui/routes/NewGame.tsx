@@ -29,6 +29,10 @@ export function NewGame() {
   const [seedText, setSeedText] = useState('');
   const [difficulty, setDifficulty] = useState<'RELAXED' | 'NORMAL' | 'HARD'>('NORMAL');
   const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [customOn, setCustomOn] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customAbbrev, setCustomAbbrev] = useState('');
+  const [customColor, setCustomColor] = useState('#1e88e5');
   const [busy, setBusy] = useState(false);
 
   // Player-mode identity.
@@ -96,6 +100,7 @@ export function NewGame() {
           seed,
           difficulty: challenge ? challenge.difficulty : difficulty,
           challengeId: challenge?.id,
+          customClub: customOn ? { name: customName, shortName: customName, abbrev: customAbbrev, primaryColor: customColor } : undefined,
         });
         navigate('/dashboard');
       }
@@ -252,6 +257,19 @@ export function NewGame() {
           <span className="text-slate-400">Seed (optional, for reproducible worlds)</span>
           <input className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm font-mono" value={seedText} onChange={(e) => setSeedText(e.target.value)} placeholder="leave blank for random" />
         </label>
+        {!challenge && (
+          <div className="text-sm">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={customOn} onChange={(e) => setCustomOn(e.target.checked)} /><span className="text-slate-400">Rebrand my club (custom name &amp; colours)</span></label>
+            {customOn && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input className="bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm w-48" value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="Club name" />
+                <input className="bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm w-24" value={customAbbrev} onChange={(e) => setCustomAbbrev(e.target.value.toUpperCase().slice(0, 3))} placeholder="ABB" maxLength={3} />
+                <input type="color" className="h-9 w-12 rounded border border-surface-600 bg-surface-700" value={customColor} onChange={(e) => setCustomColor(e.target.value)} title="Primary colour" />
+                <span className="text-xs text-slate-500">Leave name blank to keep the club's own.</span>
+              </div>
+            )}
+          </div>
+        )}
         <div className="text-xs text-slate-500">
           Dataset: <strong>{dataset.name}</strong> · Season {SEASON_LABEL}
           {isRealDataset(dataset) && <span className="ml-2 text-emerald-400">✓ real players</span>}

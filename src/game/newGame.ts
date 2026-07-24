@@ -34,6 +34,8 @@ export interface NewGameConfig {
   difficulty?: import('../types/league').Difficulty;
   /** Start this career as a curated challenge scenario. */
   challengeId?: string;
+  /** Rebrand the chosen club with a custom identity (§ #61, custom clubs). */
+  customClub?: { name?: string; shortName?: string; abbrev?: string; primaryColor?: string; secondaryColor?: string };
 }
 
 function seasonLabel(year: number): string {
@@ -82,6 +84,21 @@ export function createNewGame(config: NewGameConfig): WorldSnapshot {
     world.clubs, world.players, academyInstall.academyPlayers,
     config.startYear, world.ratingCap, seed,
   );
+
+  // Custom club identity (§ #61): rebrand the chosen club before anything else
+  // reads its name/colours.
+  if (config.customClub && world.clubs[config.managerClubId]) {
+    const c = config.customClub;
+    const base = world.clubs[config.managerClubId];
+    world.clubs[config.managerClubId] = {
+      ...base,
+      name: c.name?.trim() || base.name,
+      shortName: c.shortName?.trim() || base.shortName,
+      abbrev: (c.abbrev?.trim() || base.abbrev).slice(0, 3).toUpperCase(),
+      primaryColor: c.primaryColor || base.primaryColor,
+      secondaryColor: c.secondaryColor || base.secondaryColor,
+    };
+  }
 
   // Fill the manager's own academy to a full team in each age band (U16/U18/U21).
   const mgrClub = world.clubs[config.managerClubId];
