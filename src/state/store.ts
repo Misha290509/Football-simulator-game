@@ -2696,6 +2696,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         achievements: { ...(meta.achievements ?? {}), ...(result.achievements ?? {}) },
         pendingGala: result.pendingGala ?? null,
         aiManagers: result.aiManagers ?? meta.aiManagers,
+        marketInflation: result.marketInflation ?? meta.marketInflation ?? 1,
       };
 
       // Shirt sponsorship (§ #37): retire an expired deal, and when the manager
@@ -3705,6 +3706,31 @@ async function playDays(
                   : 'The fans are grumbling about results and the football on offer.',
                 read: false,
               });
+            }
+            // Supporter-mood events (§ #46): a mutinous crowd protests and drains
+            // the dressing room; an elated one throws a party that lifts it.
+            const moodRng = new Rng((meta.seed ^ (to * 0xfa4e2222)) >>> 0);
+            if (fan < 22 && moodRng.chance(0.35)) {
+              for (const p of Object.values(playersById)) {
+                if (p.contract.clubId === meta.managerClubId) { playersById[p.id] = { ...p, morale: clamp(p.morale - 4) }; changedIds.add(p.id); }
+              }
+              board = { ...board, confidence: clamp(board.confidence - 2, 0, 100) };
+              const line = moodRng.pick([
+                'Fans marched on the ground before kick-off demanding change — banners, boos and an ugly mood.',
+                'Supporters staged a sit-in protest after the final whistle; the atmosphere has turned toxic.',
+                'A section of the crowd turned on the team, and the players felt it.',
+              ]);
+              newsItems.push({ id: `news_protest_${to}`, day: to, category: 'BOARD', title: 'Supporters stage a protest', body: line, read: false });
+            } else if (fan > 85 && moodRng.chance(0.3)) {
+              for (const p of Object.values(playersById)) {
+                if (p.contract.clubId === meta.managerClubId) { playersById[p.id] = { ...p, morale: clamp(p.morale + 3) }; changedIds.add(p.id); }
+              }
+              const line = moodRng.pick([
+                'The stands were bouncing all game — a wall of colour, noise and belief that carried the team.',
+                'Supporters threw an impromptu party outside the ground; the players are riding the wave.',
+                'A tifo display and a sold-out, roaring crowd have the dressing room walking on air.',
+              ]);
+              newsItems.push({ id: `news_fanparty_${to}`, day: to, category: 'BOARD', title: 'The fans are in dreamland', body: line, read: false });
             }
           }
         }

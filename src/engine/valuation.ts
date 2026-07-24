@@ -11,8 +11,8 @@
 // €150–220M (a 90-rated worth far more than 3× a 78-rated).
 // ---------------------------------------------------------------------------
 
-export function estimateValue(ovr: number, age: number, potential: number): number {
-  const baseline = Math.pow(Math.max(0, ovr - 40) / 10, 8.7) * 130;
+export function estimateValue(ovr: number, age: number, potential: number, inflation = 1): number {
+  const baseline = Math.pow(Math.max(0, ovr - 40) / 10, 8.7) * 130 * inflation;
   const ageFactor =
     age <= 18 ? 1.15 :
     age <= 20 ? 1.35 :

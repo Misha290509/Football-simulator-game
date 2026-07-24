@@ -13,6 +13,7 @@ import { weeklyWageBill } from '../../game/transfers';
 export function Finances() {
   const club = useGameStore((s) => s.managerClub())!;
   const players = useGameStore((s) => s.getClubPlayers(club.id));
+  const inflation = useGameStore((s) => s.meta?.marketInflation ?? 1);
   const f = club.finances;
   const bill = weeklyWageBill(players);
   const history = club.financeHistory ?? [];
@@ -35,6 +36,12 @@ export function Finances() {
         {stat('Wage budget', formatWage(f.wageBudget))}
         {stat('Wages committed', formatWage(bill), `${Math.round((bill / f.wageBudget) * 100)}% of budget`)}
       </div>
+
+      {inflation > 1.01 && (
+        <div className="text-xs text-slate-500 -mt-3">
+          📈 Market index <span className="font-mono text-slate-400">{Math.round(inflation * 100)}</span> — fees, wages and revenues have inflated {Math.round((inflation - 1) * 100)}% since your first season.
+        </div>
+      )}
 
       <div className="card p-4">
         <h2 className="text-sm font-semibold text-slate-400 mb-3">Balance over time</h2>

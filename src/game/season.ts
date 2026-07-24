@@ -23,6 +23,7 @@ import { coachingFactor, trainingBias } from '../engine/staff';
 import { evaluateObjective, setObjective, SACK_THRESHOLD, fanConfidenceOf, pickVision, reviewVision } from './board';
 import { processTakeovers } from './takeovers';
 import { driftClubReputations } from './reputationDrift';
+import { applyDebt } from './debt';
 import type { BoardState } from '../types/staff';
 import { runAiTransferWindow, weeklyWageBill } from './transfers';
 import { runAiToAiTransfers } from './aiTransfers';
@@ -106,6 +107,7 @@ export interface RolloverResult {
   pendingGala?: import('../types/league').GalaCeremony | null;
   /** Updated AI-manager records after season-end churn. */
   aiManagers?: Record<string, import('./aiManagers').AiManager>;
+  marketInflation?: number;
 }
 
 /** Aggregate per-player, per-competition season stats from played matches. */
@@ -382,6 +384,12 @@ export async function resolveAndRollover(
 
   const nextYear = meta.startYear + Object.keys(meta.seasons).length; // simple increment
 
+  // Market inflation (§ #36): the whole money economy — fees, wages, revenues —
+  // creeps up each season. `inflation` is the multiplier entering the new season;
+  // INFLATION_STEP is the per-season increment applied to existing wages.
+  const INFLATION_STEP = 1.03;
+  const inflation = (meta.marketInflation ?? 1) * INFLATION_STEP;
+
   // --- Progression: season stats, development, retirement, youth (§11-M3) ---
   const currentSeason = Object.values(meta.seasons).find((s) => s.current);
   const { stats, perf } = aggregateSeasonStats(
@@ -483,7 +491,12 @@ export async function resolveAndRollover(
       trophies: trophiesByClub.get(cId) ?? 0,
       awards: awardsByPlayer.get(base.id) ?? 0,
     });
-    updatedPlayers[dev.id] = dev;
+    // Inflate the market value and creep the wage with inflation (§ #36).
+    updatedPlayers[dev.id] = {
+      ...dev,
+      value: Math.round(dev.value * inflation),
+      contract: { ...dev.contract, wage: Math.round(dev.contract.wage * INFLATION_STEP) },
+    };
   }
 
   // --- Academy rollover (§ Academy): develop/age prospects, graduate or
@@ -608,9 +621,23 @@ export async function resolveAndRollover(
     const squad = finalSquadIndex.get(club.id) ?? [];
     const bill = weeklyWageBill(squad);
     const staffBill = (club.staff ?? []).reduce((s, x) => s + (x.wage ?? 0), 0);
-    const fin = computeSeasonFinances(club, where.pos, comp.numClubs, comp.tier, bill, staffBill);
-    const balance = club.finances.balance + fin.net;
-    const budgets = deriveBudgets(balance, bill, club.reputation, comp.tier);
+    const fin = computeSeasonFinances(club, where.pos, comp.numClubs, comp.tier, bill, staffBill, inflation);
+    const rawBalance = club.finances.balance + fin.net;
+    // Debt & interest → possible administration (§ #39).
+    const debt = applyDebt(rawBalance, club.reputation, inflation);
+    const balance = debt.balance;
+    if (debt.administration) {
+      pointsPenalties[club.id] = (pointsPenalties[club.id] ?? 0) + 9;
+      const topEarner = [...squad].sort((a, b) => b.contract.wage - a.contract.wage)[0];
+      if (topEarner) finalPlayers[topEarner.id] = { ...(finalPlayers[topEarner.id] ?? topEarner), transferListed: true };
+      news.push(mkNews(meta.currentDay, 'BOARD', `${club.shortName} enter administration`,
+        `${club.name} have gone into administration under crippling debt — a 9-point deduction, a spending freeze and a fire-sale follow.`));
+      if (club.id === meta.managerClubId) ffp = { strikes: (meta.ffp?.strikes ?? 0) + 1, embargo: true };
+    } else if (rawBalance < 0 && club.id === meta.managerClubId) {
+      news.push(mkNews(meta.currentDay, 'BOARD', 'The club is in the red',
+        `Losses have pushed the balance to ${fmt(balance)}. Interest is mounting — rein in spending before the club risks administration.`));
+    }
+    const budgets = deriveBudgets(balance, bill, club.reputation, comp.tier, inflation);
     club.finances = { balance, wageBudgetUsed: bill, ...budgets };
     club.financeHistory = [
       ...(club.financeHistory ?? []),
@@ -950,6 +977,7 @@ export async function resolveAndRollover(
     achievements: newAchievements,
     pendingGala,
     aiManagers: managerChurn.managers,
+    marketInflation: inflation,
   };
 }
 
