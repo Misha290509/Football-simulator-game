@@ -6,7 +6,7 @@ import { Rating } from '../components/Rating';
 import { ageOf, fullName, formatMoney, formatWage, playerStatus } from '../format';
 import type { Player } from '../../types/player';
 import { POSITION_GROUP, ALL_POSITIONS } from '../../types/attributes';
-import { squadChemistry } from '../../engine/chemistry';
+import { squadChemistry, dressingRoom } from '../../engine/chemistry';
 import { OvrDeltaBadge, StatChangePanel } from '../components/SeasonChange';
 
 export function Squad() {
@@ -101,7 +101,7 @@ export function Squad() {
         </div>
       </div>
 
-      <ChemistryCard players={players} year={currentYear} />
+      <ChemistryCard players={players} year={currentYear} captainId={club.captainId} />
 
       {view === 'table' ? (
         <>
@@ -122,22 +122,39 @@ export function Squad() {
   );
 }
 
-function ChemistryCard({ players, year }: { players: Player[]; year: number }) {
+function ChemistryCard({ players, year, captainId }: { players: Player[]; year: number; captainId?: string | null }) {
   const chem = squadChemistry(players, year);
+  const room = dressingRoom(players, captainId);
   const color = chem.score >= 66 ? 'text-emerald-400' : chem.score >= 52 ? 'text-slate-200' : chem.score >= 40 ? 'text-amber-400' : 'text-rose-400';
   return (
-    <div className="card p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-      <div>
-        <div className="text-[10px] uppercase tracking-wide text-slate-500">Dressing room</div>
-        <div className="text-sm"><span className={`text-xl font-bold mr-2 ${color}`}>{chem.score}</span><span className="text-slate-300">{chem.label}</span></div>
+    <div className="card p-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-slate-500">Dressing room</div>
+          <div className="text-sm"><span className={`text-xl font-bold mr-2 ${color}`}>{chem.score}</span><span className="text-slate-300">{chem.label}</span></div>
+        </div>
+        <div className="flex flex-wrap gap-1.5 ml-auto">
+          {chem.factors.map((f) => (
+            <span key={f.label} className={`text-[11px] px-2 py-0.5 rounded-full border ${f.delta > 0 ? 'border-emerald-500/30 text-emerald-300' : f.delta < 0 ? 'border-rose-500/30 text-rose-300' : 'border-surface-600 text-slate-500'}`}>
+              {f.label} {f.delta > 0 ? `+${f.delta}` : f.delta}
+            </span>
+          ))}
+        </div>
       </div>
-      <div className="flex flex-wrap gap-1.5 ml-auto">
-        {chem.factors.map((f) => (
-          <span key={f.label} className={`text-[11px] px-2 py-0.5 rounded-full border ${f.delta > 0 ? 'border-emerald-500/30 text-emerald-300' : f.delta < 0 ? 'border-rose-500/30 text-rose-300' : 'border-surface-600 text-slate-500'}`}>
-            {f.label} {f.delta > 0 ? `+${f.delta}` : f.delta}
-          </span>
-        ))}
-      </div>
+      {(room.leaders.length > 0 || room.cliques.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs border-t border-surface-700 pt-2">
+          {room.leaders.length > 0 && (
+            <div><span className="text-slate-500">Leaders: </span>
+              {room.leaders.map((p, i) => <span key={p.id} className="text-slate-300">{i > 0 ? ', ' : ''}{p.name.last}{p.id === captainId ? ' (C)' : ''}</span>)}
+            </div>
+          )}
+          {room.cliques.length > 0 && (
+            <div><span className="text-slate-500">National blocs: </span>
+              {room.cliques.map((c, i) => <span key={c.nationality} className="text-slate-300">{i > 0 ? ', ' : ''}{c.nationality} ×{c.count}</span>)}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

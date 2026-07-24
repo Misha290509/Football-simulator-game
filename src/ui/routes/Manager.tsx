@@ -4,10 +4,12 @@ import { BOARD_REQUEST_LABEL, type BoardRequestKind } from '../../game/boardroom
 import { MANDATE_LABEL } from '../../game/board';
 import { styleTags, aiManagerOf } from '../../game/aiManagers';
 import { managerAttributes, attrStars } from '../../game/managerIdentity';
+import { computeStandings } from '../../engine/standings';
 
 export function Manager() {
   const meta = useGameStore((s) => s.meta)!;
   const clubs = useGameStore((s) => s.clubs);
+  const matches = useGameStore((s) => s.matches);
   const club = useGameStore((s) => s.managerClub());
   const acceptJobOffer = useGameStore((s) => s.acceptJobOffer);
   const declineJobOffer = useGameStore((s) => s.declineJobOffer);
@@ -31,11 +33,15 @@ export function Manager() {
   const tags = styleTags(meta.managerStyle);
   const styleWins = meta.managerStyle?.wins ?? 0;
 
-  // Rival managers in your division — named, with reputations and honours (§ #51).
+  // Rival managers in your division — named, with reputations, honours and their
+  // live standing (§ #51/#44 sack race).
   const mgrComp = Object.values(meta.competitions).find((c) => c.clubIds.includes(meta.managerClubId));
+  const standings = mgrComp ? computeStandings(mgrComp, Object.values(matches)) : [];
+  const posOf = new Map(standings.map((r, i) => [r.clubId, i + 1]));
+  const dropZone = mgrComp ? (mgrComp.numClubs - (mgrComp.promotion?.autoRelegate ?? 3)) : 999;
   const rivalManagers = (mgrComp?.clubIds ?? [])
     .filter((id) => id !== meta.managerClubId)
-    .map((id) => ({ clubId: id, mgr: aiManagerOf(id, clubs[id], meta.seed, meta.aiManagers) }))
+    .map((id) => ({ clubId: id, mgr: aiManagerOf(id, clubs[id], meta.seed, meta.aiManagers), pos: posOf.get(id) ?? 0 }))
     .sort((a, b) => b.mgr.reputation - a.mgr.reputation || b.mgr.titles - a.mgr.titles)
     .slice(0, 10);
 
@@ -175,19 +181,23 @@ export function Manager() {
 
       {rivalManagers.length > 0 && (
         <div className="card p-4">
-          <h2 className="text-sm font-semibold text-slate-400 mb-3">Rival managers in your division</h2>
+          <h2 className="text-sm font-semibold text-slate-400 mb-3">Rival managers <span className="text-slate-600 font-normal">· 🔥 = in the sack race</span></h2>
           <div className="overflow-x-auto">
             <table className="data-table w-full">
-              <thead><tr><th>Manager</th><th>Club</th><th className="text-right">Reputation</th><th className="text-right">Titles</th></tr></thead>
+              <thead><tr><th>Manager</th><th>Club</th><th className="text-right">Pos</th><th className="text-right">Reputation</th><th className="text-right">Titles</th></tr></thead>
               <tbody>
-                {rivalManagers.map(({ clubId, mgr }) => (
-                  <tr key={clubId}>
-                    <td className="font-medium">{mgr.name}{mgr.formerPlayer && <span className="ml-1 text-[10px] text-amber-400/80" title="A former player turned manager">★ ex-pro</span>}</td>
-                    <td className="text-slate-400">{clubs[clubId]?.shortName ?? clubId}</td>
-                    <td className="text-right font-mono">{mgr.reputation}</td>
-                    <td className="text-right font-mono">{mgr.titles > 0 ? mgr.titles : '—'}</td>
-                  </tr>
-                ))}
+                {rivalManagers.map(({ clubId, mgr, pos }) => {
+                  const pressure = pos > 0 && pos > dropZone;
+                  return (
+                    <tr key={clubId} className={pressure ? 'text-rose-300' : ''}>
+                      <td className="font-medium">{mgr.name}{mgr.formerPlayer && <span className="ml-1 text-[10px] text-amber-400/80" title="A former player turned manager">★ ex-pro</span>}</td>
+                      <td className="text-slate-400">{clubs[clubId]?.shortName ?? clubId}</td>
+                      <td className="text-right font-mono">{pos > 0 ? `${pos}${pressure ? ' 🔥' : ''}` : '—'}</td>
+                      <td className="text-right font-mono">{mgr.reputation}</td>
+                      <td className="text-right font-mono">{mgr.titles > 0 ? mgr.titles : '—'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

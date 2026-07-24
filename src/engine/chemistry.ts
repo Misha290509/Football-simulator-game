@@ -60,6 +60,10 @@ export function squadChemistry(players: Player[], year?: number): ChemistryRepor
   const bigEgos = players.filter((p) => egoOf(p) >= 70).length;
   factors.push({ label: 'Big egos', delta: bigEgos <= 1 ? 2 : -3 * (bigEgos - 1) });
 
+  // Leadership (§ #47): seasoned professionals steady the dressing room.
+  const leaders = players.filter(isLeader).length;
+  factors.push({ label: 'Leadership', delta: Math.min(7, leaders * 2) });
+
   // Wage envy: a top earner far above the median breeds resentment.
   const wages = players.map((p) => p.contract.wage);
   const ratio = median(wages) > 0 ? Math.max(...wages) / median(wages) : 1;
@@ -73,4 +77,31 @@ export function squadChemistry(players: Player[], year?: number): ChemistryRepor
 export function chemistryMod(players: Player[]): number {
   const { score } = squadChemistry(players);
   return 1 + (score - 55) / 1000;
+}
+
+/** A natural dressing-room leader: composed, ultra-professional and experienced. */
+export function isLeader(p: Player): boolean {
+  return p.hidden.professionalism >= 74 && p.attributes.mental.composure >= 70;
+}
+
+export interface DressingRoom {
+  /** Squad leaders (captain first if he is one), best first. */
+  leaders: Player[];
+  /** National cliques — nationalities with three or more players. */
+  cliques: { nationality: string; count: number }[];
+}
+
+/** A read of the dressing-room social structure for the Squad screen (§ #47). */
+export function dressingRoom(players: Player[], captainId?: string | null): DressingRoom {
+  const leaders = players
+    .filter(isLeader)
+    .sort((a, b) => (a.id === captainId ? -1 : b.id === captainId ? 1 : b.overall - a.overall))
+    .slice(0, 5);
+  const byNat = new Map<string, number>();
+  for (const p of players) byNat.set(p.nationality, (byNat.get(p.nationality) ?? 0) + 1);
+  const cliques = [...byNat.entries()]
+    .filter(([, n]) => n >= 3)
+    .map(([nationality, count]) => ({ nationality, count }))
+    .sort((a, b) => b.count - a.count);
+  return { leaders, cliques };
 }
