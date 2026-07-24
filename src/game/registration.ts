@@ -9,6 +9,69 @@
 import type { Player } from '../types/player';
 import type { Club } from '../types/club';
 
+// --- Squad-registration rules (§ #15) --------------------------------------
+
+export interface RegistrationRules {
+  /** Maximum first-team squad size subject to registration. */
+  squadLimit: number;
+  /** Minimum home-grown players that must be within the registered squad. */
+  homegrownMin: number;
+  /** Optional cap on non-domestic (foreign) players. */
+  nonDomesticMax?: number;
+}
+
+/** Home nations sharing a "domestic" pool for home-grown purposes. */
+const HOME_POOL: Record<string, string[]> = {
+  GB: ['GB', 'SCO', 'IE'],
+};
+
+/** Per-country registration rules (a distilled model of real regulations). */
+export const REGISTRATION_RULES: Record<string, RegistrationRules> = {
+  GB: { squadLimit: 25, homegrownMin: 8 },              // Premier League 25/8 HG
+  ES: { squadLimit: 25, homegrownMin: 8, nonDomesticMax: 3 }, // La Liga non-EU cap
+  IT: { squadLimit: 25, homegrownMin: 8 },
+  DE: { squadLimit: 25, homegrownMin: 8 },
+  FR: { squadLimit: 25, homegrownMin: 8 },
+  PT: { squadLimit: 25, homegrownMin: 8 },
+  NL: { squadLimit: 25, homegrownMin: 6 },
+  // MLS (§ #16): a larger roster with a hard cap on international (non-domestic)
+  // slots rather than a home-grown minimum.
+  US: { squadLimit: 30, homegrownMin: 0, nonDomesticMax: 8 },
+};
+
+export const registrationRules = (countryId: string): RegistrationRules | null => REGISTRATION_RULES[countryId] ?? null;
+
+export interface SquadCompliance {
+  rules: RegistrationRules;
+  squadCount: number;
+  homegrown: number;
+  nonDomestic: number;
+  violations: string[];
+}
+
+/** Is a player home-grown for a club — a national, a home-pool national, or an
+ *  academy graduate who came through a club's system. */
+export function isHomegrown(p: Player, club: Club): boolean {
+  const pool = HOME_POOL[club.countryId] ?? [club.countryId];
+  return pool.includes(p.nationality) || !!p.academyGraduateOf;
+}
+
+/** Assess a squad against its country's registration rules (§ #15). */
+export function squadCompliance(players: Player[], club: Club): SquadCompliance | null {
+  const rules = registrationRules(club.countryId);
+  if (!rules) return null;
+  // The senior squad that needs registering (exclude U21s, who are exempt).
+  const senior = players.filter((p) => !p.academyClubId || p.contract.clubId === club.id);
+  const homegrown = senior.filter((p) => isHomegrown(p, club)).length;
+  const pool = HOME_POOL[club.countryId] ?? [club.countryId];
+  const nonDomestic = senior.filter((p) => !pool.includes(p.nationality)).length;
+  const violations: string[] = [];
+  if (senior.length > rules.squadLimit) violations.push(`Squad of ${senior.length} exceeds the ${rules.squadLimit}-man limit.`);
+  if (homegrown < rules.homegrownMin) violations.push(`Only ${homegrown} home-grown players — ${rules.homegrownMin} required.`);
+  if (rules.nonDomesticMax != null && nonDomestic > rules.nonDomesticMax) violations.push(`${nonDomestic} non-domestic players — max ${rules.nonDomesticMax}.`);
+  return { rules, squadCount: senior.length, homegrown, nonDomestic, violations };
+}
+
 /** Countries whose players are "domestic" for GBE purposes (home nations + the
  *  Common Travel Area), and so exempt. */
 const GBE_EXEMPT = new Set(['GB', 'SCO', 'IE']);
