@@ -73,6 +73,7 @@ export function PlayerProfile() {
   const dualRegister = useGameStore((s) => s.dualRegister);
   const demoteToAcademy = useGameStore((s) => s.demoteToAcademy);
   const interactWithPlayer = useGameStore((s) => s.interactWithPlayer);
+  const promisePlayingTime = useGameStore((s) => s.promisePlayingTime);
   const toggleShortlist = useGameStore((s) => s.toggleShortlist);
   const shortlisted = useGameStore((s) => (id ? (s.meta?.shortlist ?? []).includes(id) : false));
   const [renewing, setRenewing] = useState(false);
@@ -161,6 +162,11 @@ export function PlayerProfile() {
               <button className="btn-primary" onClick={async () => flash((await triggerLoanOption(player.id)).message)}>
                 Sign permanently ({(player.loan.optionToBuy / 1_000_000).toFixed(1)}M)
               </button>
+            )}
+            {player.promise ? (
+              <span className="inline-flex items-center px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300" title="Judged at the season's end">🤝 Promised regular football</span>
+            ) : !player.loan && (
+              <button className="btn-ghost" title="Promise him regular playing time — judged at the season's end" onClick={async () => flash((await promisePlayingTime(player.id)).message)}>Promise game time</button>
             )}
           </div>
         ) : (

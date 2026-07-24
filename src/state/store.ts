@@ -265,6 +265,8 @@ interface GameState {
   contractDemands: (playerId: string) => ContractOffer | null;
   offerContract: (playerId: string, offer: ContractOffer) => Promise<NegotiationResult>;
   respondToTransferRequest: (playerId: string, grant: boolean) => Promise<void>;
+  /** Promise a player regular playing time (§ #49); judged at the season's end. */
+  promisePlayingTime: (playerId: string) => Promise<{ ok: boolean; message: string }>;
   assignMarketScout: (scoutId: string, playerId: string) => Promise<BidResult>;
   completeSigning: (playerId: string, fee: number, offer: ContractOffer, instalmentYears?: number) => Promise<BidResult>;
   /** Agree a Bosman pre-contract with an expiring player (free, joins next summer). */
@@ -1203,6 +1205,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       : { ...player, transferRequested: false, morale: clamp(player.morale - 12) };
     set({ players: { ...players, [playerId]: np } });
     await putPlayers(meta.id, [np]);
+  },
+
+  promisePlayingTime: async (playerId) => {
+    const { meta, players } = get();
+    if (!meta) return { ok: false, message: 'No active save.' };
+    const player = players[playerId];
+    if (!player || player.contract.clubId !== meta.managerClubId) return { ok: false, message: 'Not one of your players.' };
+    if (player.promise) return { ok: false, message: 'You have already made him a promise.' };
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    // The player is buoyed by the assurance now; it is judged at the season's end.
+    const np = { ...player, promise: { kind: 'PLAYING_TIME' as const, madeYear: year }, morale: clamp(player.morale + 5) };
+    set({ players: { ...players, [playerId]: np } });
+    await putPlayers(meta.id, [np]);
+    return { ok: true, message: `${player.name.last} is delighted by your promise of regular football — deliver on it.` };
   },
 
   assignMarketScout: async (scoutId, playerId) => {

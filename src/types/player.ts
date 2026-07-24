@@ -150,6 +150,9 @@ export interface Player {
   /** A buy-back clause (§ Living market, #33): the club that sold him keeps the
    *  right to re-sign him at a fixed price through `untilYear`. */
   buyBack?: { clubId: string; price: number; untilYear: number } | null;
+  /** A manager promise (§ #49): e.g. regular playing time, judged at the season's
+   *  end. Kept promises lift morale; broken ones sour the player. */
+  promise?: { kind: 'PLAYING_TIME'; madeYear: number } | null;
   /**
    * Academy ownership. Set on prospects in a club's youth academy. Unpromoted
    * academy players have `contract.clubId = null` and this set, keeping them out

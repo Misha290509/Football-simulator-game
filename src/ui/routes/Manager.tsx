@@ -3,6 +3,7 @@ import { useGameStore } from '../../state/store';
 import { BOARD_REQUEST_LABEL, type BoardRequestKind } from '../../game/boardroom';
 import { MANDATE_LABEL } from '../../game/board';
 import { styleTags, aiManagerOf } from '../../game/aiManagers';
+import { managerAttributes, attrStars } from '../../game/managerIdentity';
 
 export function Manager() {
   const meta = useGameStore((s) => s.meta)!;
@@ -26,6 +27,7 @@ export function Manager() {
   const totalSeasons = stints.reduce((a, s) => a + s.seasons, 0);
 
   const repTier = rep >= 80 ? 'World-class' : rep >= 65 ? 'Highly rated' : rep >= 50 ? 'Established' : rep >= 35 ? 'Up-and-coming' : 'Unproven';
+  const attrs = managerAttributes(meta);
   const tags = styleTags(meta.managerStyle);
   const styleWins = meta.managerStyle?.wins ?? 0;
 
@@ -67,6 +69,14 @@ export function Manager() {
           <div className="flex items-center gap-2">
             <div className="flex-1 h-2 bg-surface-700 rounded"><div className="h-2 rounded bg-accent" style={{ width: `${rep}%` }} /></div>
             <span className="font-mono text-sm">{rep}</span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1">
+            {([['Tactician', attrs.tactician], ['Motivator', attrs.motivator], ['Developer', attrs.developer], ['Disciplinarian', attrs.disciplinarian]] as const).map(([label, v]) => (
+              <div key={label} className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">{label}</span>
+                <span className="text-amber-400/80" title={`${v}/100`}>{'★'.repeat(attrStars(v))}{'☆'.repeat(5 - attrStars(v))}</span>
+              </div>
+            ))}
           </div>
         </div>
         <div className="card p-4">

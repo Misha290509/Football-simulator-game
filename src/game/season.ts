@@ -24,6 +24,7 @@ import { evaluateObjective, setObjective, SACK_THRESHOLD, fanConfidenceOf, pickV
 import { processTakeovers } from './takeovers';
 import { driftClubReputations } from './reputationDrift';
 import { applyDebt } from './debt';
+import { managerAttributes, developerGrowthBonus } from './managerIdentity';
 import type { BoardState } from '../types/staff';
 import { runAiTransferWindow, weeklyWageBill } from './transfers';
 import { runAiToAiTransfers } from './aiTransfers';
@@ -390,6 +391,9 @@ export async function resolveAndRollover(
   const INFLATION_STEP = 1.03;
   const inflation = (meta.marketInflation ?? 1) * INFLATION_STEP;
 
+  // Manager attributes (§ #45): a Developer boosts his squad's growth this season.
+  const mgrAttrs = managerAttributes(meta);
+
   // --- Progression: season stats, development, retirement, youth (§11-M3) ---
   const currentSeason = Object.values(meta.seasons).find((s) => s.current);
   const { stats, perf } = aggregateSeasonStats(
@@ -483,7 +487,9 @@ export async function resolveAndRollover(
       continue;
     }
     const club = clubs[cId];
-    const growth = coachingFactor(club?.staff, club?.facilities) * trainingBias(club?.trainingFocus);
+    // A shrewd Developer manager squeezes extra growth from his own squad (§ #45).
+    const devBonus = cId === meta.managerClubId ? developerGrowthBonus(mgrAttrs.developer) : 1;
+    const growth = coachingFactor(club?.staff, club?.facilities) * trainingBias(club?.trainingFocus) * devBonus;
     const dev = developPlayer(withStats, nextYear, rng, {
       growthFactor: growth,
       ratingCap,
@@ -491,9 +497,29 @@ export async function resolveAndRollover(
       trophies: trophiesByClub.get(cId) ?? 0,
       awards: awardsByPlayer.get(base.id) ?? 0,
     });
-    // Inflate the market value and creep the wage with inflation (§ #36).
+    // Playing-time promise (§ #49): judged on this season's appearances for the
+    // manager's players — kept lifts morale, broken sours (and may spark a
+    // transfer request). Then inflate value and creep the wage (§ #36).
+    let promise = dev.promise;
+    let promiseMorale = 0;
+    let promiseRequest = false;
+    if (dev.promise && cId === meta.managerClubId) {
+      const apps = withStats.stats.filter((s) => s.seasonId === sid).reduce((n, s) => n + s.appearances, 0);
+      const kept = apps >= 19;
+      promiseMorale = kept ? 8 : -14;
+      promise = null;
+      promiseRequest = !kept && rng.chance(0.5);
+      news.push(mkNews(meta.currentDay, kept ? 'GENERAL' : 'BOARD',
+        kept ? `${dev.name.last} — promise kept` : `${dev.name.last} feels let down`,
+        kept
+          ? `You promised ${dev.name.first} ${dev.name.last} regular football and delivered — he is grateful and settled.`
+          : `${dev.name.first} ${dev.name.last} barely featured after your promise of regular football. He feels betrayed${promiseRequest ? ' and wants to leave' : ''}.`));
+    }
     updatedPlayers[dev.id] = {
       ...dev,
+      promise,
+      morale: Math.max(1, Math.min(100, dev.morale + promiseMorale)),
+      transferRequested: dev.transferRequested || promiseRequest,
       value: Math.round(dev.value * inflation),
       contract: { ...dev.contract, wage: Math.round(dev.contract.wage * INFLATION_STEP) },
     };
