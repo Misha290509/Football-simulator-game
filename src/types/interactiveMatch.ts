@@ -29,7 +29,13 @@ export interface MomentChoice {
   baseSuccess: number;
   /** What a success is worth: the primary stat effect. */
   reward: MomentReward;
+  /** A flair "signature" attempt — only offered when the avatar is in the zone
+   *  (high flow); high reward, extra spectacle, and a flow-scaled bonus. */
+  signature?: boolean;
 }
+
+/** The specific opponent the avatar is locked in a personal duel with. */
+export interface MarkerInfo { name: string; rating: number; role: string }
 
 export type MomentReward =
   | 'GOAL' | 'ASSIST' | 'SHOT_ON' | 'KEY_PASS' | 'RETAIN' | 'TACKLE_WON'
@@ -92,12 +98,14 @@ export interface InteractiveMatchRecord {
   tally: { bigWon: number; bigLost: number; penScored: number; penMissed: number; penSaved: number; decisive: number };
   /** A standout line for the career timeline, if the match produced one. */
   standout?: string;
+  /** The personal-duel outcome vs the avatar's marker, if there was one. */
+  duel?: { won: number; lost: number; markerName: string };
 }
 
 /** A step of the resumable sim: either a decision is needed, or the match is done. */
 export type InteractiveStep =
-  | { kind: 'DECISION'; moment: KeyMoment; ticker: MatchTick[] }
-  | { kind: 'DONE'; match: Match; record: InteractiveMatchRecord; ticker: MatchTick[] };
+  | { kind: 'DECISION'; moment: KeyMoment; ticker: MatchTick[]; flow: number; marker?: MarkerInfo; duel: { won: number; lost: number } }
+  | { kind: 'DONE'; match: Match; record: InteractiveMatchRecord; ticker: MatchTick[]; flow: number; marker?: MarkerInfo; duel: { won: number; lost: number } };
 
 /** A compressed live-feed line shown between moments. */
 export interface MatchTick { minute: number; text: string; kind: 'GOAL' | 'CHANCE' | 'INFO' }

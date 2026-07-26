@@ -124,6 +124,7 @@ export const MOMENT_DEFS: Record<MomentType, { prompt: string; choices: MomentCh
     C('slot', 'Slot it low into the corner', 'SAFE', 0.44, 'GOAL', ['finishing', 'composure']),
     C('dink', 'Dink it over the keeper', 'AMBITIOUS', 0.30, 'GOAL', ['composure', 'finishing']),
     C('round', 'Round the keeper', 'AMBITIOUS', 0.28, 'GOAL', ['dribbling', 'composure']),
+    { ...C('panenka', '⚡ Cheeky chip — send him the wrong way', 'AMBITIOUS', 0.24, 'GOAL', ['composure', 'finishing']), signature: true },
   ] },
   FIRST_TIME_FINISH: { prompt: 'The ball drops in the box — a half-chance.', choices: [
     C('first', 'Hit it first time', 'AMBITIOUS', 0.30, 'GOAL', ['finishing', 'reactions']),
@@ -148,6 +149,7 @@ export const MOMENT_DEFS: Record<MomentType, { prompt: string; choices: MomentCh
   TAKE_ON: { prompt: 'The fullback stands you up out wide.', choices: [
     C('takeon', 'Take him on', 'AMBITIOUS', 0.42, 'KEY_PASS', ['dribbling', 'agility']),
     C('simple', 'Pass it simple and recycle', 'SAFE', 0.88, 'RETAIN', ['shortPassing']),
+    { ...C('nutmeg', '⚡ Nutmeg him and burst clear', 'AMBITIOUS', 0.30, 'GOAL', ['dribbling', 'agility']), signature: true },
   ] },
   CROSS_OR_CUT: { prompt: 'You reach the byline with options.', choices: [
     C('cross', 'Whip an early cross in', 'BALANCED', 0.40, 'ASSIST', ['crossing', 'vision']),
@@ -160,6 +162,7 @@ export const MOMENT_DEFS: Record<MomentType, { prompt: string; choices: MomentCh
   LONG_SHOT: { prompt: 'Space opens up 25 yards out.', choices: [
     C('shoot', 'Let fly from distance', 'AMBITIOUS', 0.15, 'GOAL', ['longShots', 'shotPower']),
     C('work', 'Work it closer', 'SAFE', 0.85, 'RETAIN', ['shortPassing']),
+    { ...C('screamer', '⚡ Go for the top corner', 'AMBITIOUS', 0.12, 'GOAL', ['longShots', 'shotPower', 'curve']), signature: true },
   ] },
   RETENTION_PASS: { prompt: 'You receive under light pressure in midfield.', choices: [
     C('break', 'Play the line-breaking pass', 'AMBITIOUS', 0.52, 'KEY_PASS', ['vision', 'longPassing']),
@@ -224,6 +227,7 @@ export const MOMENT_DEFS: Record<MomentType, { prompt: string; choices: MomentCh
   FREE_KICK: { prompt: 'A free-kick in a dangerous area — you’re the taker.', choices: [
     C('shoot', 'Shoot for goal', 'AMBITIOUS', 0.13, 'GOAL', ['fkAccuracy', 'curve']),
     C('cross', 'Whip it into the box', 'BALANCED', 0.40, 'ASSIST', ['crossing', 'fkAccuracy']),
+    { ...C('knuckle', '⚡ Knuckleball it over the wall', 'AMBITIOUS', 0.14, 'GOAL', ['fkAccuracy', 'shotPower', 'curve']), signature: true },
   ] },
 };
 

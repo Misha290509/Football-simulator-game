@@ -143,6 +143,46 @@ describe('interactive match — off-the-ball positioning intent', () => {
   });
 });
 
+describe('interactive match — flow, duel & signature', () => {
+  it('exposes a flow value in [0,100] on every step and moves it off the baseline', () => {
+    const inp = input('ST', 42);
+    const seen: number[] = [];
+    let step = runInteractiveMatch(inp, []); const d: MomentDecision[] = [];
+    let guard = 0;
+    while (step.kind === 'DECISION' && guard++ < 40) {
+      expect(step.flow).toBeGreaterThanOrEqual(0);
+      expect(step.flow).toBeLessThanOrEqual(100);
+      seen.push(step.flow);
+      const goal = step.moment.choices.find((c) => c.reward === 'GOAL' && !c.signature) ?? step.moment.choices[0];
+      d.push({ momentId: step.moment.id, choiceId: goal.id, autoResolved: false, followedGamePlan: false, success: false, effect: '' });
+      step = runInteractiveMatch(inp, d);
+    }
+    expect(step.kind).toBe('DONE');
+    // Flow is dynamic — it doesn't just sit at the starting 50 all match.
+    expect(seen.some((f) => f !== 50)).toBe(true);
+  });
+
+  it('tracks a personal duel vs the marker and records the verdict', () => {
+    const marker = { name: 'Virgil Stone', rating: 84, role: 'RCB' };
+    let found = false;
+    for (let seed = 1; seed <= 40 && !found; seed++) {
+      const inp: InteractiveInput = { ...input('ST', seed), intent: 'IN_BEHIND', marker };
+      const d: MomentDecision[] = [];
+      let step = runInteractiveMatch(inp, d); let guard = 0;
+      while (step.kind === 'DECISION' && guard++ < 40) {
+        d.push({ momentId: step.moment.id, choiceId: step.moment.choices[0].id, autoResolved: false, followedGamePlan: false, success: false, effect: '' });
+        step = runInteractiveMatch(inp, d);
+      }
+      if (step.kind === 'DONE' && step.record.duel && (step.record.duel.won + step.record.duel.lost) > 0) {
+        expect(step.record.duel.markerName).toBe('Virgil Stone');
+        expect(step.duel.won + step.duel.lost).toBeGreaterThan(0);
+        found = true;
+      }
+    }
+    expect(found).toBe(true);
+  });
+});
+
 describe('interactive match — goal of the season', () => {
   it('a spectacular strike (long shot / free kick) earns a worldie standout', () => {
     // Auto-pick the goal-seeking choice on every moment; a shooting-heavy intent

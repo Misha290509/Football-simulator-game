@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 import type { GamePlan, KeyMoment, InteractiveMatchRecord, PositioningIntent } from '../../types/interactiveMatch';
-import type { InteractiveInput } from '../../engine/interactiveMatch';
+import { FLOW_HOT, FLOW_COLD, type InteractiveInput } from '../../engine/interactiveMatch';
 import { ROLE_POSITIONING } from '../../game/momentLibrary';
 import type { Match } from '../../types/match';
 
@@ -120,16 +120,20 @@ export function InteractiveMatch() {
       )}
 
       {ip.phase === 'PLAYING' && ip.pending && (
-        <MomentCard
-          key={ip.pending.id}
-          moment={ip.pending}
-          gamePlanLabel={PLAN_INFO[ip.input.gamePlan].label}
-          timed={!!settings?.timed}
-          seconds={settings?.timerSeconds ?? 15}
-          onDecide={(cid) => decide(cid)}
-          onAutoMoment={() => autoMoment()}
-          onAutoRest={() => autoRest()}
-        />
+        <>
+          <MatchFeel flow={ip.flow ?? 50} marker={ip.input.marker} duel={ip.duel} />
+          <MomentCard
+            key={ip.pending.id}
+            moment={ip.pending}
+            gamePlanLabel={PLAN_INFO[ip.input.gamePlan].label}
+            flow={ip.flow ?? 50}
+            timed={!!settings?.timed}
+            seconds={settings?.timerSeconds ?? 15}
+            onDecide={(cid) => decide(cid)}
+            onAutoMoment={() => autoMoment()}
+            onAutoRest={() => autoRest()}
+          />
+        </>
       )}
 
       {ip.phase === 'DONE' && ip.done && (
@@ -146,9 +150,32 @@ export function InteractiveMatch() {
   );
 }
 
-function MomentCard({ moment, gamePlanLabel, timed, seconds, onDecide, onAutoMoment, onAutoRest }: {
+function MatchFeel({ flow, marker, duel }: { flow: number; marker?: { name: string; rating: number }; duel?: { won: number; lost: number } }) {
+  const hot = flow >= FLOW_HOT, cold = flow <= FLOW_COLD;
+  const label = hot ? '🔥 In the zone' : cold ? '😬 Rattled' : 'Settled';
+  const tone = hot ? 'bg-orange-500' : cold ? 'bg-sky-500' : 'bg-emerald-500';
+  return (
+    <div className="card p-3 space-y-2">
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="uppercase tracking-wide text-slate-500">Flow</span>
+        <span className={hot ? 'text-orange-300' : cold ? 'text-sky-300' : 'text-slate-400'}>{label}</span>
+      </div>
+      <div className="h-2 rounded bg-surface-700 overflow-hidden">
+        <div className={`h-full ${tone} transition-all`} style={{ width: `${Math.max(3, Math.min(100, flow))}%` }} />
+      </div>
+      {marker && (
+        <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+          <span>⚔️ Duel vs <span className="text-slate-200">{marker.name}</span> <span className="text-slate-600">({marker.rating})</span></span>
+          {duel && (duel.won + duel.lost > 0) && <span className="font-mono">{duel.won}–{duel.lost}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MomentCard({ moment, gamePlanLabel, flow, timed, seconds, onDecide, onAutoMoment, onAutoRest }: {
   moment: KeyMoment;
-  gamePlanLabel: string; timed: boolean; seconds: number;
+  gamePlanLabel: string; flow: number; timed: boolean; seconds: number;
   onDecide: (cid: string) => void; onAutoMoment: () => void; onAutoRest: () => void;
 }) {
   const m = moment;
@@ -174,12 +201,23 @@ function MomentCard({ moment, gamePlanLabel, timed, seconds, onDecide, onAutoMom
       </div>
       <p className="text-base text-white font-medium">{m.prompt}</p>
       <div className="space-y-2">
-        {m.choices.map((c, i) => (
-          <button key={c.id} onClick={() => onDecide(c.id)} className="w-full text-left p-3 rounded-lg border border-surface-600 hover:border-accent hover:bg-accent/5 flex items-center justify-between">
-            <span className="text-sm text-slate-100"><span className="text-slate-600 mr-2">{i + 1}</span>{c.label}{m.gamePlanAligned.includes(c.id) && <span className="text-[10px] text-accent-400 ml-2">✓ plan</span>}</span>
-            <span className={`text-[10px] uppercase tracking-wide ${RISK_TONE[c.risk]}`}>{c.risk.toLowerCase()}</span>
-          </button>
-        ))}
+        {m.choices.map((c, i) => {
+          const locked = c.signature && flow < FLOW_HOT;
+          if (locked) {
+            return (
+              <div key={c.id} className="w-full text-left p-3 rounded-lg border border-dashed border-surface-600 opacity-50 flex items-center justify-between cursor-not-allowed" title="Get in the zone (high flow) to unlock your signature move">
+                <span className="text-sm text-slate-400">{c.label}</span>
+                <span className="text-[10px] uppercase tracking-wide text-orange-400/70">🔒 in the zone</span>
+              </div>
+            );
+          }
+          return (
+            <button key={c.id} onClick={() => onDecide(c.id)} className={`w-full text-left p-3 rounded-lg border flex items-center justify-between ${c.signature ? 'border-orange-500/50 bg-orange-500/5 hover:bg-orange-500/10' : 'border-surface-600 hover:border-accent hover:bg-accent/5'}`}>
+              <span className="text-sm text-slate-100"><span className="text-slate-600 mr-2">{i + 1}</span>{c.label}{m.gamePlanAligned.includes(c.id) && <span className="text-[10px] text-accent-400 ml-2">✓ plan</span>}</span>
+              <span className={`text-[10px] uppercase tracking-wide ${c.signature ? 'text-orange-300' : RISK_TONE[c.risk]}`}>{c.signature ? 'signature' : c.risk.toLowerCase()}</span>
+            </button>
+          );
+        })}
       </div>
       <div className="flex gap-2 pt-1">
         <button className="btn-ghost text-xs" onClick={onAutoMoment}>Skip moment</button>
@@ -244,6 +282,12 @@ function MatchDone({ input, record, match, onContinue }: {
       </div>
       {(t.penScored + t.penMissed + t.penSaved) > 0 && (
         <div className="text-xs text-slate-400">Penalties — scored {t.penScored}, missed {t.penMissed}, saved {t.penSaved}.</div>
+      )}
+      {record.duel && (record.duel.won + record.duel.lost) > 0 && (
+        <div className={`text-xs px-2.5 py-1.5 rounded border ${record.duel.won > record.duel.lost ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : record.duel.won < record.duel.lost ? 'border-rose-500/30 bg-rose-500/5 text-rose-300' : 'border-surface-600 text-slate-400'}`}>
+          ⚔️ Personal duel vs {record.duel.markerName}: <span className="font-mono">{record.duel.won}–{record.duel.lost}</span>
+          {record.duel.won > record.duel.lost ? ' — you came out on top.' : record.duel.won < record.duel.lost ? ' — he shaded it.' : ' — honours even.'}
+        </div>
       )}
 
       <div>

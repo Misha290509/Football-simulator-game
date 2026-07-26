@@ -21,7 +21,7 @@ import { Rng, clamp } from './rng';
 import { traitsOf } from './traits';
 import { MOMENT_DEFS, ROLE_MOMENTS, gamePlanAlignedChoices, isDefensiveRole, intentWeight, INTENT_INVOLVEMENT, type MomentRole } from '../game/momentLibrary';
 import { playStylesOf, playStyleFactor } from '../game/playStyles';
-import type { PositioningIntent } from '../types/interactiveMatch';
+import type { PositioningIntent, MarkerInfo } from '../types/interactiveMatch';
 
 export interface InteractiveInput {
   matchId: string;
@@ -50,6 +50,8 @@ export interface InteractiveInput {
   /** A special occasion framing the fixture (derby, former club, big match) —
    *  presentation + raised stakes; the importance value already reflects it. */
   occasion?: { kind: 'DERBY' | 'FORMER_CLUB' | 'BIG_MATCH'; label: string };
+  /** The specific opponent the avatar is locked in a personal duel with. */
+  marker?: MarkerInfo;
 }
 
 // --- Small deterministic helpers -------------------------------------------
@@ -171,11 +173,24 @@ function resolveMoment(
   p *= 1 - fatigue * 0.18;
   p *= 1 - moment.context.pressure * (bigGame ? 0.02 : 0.14);
   p *= 0.9 + (input.confidence / 100) * 0.2;
-  // #16 — in-match momentum: back-to-back successes build a heater (capped),
-  // a failure resets it. Deterministic (folds prior decided moments only).
-  p *= 1 + clamp(run.momentum, 0, 3) * 0.03;
-  const success = rng.chance(clamp(p, 0.03, 0.95));
+  // Flow: a hot player (in the zone) gets a modest edge, a cold one is nervy.
+  // Deterministic — run.flow folds only the moments already resolved.
+  p *= 0.85 + (clamp(run.flow, 0, 100) / 100) * 0.3;
+  // The personal duel: a tough marker makes the direct battles harder.
+  if (input.marker && isDuelMoment(moment.type)) p *= clamp(1 - (input.marker.rating - 70) / 200, 0.8, 1.18);
+  // Signature flair: extra reward on success, and flow makes it land.
+  if (choice.signature) p *= 0.9 + (clamp(run.flow, 0, 100) / 100) * 0.35;
+  const success = rng.chance(clamp(p, 0.03, 0.96));
   run.momentum = success ? run.momentum + 1 : 0;
+  const flowBefore = run.flow;
+  run.flow = clamp(run.flow + flowDelta(choice.reward, success, !!choice.signature), 0, 100);
+  if (flowBefore < FLOW_HOT && run.flow >= FLOW_HOT) run.ticks.push({ minute: moment.minute, text: `🔥 ${input.avatar.name.last} is in the zone — everything's coming off!`, kind: 'INFO' });
+  else if (flowBefore > FLOW_COLD && run.flow <= FLOW_COLD) run.ticks.push({ minute: moment.minute, text: `😬 ${input.avatar.name.last} looks rattled — heads down out there.`, kind: 'INFO' });
+  // Track the personal duel and colour it in the ticker.
+  if (input.marker && isDuelMoment(moment.type)) {
+    if (success) { run.duelWon++; run.ticks.push({ minute: moment.minute, text: `💪 You get the better of ${input.marker.name}!`, kind: 'INFO' }); }
+    else { run.duelLost++; run.ticks.push({ minute: moment.minute, text: `${input.marker.name} wins that one — he's a handful.`, kind: 'INFO' }); }
+  }
 
   const late = moment.minute >= 75;
   const ambitious = choice.risk === 'AMBITIOUS';
@@ -203,8 +218,8 @@ function applyOutcome(input: InteractiveInput, moment: KeyMoment, choice: Moment
         run.avatarGoals++; run.teamGoals++; bump(1.0); won();
         // A spectacular strike — a long-range screamer or a set-piece special —
         // is a goal-of-the-season contender, worth an extra bit of rating shine.
-        const spectacular = moment.type === 'LONG_SHOT' || moment.type === 'FREE_KICK';
-        if (spectacular) { run.worldie = true; bump(0.3); run.ticks.push({ minute: moment.minute, text: `🚀 WHAT A GOAL! An unstoppable strike from ${input.avatar.name.last}!`, kind: 'GOAL' }); }
+        const spectacular = moment.type === 'LONG_SHOT' || moment.type === 'FREE_KICK' || !!choice.signature;
+        if (spectacular) { run.worldie = true; bump(choice.signature ? 0.4 : 0.3); run.ticks.push({ minute: moment.minute, text: `🚀 WHAT A GOAL! ${choice.signature ? 'Audacious brilliance' : 'An unstoppable strike'} from ${input.avatar.name.last}!`, kind: 'GOAL' }); }
         else run.ticks.push({ minute: moment.minute, text: `⚽ You score! (${input.avatar.name.last})`, kind: 'GOAL' });
         run.ticks.push({ minute: moment.minute, text: teammateReaction(input, moment.minute, 'GOAL'), kind: 'INFO' });
       }
@@ -280,7 +295,32 @@ function outcomeText(choice: MomentChoice, success: boolean): string {
 // --- The runner -------------------------------------------------------------
 
 // Extra running fields kept off the interface above for brevity.
-interface Running { oppGoalsBaseline: number; defensiveDanger: number; momentum: number }
+interface Running { oppGoalsBaseline: number; defensiveDanger: number; momentum: number; flow: number; duelWon: number; duelLost: number }
+
+// --- Flow ("in the zone") ---------------------------------------------------
+// A 0–100 heat meter that folds the outcomes decided so far (pure & replayable).
+// Rises with end-product, falls with wastefulness; a hot player gets a modest
+// edge and unlocks his signature move, a cold one turns nervy.
+export const FLOW_START = 50;
+export const FLOW_HOT = 75;
+export const FLOW_COLD = 25;
+
+function flowDelta(reward: MomentChoice['reward'], success: boolean, signature: boolean): number {
+  const base: Record<string, [number, number]> = {
+    GOAL: [20, -14], ASSIST: [16, -6], SAVE: [15, -12], KEY_PASS: [9, -5], SHOT_ON: [9, -5],
+    TACKLE_WON: [9, -8], DUEL_WON: [8, -8], CLEAN_CLEARANCE: [8, -6], RETAIN: [3, -4], NOTHING: [0, 0],
+  };
+  const [up, down] = base[reward] ?? [6, -6];
+  return (success ? up : down) * (signature ? 1.3 : 1);
+}
+
+// The moment types that pit the avatar directly against his marker (a personal
+// duel), by whether he's attacking or defending the situation.
+const DUEL_TYPES = new Set<MomentType>([
+  'TAKE_ON', 'ONE_ON_ONE', 'RUN_IN_BEHIND', 'HEADER', 'AERIAL_DUEL',
+  'MIDFIELD_TACKLE', 'SLIDE_TACKLE', 'BLOCK_SHOT', 'GK_ONE_ON_ONE',
+]);
+function isDuelMoment(type: MomentType): boolean { return DUEL_TYPES.has(type); }
 
 function ctxFor(input: InteractiveInput, run: Running, minute: number): MomentContext {
   return {
@@ -294,10 +334,12 @@ function ctxFor(input: InteractiveInput, run: Running, minute: number): MomentCo
 
 function buildMoment(input: InteractiveInput, spec: { type: MomentType; minute: number }, index: number, run: Running): KeyMoment {
   const def = MOMENT_DEFS[spec.type];
+  const duel = input.marker && isDuelMoment(spec.type);
+  const prompt = duel ? `${def.prompt} You're up against ${input.marker!.name}.` : def.prompt;
   return {
     id: `${input.matchId}_m${index}`,
     matchId: input.matchId, index, minute: spec.minute, type: spec.type, position: input.avatar.position,
-    prompt: def.prompt, choices: def.choices, gamePlanAligned: gamePlanAlignedChoices(spec.type, input.gamePlan),
+    prompt, choices: def.choices, gamePlanAligned: gamePlanAlignedChoices(spec.type, input.gamePlan),
     context: ctxFor(input, run, spec.minute),
   };
 }
@@ -313,6 +355,7 @@ export function runInteractiveMatch(input: InteractiveInput, decisions: MomentDe
     avatarGoals: 0, avatarAssists: 0, avatarShots: 0, avatarSaves: 0, tacklesWon: 0, duelsWon: 0, clearances: 0, keyPasses: 0,
     teamGoals: plan.teammateGoals, oppGoals: plan.oppBaseGoals, oppPrevented: 0, oppGoalsBaseline: plan.oppBaseGoals,
     defensiveDanger: isDefensiveRole(input.role) ? plan.oppBaseGoals : 0, momentum: 0,
+    flow: FLOW_START, duelWon: 0, duelLost: 0,
     bigWon: 0, bigLost: 0, decisive: 0, ratingBonus: 0, penScored: 0, penMissed: 0, penSaved: 0, yellow: false, red: false, worldie: false, ticks: [],
   };
   const decisionLog: MomentDecision[] = [];
@@ -321,7 +364,7 @@ export function runInteractiveMatch(input: InteractiveInput, decisions: MomentDe
     const moment = buildMoment(input, plan.moments[i], i, run);
     const decided = decisions[i];
     if (!decided) {
-      return { kind: 'DECISION', moment, ticker: [...run.ticks] };
+      return { kind: 'DECISION', moment, ticker: [...run.ticks], flow: Math.round(run.flow), marker: input.marker, duel: { won: run.duelWon, lost: run.duelLost } };
     }
     const choice = moment.choices.find((c) => c.id === decided.choiceId) ?? moment.choices[0];
     const { success, effect } = resolveMoment(input, moment, choice, rng, run);
@@ -396,11 +439,21 @@ function finalize(input: InteractiveInput, plan: MatchPlan, run: Running, decisi
   // A standout line for the timeline (late winner, hat-trick, penalty save…).
   let standout: string | undefined;
   const won = finalTeam > finalOpp;
+  const bossedMarker = input.marker && run.duelWon >= 3 && run.duelWon > run.duelLost * 2;
   if (run.avatarGoals >= 3) standout = `Scored a hat-trick against ${input.oppName}.`;
   else if (run.worldie) standout = `Scored a stunning goal against ${input.oppName} — one for the goal-of-the-season shortlist.`;
   else if (run.decisive > 0 && won) standout = `Produced a decisive late contribution to beat ${input.oppName}.`;
   else if (run.penSaved > 0) standout = `Saved a penalty against ${input.oppName}.`;
   else if (run.avatarGoals >= 2) standout = `Scored a brace against ${input.oppName}.`;
+  else if (bossedMarker) standout = `Ran ${input.marker!.name} ragged all afternoon.`;
+
+  // The personal-duel verdict for the ticker + post-match.
+  if (input.marker && (run.duelWon + run.duelLost) > 0) {
+    const verdict = run.duelWon > run.duelLost ? `You came out on top against ${input.marker.name} (${run.duelWon}–${run.duelLost}).`
+      : run.duelWon < run.duelLost ? `${input.marker.name} shaded your personal battle (${run.duelWon}–${run.duelLost}).`
+      : `An even scrap with ${input.marker.name} (${run.duelWon}–${run.duelLost}).`;
+    run.ticks.push({ minute: 90, text: `⚔️ ${verdict}`, kind: 'INFO' });
+  }
 
   run.ticks.push({ minute: 90, text: `Full time: ${homeGoals}–${awayGoals}`, kind: 'INFO' });
   return {
@@ -410,7 +463,9 @@ function finalize(input: InteractiveInput, plan: MatchPlan, run: Running, decisi
       gamePlanAdherence: adherence, momentCount: decisionLog.length,
       tally: { bigWon: run.bigWon, bigLost: run.bigLost, penScored: run.penScored, penMissed: run.penMissed, penSaved: run.penSaved, decisive: run.decisive },
       standout,
+      duel: input.marker ? { won: run.duelWon, lost: run.duelLost, markerName: input.marker.name } : undefined,
     },
     ticker: [...run.ticks],
+    flow: Math.round(run.flow), marker: input.marker, duel: { won: run.duelWon, lost: run.duelLost },
   };
 }

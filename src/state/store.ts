@@ -200,6 +200,9 @@ export interface InteractivePlayState {
   phase: 'PREMATCH' | 'PLAYING' | 'HALFTIME' | 'DONE';
   halfTimeSeen: boolean;
   htBoost?: boolean;
+  /** Live match-feel state surfaced from the engine step (flow / duel). */
+  flow?: number;
+  duel?: { won: number; lost: number };
 }
 
 interface GameState {
@@ -3596,9 +3599,9 @@ function stepInteractive(
   const step = runInteractiveMatch(input, decisions);
   if (step.kind === 'DECISION') {
     const halfTime = step.moment.minute >= 45 && !cur.halfTimeSeen;
-    set({ interactivePlay: { ...cur, input, decisions, pending: step.moment, ticker: step.ticker, done: null, phase: halfTime ? 'HALFTIME' : 'PLAYING' } });
+    set({ interactivePlay: { ...cur, input, decisions, pending: step.moment, ticker: step.ticker, done: null, phase: halfTime ? 'HALFTIME' : 'PLAYING', flow: step.flow, duel: step.duel } });
   } else {
-    set({ interactivePlay: { ...cur, input, decisions: step.record.decisionLog, pending: null, ticker: step.ticker, done: { match: step.match, record: step.record }, phase: 'DONE' } });
+    set({ interactivePlay: { ...cur, input, decisions: step.record.decisionLog, pending: null, ticker: step.ticker, done: { match: step.match, record: step.record }, phase: 'DONE', flow: step.flow, duel: step.duel } });
   }
 }
 

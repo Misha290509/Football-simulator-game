@@ -14,6 +14,20 @@ import { buildLineupProfile, resolveBench } from '../engine/lineup';
 import { momentRole, defaultPositioning } from './momentLibrary';
 import { avatarSelectionBias } from './playerCareer';
 import { areRivals } from './rivalries';
+import { POSITION_GROUP } from '../types/attributes';
+import type { MarkerInfo } from '../types/interactiveMatch';
+
+/** The specific opponent the avatar will duel all match: an attacker draws the
+ *  best opposing defender, a defender the best striker, a midfielder his
+ *  opposite number. Deterministic (best overall, id tie-break). */
+function pickMarker(avatar: Player, oppSquad: Player[]): MarkerInfo | undefined {
+  const g = POSITION_GROUP[avatar.position];
+  const want = g === 'ATT' ? 'DEF' : g === 'DEF' ? 'ATT' : g === 'GK' ? 'ATT' : 'MID';
+  const pool = oppSquad.filter((p) => POSITION_GROUP[p.position] === want);
+  if (pool.length === 0) return undefined;
+  const best = pool.reduce((a, b) => (b.overall > a.overall || (b.overall === a.overall && b.id < a.id) ? b : a));
+  return { name: `${best.name.first} ${best.name.last}`, rating: best.overall, role: best.position };
+}
 import type { InteractiveInput } from '../engine/interactiveMatch';
 
 const squadOf = (players: Record<string, Player>, clubId: string) =>
@@ -94,6 +108,7 @@ export function buildInteractiveInput(
     cameo: !willStart && onBench,
     intent: defaultPositioning(role),
     occasion,
+    marker: pickMarker(avatar, oppSquad),
   };
   return { input, willStart, willComeOn: onBench };
 }

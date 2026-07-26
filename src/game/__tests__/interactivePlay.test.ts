@@ -48,6 +48,14 @@ describe('buildInteractiveInput — occasion framing', () => {
     expect(r.input.occasion?.kind).not.toBe('DERBY');
   });
 
+  it('assigns a personal duel marker — an attacker draws an opposing defender', () => {
+    const { players, clubs, match, avatar } = setup('Arsenal', 'Everton');
+    const r = buildInteractiveInput({ seed: 1, competitions: {} }, players, clubs, match, avatar, career());
+    expect(r.input.marker).toBeTruthy();
+    expect(['RCB', 'LCB', 'RB', 'LB']).toContain(r.input.marker!.role);
+    expect(r.input.marker!.rating).toBeGreaterThan(0);
+  });
+
   it('flags a reunion when the opponent is a club the avatar used to play for', () => {
     const { players, clubs, match, avatar } = setup('Arsenal', 'Everton');
     const c = { ...career(), seasonHistory: [{ season: '2023/24', club: 'Everton', apps: 30, goals: 5, assists: 3, avgRating: 7, honours: [] }] } as unknown as PlayerCareer;
