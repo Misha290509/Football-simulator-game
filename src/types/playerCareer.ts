@@ -292,6 +292,8 @@ export interface PlayerCareer {
   dressingRoom?: DressingRoomState | null;
   /** An active comeback from a serious injury (long-layoff narrative arc). */
   comeback?: { weeksOut: number; sinceDay: number; returned: boolean } | null;
+  /** Club ids where a "club legend" moment has already been celebrated (once each). */
+  legendMilestones?: string[];
 
   // --- Adversity (Tier 2) ----------------------------------------------------
   confidence?: number; // 0–100 slump mechanic

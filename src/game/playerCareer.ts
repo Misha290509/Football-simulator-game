@@ -630,6 +630,24 @@ export function applyAvatarMatchday(
       news.push(feed(`news_pc_apprec_${m}_${day}`, day, 'MILESTONE', `${m} appearances`, `${nameOf(avatar)} reaches ${m} senior appearances.`));
     }
   }
+
+  // Club legend: the first time long service at the current club crosses the
+  // legend threshold, celebrate it live (once per club) — the same thresholds
+  // the legacy screen uses, but recognised while it's happening.
+  const clubName = clubId ? clubs[clubId]?.name : undefined;
+  if (clubName && clubId) {
+    const hist = (next.seasonHistory ?? []).filter((s) => s.club === clubName);
+    const clubApps = hist.reduce((n, s) => n + s.apps, 0) + next.seasonApps;
+    const clubGoals = hist.reduce((n, s) => n + s.goals, 0) + next.seasonGoals;
+    const clubHonours = hist.reduce((n, s) => n + (s.honours?.length ?? 0), 0);
+    const isLegend = clubApps >= 120 || (clubApps >= 70 && clubHonours >= 3) || (clubApps >= 60 && clubGoals >= 60);
+    const already = next.legendMilestones ?? [];
+    if (isLegend && !already.includes(clubId)) {
+      milestones.push({ day, text: `Became a ${clubName} legend.` });
+      news.push(feed(`news_pc_legend_${clubId}_${day}`, day, 'MILESTONE', `A ${clubName} legend`, `${nameOf(avatar)} has written his name into ${clubName} folklore — ${clubApps} appearances and counting. The fans will sing his name long after he is gone.`));
+      next = { ...next, legendMilestones: [...already, clubId] };
+    }
+  }
   next = { ...next, milestones };
 
   // A personal feed line for the latest match.

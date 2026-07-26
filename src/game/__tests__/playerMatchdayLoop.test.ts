@@ -64,6 +64,23 @@ describe('applyAvatarMatchday (Player Career matchday loop)', () => {
     expect(career.lastMatch).toBeUndefined();
   });
 
+  it('celebrates becoming a club legend once when long service crosses the threshold', () => {
+    const longServed = {
+      ...freshCareer(),
+      seasonHistory: [{ season: '2024/25', club: 'City FC', apps: 119, goals: 40, assists: 20, avgRating: 7.2, honours: [] }],
+    };
+    const av = avatar([{ appearances: 1, starts: 1, minutes: 90, ratingSum: 7, ratingCount: 1, avgRating: 7 }]);
+    const played = [match('m1', 20, 1, 0, { rating: 7 })];
+    const res = applyAvatarMatchday(longServed, av, played, CLUBS, COMPS, 'S', 22);
+    expect(res.news.some((n) => /legend/i.test(n.title))).toBe(true);
+    expect(res.career.legendMilestones).toContain('C');
+
+    // A later advance does not re-fire the legend beat.
+    const av2 = avatar([{ appearances: 2, minutes: 180, ratingSum: 14, ratingCount: 2, avgRating: 7 }]);
+    const res2 = applyAvatarMatchday(res.career, av2, [match('m2', 25, 1, 0, { rating: 7 })], CLUBS, COMPS, 'S', 27);
+    expect(res2.news.some((n) => /legend/i.test(n.title))).toBe(false);
+  });
+
   it('does not duplicate the debut milestone on a later advance', () => {
     const av1 = avatar([{ appearances: 1, minutes: 90, ratingSum: 7, ratingCount: 1 }]);
     const step1 = applyAvatarMatchday(freshCareer(), av1, [match('m1', 10, 1, 0, { rating: 7 })], CLUBS, COMPS, 'S', 12).career;
