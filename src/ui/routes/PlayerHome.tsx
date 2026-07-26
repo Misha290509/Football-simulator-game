@@ -267,6 +267,26 @@ export function PlayerHome() {
           );
         })()}
 
+        {/* Mentor — a named senior team-mate in your corner */}
+        {career.mentor && (
+          <div className="card p-4">
+            <h2 className="text-sm font-semibold text-slate-400 mb-2">Your mentor</h2>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-200 truncate">{career.mentor.departed ? '🕊️ ' : '🤝 '}{career.mentor.name}</span>
+              <span className="text-[11px] text-slate-500">{career.mentor.departed ? 'moved on' : 'since ' + career.mentor.since}</span>
+            </div>
+            <div className="mt-2 h-1.5 rounded bg-surface-700 overflow-hidden">
+              <div className="h-full bg-amber-400" style={{ width: `${Math.round(career.mentor.bond)}%` }} />
+            </div>
+            <div className="text-[11px] mt-1 text-slate-500">
+              {career.mentor.departed ? 'A bond you carry with you.'
+                : career.mentor.bond >= 85 ? 'Like family now — he’d run through a wall for you.'
+                : career.mentor.bond >= 65 ? 'A trusted voice when it gets hard.'
+                : 'Still finding your feet together.'}
+            </div>
+          </div>
+        )}
+
         {/* Promises */}
         <div className="card p-4">
           <h2 className="text-sm font-semibold text-slate-400 mb-2">Manager’s promises</h2>

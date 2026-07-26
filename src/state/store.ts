@@ -83,6 +83,7 @@ import {
   postDropConversation, evaluatePromises, resolveConversation, requestMeetingOutcome, roleMeetingConversation,
   maybeSurfaceConversation, captaincyConversation, type MeetingTopic,
 } from '../game/playerConversations';
+import { advanceMentor } from '../game/playerMentor';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -4079,6 +4080,11 @@ async function playDays(
         const prevInjured = !!avatarAtStart?.injury;
         const prog = progressPlayerCareer(pc, avatar, squad, toYear, to, prevInjured, cid ? clubsAfter[cid] : undefined, meta.seed);
         pc = prog.career; newsItems.push(...prog.news);
+
+        // 2b) The mentor: a senior team-mate takes the young avatar under his
+        //     wing — a named relationship that lifts morale on the hard days.
+        const men = advanceMentor(pc, avatar, squad, toYear, to, meta.seed);
+        pc = men.career; newsItems.push(...men.news); moraleDelta += men.moraleDelta;
 
         // 3) A demotion this advance triggers a manager sit-down; a first-time
         //    promotion to captain surfaces the armband offer; otherwise a state-

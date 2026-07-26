@@ -1,0 +1,75 @@
+import { describe, it, expect } from 'vitest';
+import { advanceMentor, pickMentorCandidate } from '../playerMentor';
+import type { Player } from '../../types/player';
+import type { PlayerCareer } from '../../types/playerCareer';
+
+function player(id: string, over: Partial<Player> & { bornYear?: number; overall?: number }): Player {
+  return {
+    id, name: { first: id, last: id.toUpperCase() }, position: 'ST', positions: ['ST'],
+    overall: over.overall ?? 70, potential: 85, form: 0,
+    born: { year: over.bornYear ?? 2004, month: 1, day: 1 },
+    contract: { clubId: 'C', expiresYear: 2030, wage: 1000 },
+    attributes: {} as Player['attributes'],
+    ...over,
+  } as unknown as Player;
+}
+
+const career = (over: Partial<PlayerCareer> = {}): PlayerCareer => ({
+  playerId: 'me', origin: {} as PlayerCareer['origin'], archetype: 'x',
+  seasonApps: 6, status: 'ROTATION', recentRatings: [6.8, 7.0, 6.9],
+  ...over,
+} as unknown as PlayerCareer);
+
+describe('pickMentorCandidate', () => {
+  it('picks a fitting senior team-mate (older, better) and none when there is no fit', () => {
+    const me = player('me', { overall: 68, bornYear: 2006 });
+    const senior = player('vet', { overall: 80, bornYear: 1990 });
+    const kid = player('kid', { overall: 60, bornYear: 2006 });
+    expect(pickMentorCandidate(me, [me, senior, kid], 2024, 42)?.id).toBe('vet');
+    // Nobody senior enough → no mentor.
+    expect(pickMentorCandidate(me, [me, kid], 2024, 42)).toBeNull();
+  });
+});
+
+describe('advanceMentor', () => {
+  const me = player('me', { overall: 68, bornYear: 2006 });
+  const senior = player('vet', { overall: 80, bornYear: 1990 });
+  const squad = [me, senior];
+
+  it('is deterministic — same inputs reproduce exactly', () => {
+    const a = advanceMentor(career(), me, squad, 2024, 100, 7);
+    const b = advanceMentor(career(), me, squad, 2024, 100, 7);
+    expect(a.career.mentor).toEqual(b.career.mentor);
+    expect(a.news.map((n) => n.title)).toEqual(b.news.map((n) => n.title));
+  });
+
+  it('eventually seeds a mentor across a run of matchdays, then keeps it', () => {
+    let c = career();
+    let seeded = false;
+    for (let day = 100; day < 200 && !seeded; day += 7) {
+      const r = advanceMentor(c, me, squad, 2024, day, 7);
+      c = r.career;
+      if (c.mentor) seeded = true;
+    }
+    expect(seeded).toBe(true);
+    expect(c.mentor?.playerId).toBe('vet');
+  });
+
+  it('a mentor who leaves the club gets a send-off and the bond is remembered', () => {
+    const c = career({ mentor: { playerId: 'vet', name: 'vet VET', bond: 70, since: 2023 } });
+    const r = advanceMentor(c, me, [me], 2024, 300, 7); // 'vet' no longer in squad
+    expect(r.career.mentor?.departed).toBe(true);
+    expect(r.news.some((n) => /moves on/i.test(n.title))).toBe(true);
+  });
+
+  it('lifts morale with a quiet word on a cold streak', () => {
+    const cold = career({ mentor: { playerId: 'vet', name: 'vet VET', bond: 60, since: 2023 }, recentRatings: [5.8, 5.9, 5.7] });
+    // Scan days for the deterministic beat; when it fires morale is positive.
+    let fired = false;
+    for (let day = 100; day < 400; day += 7) {
+      const r = advanceMentor(cold, me, squad, 2024, day, 7);
+      if (r.news.some((n) => /word from/i.test(n.title))) { expect(r.moraleDelta).toBeGreaterThan(0); fired = true; break; }
+    }
+    expect(fired).toBe(true);
+  });
+});
