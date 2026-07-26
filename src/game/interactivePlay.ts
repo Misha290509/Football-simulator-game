@@ -13,6 +13,7 @@ import type { GamePlan } from '../types/interactiveMatch';
 import { buildLineupProfile, resolveBench } from '../engine/lineup';
 import { momentRole, defaultPositioning } from './momentLibrary';
 import { avatarSelectionBias } from './playerCareer';
+import { areRivals } from './rivalries';
 import type { InteractiveInput } from '../engine/interactiveMatch';
 
 const squadOf = (players: Record<string, Player>, clubId: string) =>
@@ -56,7 +57,15 @@ export function buildInteractiveInput(
   const onBench = !willStart && resolveBench(mySquad, clubs[clubId]?.formation ?? '4-3-3', { autoMode: true })
     .some((b) => b.id === avatar.id);
   const role = momentRole(avatar.position);
-  const importance = meta.competitions[match.competitionId] ? 0.4 : 0.7; // cup/continental = bigger
+  // Derby detection ties the rivalries system into the match: a derby raises the
+  // stakes (importance → pressure/nerves in the moments) and frames the occasion.
+  const myName = clubs[clubId]?.name, oppName = clubs[oppId]?.name;
+  const derby = !!(myName && oppName && areRivals(myName, oppName));
+  let importance = meta.competitions[match.competitionId] ? 0.4 : 0.7; // cup/continental = bigger
+  if (derby) importance = Math.max(importance, 0.78);
+  const occasion: InteractiveInput['occasion'] = derby
+    ? { kind: 'DERBY', label: `Derby day — ${clubs[oppId]?.shortName ?? 'your rivals'}` }
+    : importance >= 0.65 ? { kind: 'BIG_MATCH', label: 'A big occasion' } : undefined;
   const plan = gamePlan ?? defaultGamePlan(myProfile.attack, oppProfile.defense, role);
 
   const input: InteractiveInput = {
@@ -77,6 +86,7 @@ export function buildInteractiveInput(
     frequency: 'NORMAL', // overridden from settings by the store
     cameo: !willStart && onBench,
     intent: defaultPositioning(role),
+    occasion,
   };
   return { input, willStart, willComeOn: onBench };
 }

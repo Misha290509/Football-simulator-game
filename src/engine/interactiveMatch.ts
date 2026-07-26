@@ -47,6 +47,9 @@ export interface InteractiveInput {
    *  only. Same number of RNG draws as `intent`, so the first half replays
    *  identically — only the types of minute≥45 moments change. */
   intent2?: PositioningIntent;
+  /** A special occasion framing the fixture (derby, big match) — presentation +
+   *  raised stakes; the importance value already reflects it. */
+  occasion?: { kind: 'DERBY' | 'BIG_MATCH'; label: string };
 }
 
 // --- Small deterministic helpers -------------------------------------------
