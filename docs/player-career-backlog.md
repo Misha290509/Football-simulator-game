@@ -20,6 +20,8 @@
 
 > **Wave 11 (former-club reunion).** Facing a club the avatar has played for before is now its own occasion: detected from his season history (by club name, excluding the current club), it raises the stakes and shows a distinct "Return to …" banner on the team-talk screen — old faces, familiar stands. Sits between the derby and generic big-match framings. Covered by a new test.
 
+> **Wave 12 (international landmarks).** Caps already accrued season-to-season; now they're *celebrated*. Crossing 25 / 50 / 100 / 150 caps raises a milestone, and the avatar's first senior goal for his country gets its own beat — alongside the existing tournament-squad recognition. Landmarks that make an international career feel like it accumulates.
+
 > **Implementation status (this branch).** Most of the backlog below has now been built. **Shipped (37):** #1–#7, #9–#12, #15–#24, #26–#29, #31, #32, #35, #38, #40, #42, #43, #45, #47–#50. **Partial / intentionally-scoped (4):** #8 & #14 (training-ground progress + breakthroughs shipped; a fully-interactive "prove-it" training moment is not), #13 (half-time confidence beat only — the deterministic match input is deliberately never mutated mid-game), #44 (legacy already scores records; no new concrete record-chases). **Deferred big-bets / higher-risk (9):** #25 youth graduation arc, #30 dressing-room bridge, #33 personal-terms counter-offer, #34 media rivalry, #36 brand identity, #37 life events, #39 playable international matches, #41 tournament runs, #46 interactive testimonial. All shipped work keeps the suite green (478 tests) and respects the determinism + additive-migration rules. See the commit for specifics.
 
 ---

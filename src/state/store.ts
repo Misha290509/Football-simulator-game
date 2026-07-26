@@ -2926,6 +2926,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           const capsAdd = Math.max(1, Math.round(baseCaps * (0.6 + (pc.intlManagerTrust ?? 50) / 125)));
           const goalsAdd = Math.round(pc.seasonGoals * 0.18);
           international = { capped: true, caps: pc.international.caps + capsAdd, intlGoals: pc.international.intlGoals + goalsAdd };
+          // International landmarks: caps milestones + the first goal for country.
+          const nation = avatar?.nationality ?? 'his country';
+          const who = avatar ? `${avatar.name.first} ${avatar.name.last}` : 'You';
+          for (const mgoal of [25, 50, 100, 150]) {
+            if (pc.international.caps < mgoal && international.caps >= mgoal) {
+              intlNews.push({ id: `news_pc_caps_${mgoal}_${result.newSeason.year}`, day: 0, category: 'MILESTONE', title: `${mgoal} caps for ${nation}`, body: `${who} brings up ${mgoal} senior international caps — a servant of the national team.`, read: false });
+            }
+          }
+          if (pc.international.intlGoals === 0 && international.intlGoals > 0) {
+            intlNews.push({ id: `news_pc_intlgoal1_${result.newSeason.year}`, day: 0, category: 'MILESTONE', title: `First goal for ${nation}`, body: `${who} is off the mark for ${nation} — the first of many, they'll hope.`, read: false });
+          }
           if ((result.tournaments?.length ?? 0) > 0 || result.worldCup) {
             const compName = result.worldCup ? 'World Cup' : (result.tournaments?.[0]?.name ?? 'international tournament');
             tournamentSquads = [...tournamentSquads, { competition: compName, season: finished?.label ?? '' }];
