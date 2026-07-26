@@ -54,6 +54,29 @@ describe('positional rival', () => {
     const res = updateRival(career(), avatar, [avatar, rivalST, otherCB], 50);
     expect(res.career.rival!.playerId).toBe(rivalST.id);
   });
+
+  it('a rival who leaves the club triggers a "moved on" beat and a fresh challenger', () => {
+    const avatar = mk(70, { position: 'ST' });
+    const oldRival = mk(80, { position: 'ST' });
+    const newRival = mk(74, { position: 'ST' });
+    // Career already tracks oldRival, but the squad no longer contains him.
+    const c = career({ rival: { playerId: oldRival.id, relationship: 0, edge: 0 } });
+    const res = updateRival(c, avatar, [avatar, newRival], 120);
+    expect(res.news.some((n) => /moved on/i.test(n.title))).toBe(true);
+    expect(res.career.rival!.playerId).toBe(newRival.id);
+  });
+
+  it('a decisive head-to-head edge fires "the shirt is yours"', () => {
+    const avatar = mk(70, { position: 'ST' });
+    avatar.form = 40; // out-forming him tips the edge up
+    const rivalST = mk(72, { position: 'ST' });
+    rivalST.form = -40;
+    // Prior edge just below the decisive threshold, same rival.
+    const c = career({ rival: { playerId: rivalST.id, relationship: 0, edge: 5 } });
+    const res = updateRival(c, avatar, [avatar, rivalST], 200);
+    expect(res.career.rival!.edge).toBeGreaterThanOrEqual(6);
+    expect(res.news.some((n) => /shirt is yours/i.test(n.title))).toBe(true);
+  });
 });
 
 describe('traits', () => {

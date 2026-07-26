@@ -69,6 +69,23 @@ export function updateStatus(career: PlayerCareer, avatar: Player, year: number,
  *  rival, the rival going down injured (your chance), and the rivalry turning
  *  bitter or into a mutual-respect thing. The specific rival feeds selection via
  *  `selectionMomentum` in playerCareer.ts — this is where he gets his teeth. */
+const SHIRT_WON = [
+  'The manager barely has a decision to make any more — the shirt is yours.',
+  'You’ve won the head-to-head decisively; the pecking order isn’t close now.',
+  'Week after week it’s been you. He knows it — and so does the manager.',
+];
+const RIVAL_JAB = [
+  '“I’ve earned my spot,” he told reporters, with a glance you didn’t miss.',
+  'He’s nailed down the shirt — and hasn’t been shy about letting everyone know.',
+  'The manager’s made his call, and right now it isn’t you. Answer it on the pitch.',
+];
+const RIVAL_GONE = [
+  'He’s been transferred out. The shirt is unarguably yours — until the next challenger arrives.',
+  'Your great rival has left the club. Strange how quiet the dressing room feels without that edge.',
+  'He got his move. The battle that defined these seasons is over — you won it by outlasting him.',
+];
+const pickQ = (arr: string[], key: string): string => arr[hashSeed(key) % arr.length];
+
 export function updateRival(career: PlayerCareer, avatar: Player, squad: Player[], day: number): { career: PlayerCareer; news: NewsItem[] } {
   const grp = POSITION_GROUP[avatar.position];
   const samePos = squad.filter((p) => p.id !== avatar.id && p.position === avatar.position);
@@ -82,7 +99,9 @@ export function updateRival(career: PlayerCareer, avatar: Player, squad: Player[
   const sameRival = prev?.playerId === pick.id;
   let relationship = sameRival ? prev!.relationship : 0;
   let edge = sameRival ? (prev!.edge ?? 0) : 0;
+  const prevEdge = sameRival ? (prev!.edge ?? 0) : 0;
   const wasSidelined = sameRival ? !!prev!.sidelined : false;
+  const prevGone = !!prev && !squad.some((p) => p.id === prev.playerId);
 
   // Head-to-head edge: out-forming your direct rival tips the pecking order your
   // way over time; being out-formed by him erodes it. Bounded.
@@ -94,6 +113,9 @@ export function updateRival(career: PlayerCareer, avatar: Player, squad: Player[
 
   const sidelined = !!pick.injury || (pick.cards?.suspendedFor ?? 0) > 0;
 
+  // The old rival left the club — the shirt is (for now) unarguably yours.
+  if (prevGone) news.push(feed(day, 'MILESTONE', 'Your rival has moved on', pickQ(RIVAL_GONE, `${prev!.playerId}:${day}`)));
+
   if (!sameRival) {
     if (prev) news.push(feed(day, 'GENERAL', 'A new rival for the shirt', `${nameOf(pick)} is now your main competition for the ${avatar.position} role.`));
   } else {
@@ -103,6 +125,9 @@ export function updateRival(career: PlayerCareer, avatar: Player, squad: Player[
     } else if (!sidelined && wasSidelined) {
       news.push(feed(day, 'GENERAL', 'Your rival is back', `${nameOf(pick)} is fit again — the competition for the shirt is back on.`));
     }
+    // A decisive turn in the head-to-head — the shirt battle is won or lost.
+    if (edge >= 6 && prevEdge < 6) news.push(feed(day, 'MILESTONE', 'The shirt is yours', pickQ(SHIRT_WON, `${pick.id}:${day}`)));
+    else if (edge <= -6 && prevEdge > -6) news.push(feed(day, 'GENERAL', `${pick.name.last} has the shirt`, pickQ(RIVAL_JAB, `${pick.id}:${day}`)));
     // #5 — the rivalry crosses into open enmity or grudging respect.
     if (relationship <= -60 && (prev!.relationship ?? 0) > -60) news.push(feed(day, 'GENERAL', 'No love lost', `Things have turned frosty between you and ${nameOf(pick)} — this is personal now.`));
     else if (relationship >= 60 && (prev!.relationship ?? 0) < 60) news.push(feed(day, 'GENERAL', 'Rivals and friends', `You and ${nameOf(pick)} push each other hard — but there's real respect there.`));
