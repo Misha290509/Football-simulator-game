@@ -47,4 +47,12 @@ describe('buildInteractiveInput — occasion framing', () => {
     const r = buildInteractiveInput({ seed: 1, competitions: {} }, players, clubs, match, avatar, career());
     expect(r.input.occasion?.kind).not.toBe('DERBY');
   });
+
+  it('flags a reunion when the opponent is a club the avatar used to play for', () => {
+    const { players, clubs, match, avatar } = setup('Arsenal', 'Everton');
+    const c = { ...career(), seasonHistory: [{ season: '2023/24', club: 'Everton', apps: 30, goals: 5, assists: 3, avgRating: 7, honours: [] }] } as unknown as PlayerCareer;
+    const r = buildInteractiveInput({ seed: 1, competitions: {} }, players, clubs, match, avatar, c);
+    expect(r.input.occasion?.kind).toBe('FORMER_CLUB');
+    expect(r.input.importance).toBeGreaterThanOrEqual(0.72);
+  });
 });

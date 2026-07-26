@@ -61,10 +61,17 @@ export function buildInteractiveInput(
   // stakes (importance → pressure/nerves in the moments) and frames the occasion.
   const myName = clubs[clubId]?.name, oppName = clubs[oppId]?.name;
   const derby = !!(myName && oppName && areRivals(myName, oppName));
+  // A reunion with a club the avatar has played for before (by full club name,
+  // excluding the current one) — a personal occasion of its own.
+  const pastClubs = new Set((career.seasonHistory ?? []).map((s) => s.club));
+  const formerClub = !!(oppName && oppName !== myName && pastClubs.has(oppName));
   let importance = meta.competitions[match.competitionId] ? 0.4 : 0.7; // cup/continental = bigger
   if (derby) importance = Math.max(importance, 0.78);
+  else if (formerClub) importance = Math.max(importance, 0.72);
   const occasion: InteractiveInput['occasion'] = derby
     ? { kind: 'DERBY', label: `Derby day — ${clubs[oppId]?.shortName ?? 'your rivals'}` }
+    : formerClub
+    ? { kind: 'FORMER_CLUB', label: `Return to ${clubs[oppId]?.shortName ?? 'a former club'}` }
     : importance >= 0.65 ? { kind: 'BIG_MATCH', label: 'A big occasion' } : undefined;
   const plan = gamePlan ?? defaultGamePlan(myProfile.attack, oppProfile.defense, role);
 

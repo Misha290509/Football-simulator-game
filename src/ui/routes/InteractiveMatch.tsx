@@ -60,6 +60,8 @@ export function InteractiveMatch() {
           <h1 className="page-title">{ip.input.cameo ? 'Get ready to come on' : 'Team talk'}</h1>
           {ip.input.occasion?.kind === 'DERBY' ? (
             <div className="text-xs px-2.5 py-1.5 rounded border border-rose-500/40 bg-rose-500/10 text-rose-200">⚔️ {ip.input.occasion.label} — the one the fans circle on the calendar. Bragging rights, raw nerves, no hiding place.</div>
+          ) : ip.input.occasion?.kind === 'FORMER_CLUB' ? (
+            <div className="text-xs px-2.5 py-1.5 rounded border border-sky-500/40 bg-sky-500/10 text-sky-200">🔙 {ip.input.occasion.label} — old faces, familiar stands. Prove they were wrong to let you go, or show them what they made you.</div>
           ) : ip.input.importance >= 0.6 && (
             <div className="text-xs px-2.5 py-1.5 rounded border border-amber-500/30 bg-amber-500/5 text-amber-200">🔥 Big occasion — the pressure’s on. Nerves will bite unless you rise to it.</div>
           )}
