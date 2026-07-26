@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  deriveSquadStatus, updateStatus, updateRival, updateTraits, updateAdversity, updateInternational, statusRank,
+  deriveSquadStatus, updateStatus, updateRival, updateTraits, updateAdversity, updateInternational, resolveCallUp, statusRank,
 } from '../playerProgression';
 import { resolveConversation, evaluatePromises, requestMinutesOutcome, roleMeetingConversation } from '../playerConversations';
 import { generatePlayer } from '../../engine/generator';
@@ -86,12 +86,22 @@ describe('adversity', () => {
 });
 
 describe('international call-up', () => {
-  it('fires the first cap once form + standing cross the threshold', () => {
+  it('surfaces a call-up decision once form + standing cross the threshold, and accepting wins the cap', () => {
     const p = mk(80);
     const res = updateInternational(career({ status: 'KEY', seasonApps: 12, seasonAvgRating: 7.1 }), p, 200);
-    expect(res.career.international.capped).toBe(true);
-    expect(res.career.international.caps).toBe(1);
+    // The call-up is now an accept/withdraw decision, not an automatic cap.
+    expect(res.career.pendingCallUp).toBeTruthy();
+    expect(res.career.international.capped).toBe(false);
     expect(res.news.some((n) => /call-up/i.test(n.title))).toBe(true);
+    // Accepting wins the first cap and opens the national-team relationship.
+    const accepted = resolveCallUp(res.career, p, true, 205);
+    expect(accepted.career.international.capped).toBe(true);
+    expect(accepted.career.international.caps).toBe(1);
+    expect(accepted.career.pendingCallUp).toBeNull();
+    // Withdrawing instead leaves him uncapped.
+    const declined = resolveCallUp(res.career, p, false, 205);
+    expect(declined.career.international.capped).toBe(false);
+    expect(declined.career.pendingCallUp).toBeNull();
   });
   it('does not call up a fringe player', () => {
     const p = mk(70);

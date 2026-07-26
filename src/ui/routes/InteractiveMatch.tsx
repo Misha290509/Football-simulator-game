@@ -54,7 +54,13 @@ export function InteractiveMatch() {
 
       {ip.phase === 'PREMATCH' && (
         <div className="card p-4 space-y-3">
-          <h1 className="page-title">Team talk</h1>
+          <h1 className="page-title">{ip.input.cameo ? 'Get ready to come on' : 'Team talk'}</h1>
+          {ip.input.importance >= 0.6 && (
+            <div className="text-xs px-2.5 py-1.5 rounded border border-amber-500/30 bg-amber-500/5 text-amber-200">🔥 Big occasion — the pressure’s on. Nerves will bite unless you rise to it.</div>
+          )}
+          {ip.input.cameo && (
+            <div className="text-xs px-2.5 py-1.5 rounded border border-sky-500/30 bg-sky-500/5 text-sky-200">You’re on the bench — this is a late cameo to make an impact. Fewer chances, so make them count.</div>
+          )}
           <p className="text-sm text-slate-400">The manager sets your instruction for the match. You can follow it — or back your instincts.</p>
           <div className="grid sm:grid-cols-2 gap-2">
             {(Object.keys(PLAN_INFO) as GamePlan[]).map((p) => (

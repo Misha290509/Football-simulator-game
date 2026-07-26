@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   playerSelectionWeight, trustFromMatch, applyMatchdayToCareer, PAR_MATCH_RATING,
+  selectionMomentum, avatarSelectionBias,
 } from '../playerCareer';
 import type { PlayerCareer } from '../../types/playerCareer';
+import type { Player } from '../../types/player';
 
 function career(trust: number, status: PlayerCareer['status'] = 'YOUTH'): PlayerCareer {
   return {
@@ -52,6 +54,48 @@ describe('trustFromMatch', () => {
     let t = 30;
     for (let i = 0; i < 8; i++) t = trustFromMatch(t, 8.0);
     expect(t).toBeGreaterThan(40);
+  });
+});
+
+function player(over: Partial<Player> = {}): Player {
+  return {
+    id: 'a', name: { first: 'Al', last: 'Hunter' }, position: 'ST', positions: ['ST'],
+    overall: 72, form: 0, fitness: 90, injury: null, cards: { suspendedFor: 0 } as never,
+    contract: { clubId: 'C' }, born: { year: 2003 }, ...over,
+  } as unknown as Player;
+}
+
+describe('selectionMomentum (the week-to-week shirt battle)', () => {
+  it('a hot streak of form + ratings pushes selection up; a cold one pushes it down', () => {
+    const base = career(50);
+    const hot = selectionMomentum({ ...base, recentRatings: [8, 8.2, 7.8] }, player({ form: 25 }), []);
+    const cold = selectionMomentum({ ...base, recentRatings: [5, 5.2, 5.5] }, player({ form: -25 }), []);
+    expect(hot).toBeGreaterThan(0);
+    expect(cold).toBeLessThan(0);
+    expect(hot).toBeGreaterThan(cold);
+  });
+
+  it('an undercooked return after injury (low sharpness) dents the case', () => {
+    const sharp = selectionMomentum({ ...career(50), matchSharpness: 100 }, player(), []);
+    const rusty = selectionMomentum({ ...career(50), matchSharpness: 40 }, player(), []);
+    expect(rusty).toBeLessThan(sharp);
+  });
+
+  it('the specific rival being sidelined throws the shirt open', () => {
+    const squad = [player(), player({ id: 'riv', form: 0, injury: { severity: 'MINOR' } as never })];
+    const withRival = { ...career(50), rival: { playerId: 'riv', relationship: 0 } };
+    const boost = selectionMomentum(withRival, player(), squad);
+    const noRival = selectionMomentum(career(50), player(), squad);
+    expect(boost).toBeGreaterThan(noRival);
+  });
+});
+
+describe('avatarSelectionBias (manager style tilts the earned bias)', () => {
+  it('a loyal manager backs a trusted player harder than a ruthless one', () => {
+    const c = career(80, 'KEY');
+    const loyal = avatarSelectionBias({ ...c, managerStyle: 'LOYAL' }, player(), []);
+    const ruthless = avatarSelectionBias({ ...c, managerStyle: 'RUTHLESS' }, player(), []);
+    expect(loyal).toBeGreaterThan(ruthless);
   });
 });
 

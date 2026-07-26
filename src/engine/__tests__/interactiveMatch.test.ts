@@ -101,6 +101,23 @@ describe('interactive match — position-correct moments', () => {
   });
 });
 
+describe('interactive match — impact-sub cameo (benched avatar)', () => {
+  it('a cameo produces a handful of late moments, deterministically, with limited minutes', () => {
+    const inp: InteractiveInput = { ...input('ST'), cameo: true, status: 'PROSPECT' };
+    const a = playThrough(inp);
+    // A cameo budget is 2–4 moments (fewer than a full start's 4–10).
+    expect(a.decisions.length).toBeGreaterThanOrEqual(2);
+    expect(a.decisions.length).toBeLessThanOrEqual(4);
+    // Same seed + decisions reproduce the cameo exactly.
+    const replay = runInteractiveMatch(inp, a.decisions);
+    if (replay.kind === 'DONE') {
+      expect(fingerprint(replay.match)).toBe(fingerprint(a.match));
+      const av = replay.match.playerStats.find((s) => s.playerId === inp.avatar.id);
+      expect(av && av.minutes).toBeLessThanOrEqual(30);
+    }
+  });
+});
+
 describe('interactive match — no stat inflation', () => {
   it('an auto-first-choice striker averages a sane number of goals per match', () => {
     let goals = 0; const N = 40;

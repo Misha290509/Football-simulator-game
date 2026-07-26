@@ -97,6 +97,46 @@ export function PlayerTraining() {
         </div>
       </div>
 
+      {/* Coach, focus progress & this week's report */}
+      <div className="card p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-400">Development</h2>
+          {career.coachRelationship != null && <span className="text-[11px] text-slate-500">Coach rapport {Math.round(career.coachRelationship)}</span>}
+        </div>
+        <div>
+          <div className="flex items-center justify-between text-xs mb-1">
+            <span className="text-slate-400">Progress toward your next step{focus ? ` in ${FOCI.find((f) => f.id === focus)?.label.toLowerCase() ?? focus.toLowerCase()}` : ''}</span>
+            <span className="font-mono text-slate-500">{Math.round(career.focusProgress ?? 0)}%</span>
+          </div>
+          <div className="h-2 rounded bg-surface-700 overflow-hidden"><div className="h-full bg-accent-500" style={{ width: `${Math.round(career.focusProgress ?? 0)}%` }} /></div>
+        </div>
+        {career.coachAdviceFocus && career.coachAdviceFocus !== focus && (
+          <div className="text-xs text-sky-300/90">💬 The coach reckons you should focus on <span className="font-medium">{FOCI.find((f) => f.id === career.coachAdviceFocus)?.label ?? career.coachAdviceFocus}</span>.</div>
+        )}
+        {career.trainingReport && (
+          <div className="text-xs text-slate-400 border-t border-surface-700 pt-2">
+            <div>📋 {career.trainingReport.note}</div>
+            {career.trainingReport.sharpnessNote && <div className="text-slate-500 mt-0.5">{career.trainingReport.sharpnessNote}</div>}
+          </div>
+        )}
+      </div>
+
+      {/* Trait quests — how close you are to unlocking a perk */}
+      {career.traitProgress && Object.keys(career.traitProgress).length > 0 && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-2">Traits in progress</h2>
+          <div className="space-y-2">
+            {Object.entries(career.traitProgress).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id, pct]) => (
+              <div key={id}>
+                <div className="flex items-center justify-between text-xs mb-1"><span className="text-slate-300 capitalize">{id.replace(/_/g, ' ').toLowerCase()}</span><span className="font-mono text-slate-500">{Math.round(pct)}%</span></div>
+                <div className="h-1.5 rounded bg-surface-700 overflow-hidden"><div className="h-full bg-emerald-500/70" style={{ width: `${Math.round(pct)}%` }} /></div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-600 mt-2">Push the right attributes over the line in training to unlock these perks.</p>
+        </div>
+      )}
+
       {/* Strengths & weaknesses */}
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="card p-4">

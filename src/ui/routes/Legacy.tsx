@@ -18,6 +18,8 @@ export function Legacy() {
   const clubs = useGameStore((s) => s.clubs);
   const season = useGameStore((s) => s.currentSeason());
   const setDreamClub = useGameStore((s) => s.setDreamClub);
+  const addCustomAmbition = useGameStore((s) => s.addCustomAmbition);
+  const toggleCustomAmbition = useGameStore((s) => s.toggleCustomAmbition);
   const retrainAvatarPosition = useGameStore((s) => s.retrainAvatarPosition);
   const announceRetirement = useGameStore((s) => s.announceRetirement);
   const announceInternationalRetirement = useGameStore((s) => s.announceInternationalRetirement);
@@ -26,6 +28,7 @@ export function Legacy() {
   const p = career ? players[career.playerId] : undefined;
   const year = season?.year ?? meta?.startYear ?? new Date().getFullYear();
   const [toast, setToast] = useState<string | null>(null);
+  const [newAmbition, setNewAmbition] = useState('');
 
   const legacy = useMemo(() => (career && p && meta) ? computeLegacy(career, p, clubs, players, year) : null, [career, p, meta, clubs, players, year]);
   const totals = useMemo(() => (career && p) ? careerTotals(career, p, p.born.year) : null, [career, p]);
@@ -96,7 +99,11 @@ export function Legacy() {
           {(career.ambitions ?? []).map((a) => (
             <li key={a.id}>
               <div className="flex items-center justify-between text-sm">
-                <span className={a.achieved ? 'text-emerald-400' : 'text-slate-300'}>{a.achieved ? '✓ ' : '○ '}{a.text}</span>
+                <button
+                  className={`text-left ${a.achieved ? 'text-emerald-400' : 'text-slate-300'} ${a.kind === 'CUSTOM' ? 'hover:text-white cursor-pointer' : 'cursor-default'}`}
+                  onClick={() => a.kind === 'CUSTOM' && void toggleCustomAmbition(a.id)}
+                  title={a.kind === 'CUSTOM' ? 'Tap to mark done / undone' : undefined}
+                >{a.achieved ? '✓ ' : '○ '}{a.text}{a.kind === 'CUSTOM' && <span className="text-[10px] text-slate-600 ml-1">(personal)</span>}</button>
                 {a.target != null && !a.achieved && <span className="text-xs text-slate-500 font-mono">{Math.round(a.progress ?? 0)}/{a.target}</span>}
               </div>
               {a.target != null && !a.achieved && (
@@ -105,6 +112,28 @@ export function Legacy() {
             </li>
           ))}
         </ul>
+        {/* Set your own ambition */}
+        <form className="mt-3 flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (newAmbition.trim()) { void addCustomAmbition(newAmbition); setNewAmbition(''); } }}>
+          <input className="input-field text-sm flex-1" placeholder="Set a personal ambition…" value={newAmbition} onChange={(e) => setNewAmbition(e.target.value)} maxLength={80} />
+          <button type="submit" className="btn-ghost text-sm" disabled={!newAmbition.trim()}>Add</button>
+        </form>
+
+        {/* Era rival — the career you're racing */}
+        {career.eraRival && players[career.eraRival.playerId] && (() => {
+          const r = players[career.eraRival!.playerId];
+          const mine = legacy?.score ?? 0;
+          const theirs = r ? computeLegacy({ ...career, playerId: r.id } as never, r, clubs, players, year).score : 0;
+          const ahead = mine >= theirs;
+          return (
+            <div className="mt-3 pt-3 border-t border-surface-700">
+              <div className="text-xs text-slate-500 mb-1">Rival of your generation</div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-300">{fullName(r)} <span className="text-slate-500">({r.position} · {clubs[r.contract.clubId ?? '']?.shortName ?? '—'})</span></span>
+                <span className={`font-mono ${ahead ? 'text-emerald-400' : 'text-amber-400'}`}>{ahead ? 'you lead' : 'you trail'} · {mine} v {theirs}</span>
+              </div>
+            </div>
+          );
+        })()}
         {/* Dream club */}
         <div className="mt-4 pt-3 border-t border-surface-700 flex items-center gap-3">
           <span className="text-sm text-slate-400">Dream club</span>

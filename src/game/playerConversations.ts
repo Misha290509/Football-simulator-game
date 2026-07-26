@@ -8,7 +8,7 @@
 import type { Player } from '../types/player';
 import type { NewsItem } from '../types/league';
 import type { PlayerCareer, Conversation, CareerPromise, SquadStatus } from '../types/playerCareer';
-import { clamp } from '../engine/rng';
+import { clamp, Rng, hashSeed } from '../engine/rng';
 
 const PROMISE_WINDOW_DAYS = 130;
 let _seq = 0;
@@ -50,6 +50,61 @@ export function postDropConversation(status: SquadStatus, day: number): Conversa
   };
 }
 
+/** After a promotion / strong run — the manager praises the avatar. */
+export function praiseConversation(day: number): Conversation {
+  return {
+    id: `conv_praise_${day}`,
+    trigger: 'PRAISE',
+    prompt: 'The manager pulls you aside to say he’s been impressed lately. What do you say?',
+    choices: [
+      { text: 'Thank him and keep the head down.', trust: 2, morale: 2, relationship: 2 },
+      { text: 'Push for a bigger role now.', morale: 2, promise: 'PLAYING_TIME' },
+      { text: 'Say it’s time to talk about a new deal.', relationship: 1, promise: 'NEW_DEAL' },
+    ],
+  };
+}
+
+/** A sit-down after a poor run or a disciplinary flashpoint. */
+export function warningConversation(day: number): Conversation {
+  return {
+    id: `conv_warn_${day}`,
+    trigger: 'WARNING',
+    prompt: 'The manager isn’t happy with your recent form and attitude. How do you take it?',
+    choices: [
+      { text: 'Own it — “I’ll put it right.”', trust: 3, morale: -1 },
+      { text: 'Point to the service you’re getting.', trust: -2, morale: 1, relationship: -2 },
+      { text: 'Bite back — “play me in my position.”', trust: -3, morale: 2, relationship: -3, promise: 'NATURAL_POSITION' },
+    ],
+  };
+}
+
+/** The manager offers the armband. */
+export function captaincyConversation(day: number): Conversation {
+  return {
+    id: `conv_captain_${day}`,
+    trigger: 'CAPTAINCY',
+    prompt: 'The manager wants to make you captain. Do you take the armband?',
+    choices: [
+      { text: 'Lead from the front — it’d be an honour.', trust: 4, morale: 4, relationship: 4, promise: 'CAPTAINCY' },
+      { text: 'Not yet — let a senior head keep it.', trust: -1, morale: -1, relationship: 1 },
+    ],
+  };
+}
+
+/** Contract talks the avatar can open when he’s wanted. */
+export function contractTalkConversation(day: number): Conversation {
+  return {
+    id: `conv_deal_${day}`,
+    trigger: 'CONTRACT',
+    prompt: 'The manager asks about your future at the club. What’s your line?',
+    choices: [
+      { text: 'I’m happy here — let’s talk terms.', trust: 2, relationship: 3, promise: 'NEW_DEAL' },
+      { text: 'I want to see the club’s ambition first.', relationship: -1, morale: 1 },
+      { text: 'I’m keeping my options open.', trust: -2, relationship: -3, morale: 2 },
+    ],
+  };
+}
+
 // --- Resolution -------------------------------------------------------------
 
 export interface TalkResult { career: PlayerCareer; news: NewsItem[]; moraleDelta: number }
@@ -74,7 +129,66 @@ export function resolveConversation(career: PlayerCareer, conv: Conversation, ch
   return { career: next, news, moraleDelta: c.morale ?? 0 };
 }
 
+/**
+ * Occasionally surface a state-driven conversation (praise on a hot run, a
+ * warning on a cold one, contract talks when he's wanted). Event-driven and
+ * low-frequency: at most one, and only when nothing else is pending. Pure &
+ * deterministic under the seed + day.
+ */
+export function maybeSurfaceConversation(
+  career: PlayerCareer, avatar: Player, year: number, day: number, seed: number,
+): Conversation | null {
+  if ((career.pendingConversations ?? []).length > 0) return null;
+  const rng = new Rng((seed ^ hashSeed(`conv_${day}`)) >>> 0);
+  const age = year - avatar.born.year;
+  const trust = career.managerTrust ?? 50;
+  const rr = career.recentRatings ?? [];
+  const avg = rr.length ? rr.reduce((a, b) => a + b, 0) / rr.length : 6.7;
+
+  // Contract talks: within the last two years of the deal and wanted.
+  if (avatar.contract.expiresYear - year <= 2 && trust >= 55 && rng.chance(0.16)) return contractTalkConversation(day);
+  // Praise: a genuinely hot streak.
+  if (rr.length >= 3 && avg >= 7.4 && rng.chance(0.35)) return praiseConversation(day);
+  // Warning: a cold streak while still playing.
+  if (rr.length >= 3 && avg <= 6.0 && career.seasonApps >= 4 && rng.chance(0.3)) return warningConversation(day);
+  void age;
+  return null;
+}
+
 // --- Player-initiated meeting ------------------------------------------------
+
+export type MeetingTopic = 'MINUTES' | 'ROLE' | 'NEW_DEAL';
+
+/** A player-initiated sit-down on a chosen topic. Trust + form decide how it
+ *  lands; a warm reception can lock a promise the manager must then honour. */
+export function requestMeetingOutcome(career: PlayerCareer, avatar: Player, topic: MeetingTopic, day: number): TalkResult {
+  if (topic === 'MINUTES') return requestMinutesOutcome(career, avatar, day);
+  const trust = career.managerTrust ?? 50;
+  if (topic === 'NEW_DEAL') {
+    if (trust >= 60) {
+      const promise: CareerPromise = { text: 'The manager agreed to open contract talks.', kind: 'NEW_DEAL', deadline: day + PROMISE_WINDOW_DAYS };
+      return {
+        career: { ...career, clubRelationship: clamp((career.clubRelationship ?? 50) + 3, 0, 100) as number, promises: [...(career.promises ?? []), promise] },
+        news: [feed(day, 'BOARD', 'The club want to keep you', promise.text)],
+        moraleDelta: 4,
+      };
+    }
+    return {
+      career: { ...career, clubRelationship: clamp((career.clubRelationship ?? 50) - 1, 0, 100) as number },
+      news: [feed(day, 'BOARD', 'Not yet', `“Show me more and we'll talk about a new deal.” The club aren't ready to commit.`)],
+      moraleDelta: -2,
+    };
+  }
+  // ROLE — honest feedback pinned to where he stands, no promise.
+  const good = trust >= 55;
+  return {
+    career: { ...career, clubRelationship: clamp((career.clubRelationship ?? 50) + (good ? 2 : -1), 0, 100) as number },
+    news: [feed(day, 'BOARD', 'A frank chat about your role', good
+      ? `“You're important to how we play — keep it up and the minutes will come.”`
+      : `“Right now you're a squad option. It's on you to change my mind on the pitch.”`)],
+    moraleDelta: good ? 2 : -1,
+  };
+}
 
 /** The avatar asks for more minutes. Trust + form decide how it lands. */
 export function requestMinutesOutcome(career: PlayerCareer, avatar: Player, day: number): TalkResult {
@@ -119,7 +233,8 @@ export function evaluatePromises(career: PlayerCareer, avatar: Player, day: numb
       news.push(feed(day, 'BOARD', 'Promise kept', `The manager was good to his word — ${name} is happy with how it’s gone.`));
     } else {
       moraleDelta -= 8; relationship = clamp(relationship - 12, 0, 100);
-      news.push(feed(day, 'BOARD', 'Promise broken', `The manager went back on his word to ${name}. The relationship has soured.`));
+      const soured = relationship < 35;
+      news.push(feed(day, 'BOARD', 'Promise broken', `The manager went back on his word to ${name}. The relationship has soured${soured ? ' — it may be time to consider your future here.' : '.'}`));
     }
   }
   return { career: { ...career, promises: still, clubRelationship: relationship }, news, moraleDelta };

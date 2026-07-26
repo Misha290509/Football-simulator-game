@@ -37,6 +37,8 @@ export interface InteractiveInput {
   status: SquadStatus;
   gamePlan: GamePlan;
   frequency: 'LOW' | 'NORMAL' | 'HIGH';
+  /** The avatar comes off the bench: a short late cameo (fewer, later moments). */
+  cameo?: boolean;
 }
 
 // --- Small deterministic helpers -------------------------------------------
@@ -72,6 +74,8 @@ function pickWeighted<T extends { weight: number }>(rng: Rng, arr: T[]): T {
 interface MatchPlan { teammateGoals: number; oppBaseGoals: number; moments: { type: MomentType; minute: number }[] }
 
 function momentBudget(rng: Rng, input: InteractiveInput): number {
+  // A cameo off the bench is a handful of late chances to make an impact.
+  if (input.cameo) return clamp(2 + (input.frequency === 'HIGH' ? 1 : 0) + rng.int(0, 1), 2, 4);
   let base = input.role === 'ST' ? 7 : input.role === 'GK' ? 5 : 6;
   base += input.frequency === 'LOW' ? -2 : input.frequency === 'HIGH' ? 2 : 0;
   if (input.status === 'STAR' || input.status === 'CAPTAIN') base += 1;
@@ -88,8 +92,22 @@ function buildPlan(rng: Rng, input: InteractiveInput): MatchPlan {
   const teammateGoals = poisson(rng, lamFor * teammateShare);
   const oppBaseGoals = poisson(rng, lamOpp);
   const n = momentBudget(rng, input);
-  const minutes = Array.from({ length: n }, () => rng.int(3, 90)).sort((a, b) => a - b);
-  const moments = minutes.map((minute) => ({ type: pickWeighted(rng, ROLE_MOMENTS[input.role]).type, minute }));
+  // A cameo's chances fall in the closing stretch; a start spans the whole game.
+  const [lo, hi] = input.cameo ? [66, 90] : [3, 90];
+  const minutes = Array.from({ length: n }, () => rng.int(lo, hi)).sort((a, b) => a - b);
+  const moments: { type: MomentType; minute: number }[] = minutes.map((minute) => ({ type: pickWeighted(rng, ROLE_MOMENTS[input.role]).type, minute }));
+
+  // #15 — set-piece specialists get their signature moments regardless of the
+  // general frequency: a dead-ball taker earns free-kicks, a penalty ace the
+  // spot-kick. Deterministic; folded into the one-shot structural RNG.
+  const deadball = Math.max(flatAttr(input.avatar, 'fkAccuracy'), flatAttr(input.avatar, 'curve'));
+  if (deadball >= 78 && !isDefensiveRole(input.role) && rng.chance(0.45)) {
+    moments.push({ type: 'FREE_KICK', minute: rng.int(20, 85) });
+  }
+  if (flatAttr(input.avatar, 'penalties') >= 80 && (input.role === 'ST' || input.role === 'WIDE') && rng.chance(0.22)) {
+    moments.push({ type: 'PENALTY', minute: rng.int(25, 88) });
+  }
+  moments.sort((a, b) => a.minute - b.minute);
   return { teammateGoals, oppBaseGoals, moments };
 }
 
@@ -131,7 +149,11 @@ function resolveMoment(
   p *= 1 - fatigue * 0.18;
   p *= 1 - moment.context.pressure * (bigGame ? 0.02 : 0.14);
   p *= 0.9 + (input.confidence / 100) * 0.2;
+  // #16 — in-match momentum: back-to-back successes build a heater (capped),
+  // a failure resets it. Deterministic (folds prior decided moments only).
+  p *= 1 + clamp(run.momentum, 0, 3) * 0.03;
   const success = rng.chance(clamp(p, 0.03, 0.95));
+  run.momentum = success ? run.momentum + 1 : 0;
 
   const late = moment.minute >= 75;
   const ambitious = choice.risk === 'AMBITIOUS';
@@ -155,7 +177,7 @@ function applyOutcome(input: InteractiveInput, moment: KeyMoment, choice: Moment
   switch (choice.reward) {
     case 'GOAL':
       run.avatarShots++;
-      if (success) { run.avatarGoals++; run.teamGoals++; bump(1.0); won(); run.ticks.push({ minute: moment.minute, text: `⚽ You score! (${input.avatar.name.last})`, kind: 'GOAL' }); }
+      if (success) { run.avatarGoals++; run.teamGoals++; bump(1.0); won(); run.ticks.push({ minute: moment.minute, text: `⚽ You score! (${input.avatar.name.last})`, kind: 'GOAL' }); run.ticks.push({ minute: moment.minute, text: teammateReaction(input, moment.minute, 'GOAL'), kind: 'INFO' }); }
       else { bump(-0.15); lost(); run.ticks.push({ minute: moment.minute, text: `Chance spurned — ${outcomeText(choice, false)}`, kind: 'CHANCE' }); }
       break;
     case 'ASSIST':
@@ -195,6 +217,19 @@ function dangerPrevent(run: Running): boolean {
   return false;
 }
 
+/** #12 — a deterministic teammate/manager reaction line (no RNG draw, so the
+ *  match stream stays perfectly aligned across fresh runs and resumes). */
+function teammateReaction(input: InteractiveInput, minute: number, kind: 'GOAL'): string {
+  void kind;
+  const lines = [
+    `The lads mob ${input.avatar.name.last} — the bench is up!`,
+    `The gaffer punches the air on the touchline.`,
+    `The crowd roars ${input.avatar.name.last}'s name.`,
+    `Your captain roars in your face — what a moment!`,
+  ];
+  return lines[minute % lines.length];
+}
+
 function outcomeText(choice: MomentChoice, success: boolean): string {
   if (success) {
     switch (choice.reward) {
@@ -215,7 +250,7 @@ function outcomeText(choice: MomentChoice, success: boolean): string {
 // --- The runner -------------------------------------------------------------
 
 // Extra running fields kept off the interface above for brevity.
-interface Running { oppGoalsBaseline: number; defensiveDanger: number }
+interface Running { oppGoalsBaseline: number; defensiveDanger: number; momentum: number }
 
 function ctxFor(input: InteractiveInput, run: Running, minute: number): MomentContext {
   return {
@@ -247,7 +282,7 @@ export function runInteractiveMatch(input: InteractiveInput, decisions: MomentDe
   const run: Running = {
     avatarGoals: 0, avatarAssists: 0, avatarShots: 0, avatarSaves: 0, tacklesWon: 0, duelsWon: 0, clearances: 0, keyPasses: 0,
     teamGoals: plan.teammateGoals, oppGoals: plan.oppBaseGoals, oppPrevented: 0, oppGoalsBaseline: plan.oppBaseGoals,
-    defensiveDanger: isDefensiveRole(input.role) ? plan.oppBaseGoals : 0,
+    defensiveDanger: isDefensiveRole(input.role) ? plan.oppBaseGoals : 0, momentum: 0,
     bigWon: 0, bigLost: 0, decisive: 0, ratingBonus: 0, penScored: 0, penMissed: 0, penSaved: 0, yellow: false, red: false, ticks: [],
   };
   const decisionLog: MomentDecision[] = [];
@@ -293,6 +328,8 @@ function finalize(input: InteractiveInput, plan: MatchPlan, run: Running, decisi
   av.goals = run.avatarGoals; av.assists = run.avatarAssists; av.shots = run.avatarShots;
   if (run.avatarSaves) av.saves = run.avatarSaves;
   av.yellow = run.yellow; av.red = run.red;
+  // A cameo only logs the minutes the avatar was actually on the pitch.
+  if (input.cameo) av.minutes = clamp(90 - (plan.moments[0]?.minute ?? 66) + 4, 8, 30) as number;
 
   // Teammate goals (excluding the avatar's own) → weighted scorers.
   const teammateGoals = plan.teammateGoals + run.avatarAssists; // assists produced a teammate goal
