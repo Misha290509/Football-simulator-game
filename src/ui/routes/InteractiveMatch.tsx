@@ -21,6 +21,7 @@ export function InteractiveMatch() {
   const meta = useGameStore((s) => s.meta);
   const setPlan = useGameStore((s) => s.setInteractiveGamePlan);
   const setPositioning = useGameStore((s) => s.setInteractivePositioning);
+  const setSecondHalf = useGameStore((s) => s.setSecondHalfPositioning);
   const kickOff = useGameStore((s) => s.kickOffInteractive);
   const decide = useGameStore((s) => s.decideMoment);
   const autoMoment = useGameStore((s) => s.autoResolveMoment);
@@ -93,6 +94,20 @@ export function InteractiveMatch() {
         <div className="card p-4 space-y-3">
           <h1 className="page-title">Half-time</h1>
           <p className="text-sm text-slate-300">“{score} at the break. Keep doing what the plan asks — stay switched on for the second half.”</p>
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Change your movement for the second half?</div>
+            <div className="grid sm:grid-cols-3 gap-2">
+              {(ROLE_POSITIONING[ip.input.role] ?? []).map((o) => {
+                const active = (ip.input.intent2 ?? ip.input.intent) === o.id;
+                return (
+                  <button key={o.id} onClick={() => setSecondHalf(o.id)} className={`text-left p-2.5 rounded-lg border ${active ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}>
+                    <div className="font-medium text-white text-xs">{o.label}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">{o.blurb}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="flex gap-2">
             <button className="btn-primary flex-1" onClick={() => ackHalfTime(true)}>“I’m up for this” (confidence +)</button>
             <button className="btn-ghost" onClick={() => ackHalfTime(false)}>Nod along</button>
@@ -219,7 +234,9 @@ function MatchDone({ input, record, match, onContinue }: {
         <Cell label="Big moments" value={`${t.bigWon}–${t.bigLost}`} />
         <Cell label="Decisive" value={`${t.decisive}`} />
         <Cell label="On-plan" value={`${attempts ? Math.round((onPlan / attempts) * 100) : 0}%`} />
-        <Cell label="Off the ball" value={INTENT_LABEL[input.intent ?? 'IN_BEHIND']} />
+        <Cell label="Off the ball" value={input.intent2 && input.intent2 !== input.intent
+          ? `${INTENT_LABEL[input.intent ?? 'IN_BEHIND']} → ${INTENT_LABEL[input.intent2]}`
+          : INTENT_LABEL[input.intent ?? 'IN_BEHIND']} />
       </div>
       {(t.penScored + t.penMissed + t.penSaved) > 0 && (
         <div className="text-xs text-slate-400">Penalties — scored {t.penScored}, missed {t.penMissed}, saved {t.penSaved}.</div>

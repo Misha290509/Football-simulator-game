@@ -233,6 +233,7 @@ interface GameState {
   autoResolveMoment: () => void;
   autoResolveRest: () => void;
   acknowledgeHalfTime: (boost: boolean) => void;
+  setSecondHalfPositioning: (intent: import('../types/interactiveMatch').PositioningIntent) => void;
   finishPlayerMatch: () => Promise<void>;
   cancelInteractive: () => void;
   setCareerSettings: (patch: Partial<CareerSettings>) => Promise<void>;
@@ -609,6 +610,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!ip.pending) break; // DONE
       get().autoResolveMoment();
     }
+  },
+
+  setSecondHalfPositioning: (intent) => {
+    const ip = get().interactivePlay;
+    if (!ip || ip.phase !== 'HALFTIME') return;
+    // Re-run with the second-half intent set: buildPlan regenerates only the
+    // minute≥45 moment types (same RNG draws), so first-half decisions replay
+    // untouched and the half-time screen stays up until acknowledged.
+    stepInteractive(get, set, { ...ip.input, intent2: intent }, ip.decisions);
   },
 
   acknowledgeHalfTime: (boost) => {

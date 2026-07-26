@@ -43,6 +43,10 @@ export interface InteractiveInput {
   cameo?: boolean;
   /** Off-the-ball movement — reshapes which moments come his way (pre-match). */
   intent?: PositioningIntent;
+  /** A half-time switch of off-the-ball movement, applied to second-half moments
+   *  only. Same number of RNG draws as `intent`, so the first half replays
+   *  identically — only the types of minute≥45 moments change. */
+  intent2?: PositioningIntent;
 }
 
 // --- Small deterministic helpers -------------------------------------------
@@ -101,9 +105,14 @@ function buildPlan(rng: Rng, input: InteractiveInput): MatchPlan {
   const [lo, hi] = input.cameo ? [66, 90] : [3, 90];
   const minutes = Array.from({ length: n }, () => rng.int(lo, hi)).sort((a, b) => a - b);
   // Off-the-ball intent re-weights which moments come the avatar's way (same
-  // number of RNG draws, so the deterministic stream stays aligned).
-  const pool = ROLE_MOMENTS[input.role].map((m) => ({ type: m.type, weight: m.weight * intentWeight(input.intent, m.type) }));
-  const moments: { type: MomentType; minute: number }[] = minutes.map((minute) => ({ type: pickWeighted(rng, pool).type, minute }));
+  // number of RNG draws, so the deterministic stream stays aligned). A half-time
+  // switch (`intent2`) re-weights the second half only — one draw per moment
+  // either way, so the first half replays identically.
+  const pool1 = ROLE_MOMENTS[input.role].map((m) => ({ type: m.type, weight: m.weight * intentWeight(input.intent, m.type) }));
+  const intent2 = input.intent2 ?? input.intent;
+  const pool2 = intent2 === input.intent ? pool1
+    : ROLE_MOMENTS[input.role].map((m) => ({ type: m.type, weight: m.weight * intentWeight(intent2, m.type) }));
+  const moments: { type: MomentType; minute: number }[] = minutes.map((minute) => ({ type: pickWeighted(rng, minute < 45 ? pool1 : pool2).type, minute }));
 
   // #15 — set-piece specialists get their signature moments regardless of the
   // general frequency: a dead-ball taker earns free-kicks, a penalty ace the

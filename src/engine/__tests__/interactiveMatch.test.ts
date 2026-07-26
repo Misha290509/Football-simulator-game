@@ -143,6 +143,31 @@ describe('interactive match — off-the-ball positioning intent', () => {
   });
 });
 
+describe('interactive match — half-time positioning switch', () => {
+  const playMoments = (inp: InteractiveInput) => {
+    const out: { minute: number; type: string }[] = [];
+    let step = runInteractiveMatch(inp, []); const d: MomentDecision[] = [];
+    while (step.kind === 'DECISION' && d.length < 40) {
+      out.push({ minute: step.moment.minute, type: step.moment.type });
+      d.push({ momentId: step.moment.id, choiceId: step.moment.choices[0].id, autoResolved: false, followedGamePlan: false, success: false, effect: '' });
+      step = runInteractiveMatch(inp, d);
+    }
+    return out;
+  };
+
+  it('leaves the first half identical and only reshapes minute≥45 moments', () => {
+    const base: InteractiveInput = { ...input('ST'), intent: 'SHOW_FOR_IT' };
+    const switched: InteractiveInput = { ...base, intent2: 'IN_BEHIND' };
+    const a = playMoments(base);
+    const b = playMoments(switched);
+    const firstHalf = (xs: typeof a) => xs.filter((m) => m.minute < 45);
+    // First half is byte-identical — the switch never touches it.
+    expect(firstHalf(b)).toEqual(firstHalf(a));
+    // Deterministic: the switched run reproduces exactly.
+    expect(playMoments(switched)).toEqual(b);
+  });
+});
+
 describe('interactive match — no stat inflation', () => {
   it('an auto-first-choice striker averages a sane number of goals per match', () => {
     let goals = 0; const N = 40;
