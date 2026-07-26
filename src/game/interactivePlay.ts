@@ -10,7 +10,7 @@ import type { Match } from '../types/match';
 import type { Competition } from '../types/competition';
 import type { PlayerCareer } from '../types/playerCareer';
 import type { GamePlan } from '../types/interactiveMatch';
-import { buildLineupProfile } from '../engine/lineup';
+import { buildLineupProfile, resolveBench } from '../engine/lineup';
 import { momentRole } from './momentLibrary';
 import { avatarSelectionBias } from './playerCareer';
 import type { InteractiveInput } from '../engine/interactiveMatch';
@@ -27,7 +27,7 @@ export function defaultGamePlan(avatarAttack: number, oppDefense: number, role: 
   return role === 'ST' || role === 'WIDE' ? 'SUPPORT' : 'BALANCED';
 }
 
-export interface BuildInputResult { input: InteractiveInput; willStart: boolean }
+export interface BuildInputResult { input: InteractiveInput; willStart: boolean; willComeOn: boolean }
 
 /** Build the interactive-match input for the avatar's fixture. `willStart`
  *  reports whether the selection engine (with the avatar's trust bias) picks
@@ -52,6 +52,9 @@ export function buildInteractiveInput(
   const oppProfile = buildLineupProfile(oppId, oppSquad, clubs[oppId]?.formation ?? '4-3-3', { autoMode: true });
 
   const willStart = myProfile.starters.includes(avatar.id);
+  // If not starting, is he on the bench (and thus a candidate for a cameo)?
+  const onBench = !willStart && resolveBench(mySquad, clubs[clubId]?.formation ?? '4-3-3', { autoMode: true })
+    .some((b) => b.id === avatar.id);
   const role = momentRole(avatar.position);
   const importance = meta.competitions[match.competitionId] ? 0.4 : 0.7; // cup/continental = bigger
   const plan = gamePlan ?? defaultGamePlan(myProfile.attack, oppProfile.defense, role);
@@ -72,8 +75,9 @@ export function buildInteractiveInput(
     status: career.status,
     gamePlan: plan,
     frequency: 'NORMAL', // overridden from settings by the store
+    cameo: !willStart && onBench,
   };
-  return { input, willStart };
+  return { input, willStart, willComeOn: onBench };
 }
 
 function hashId(s: string): number {

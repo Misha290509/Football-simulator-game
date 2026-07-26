@@ -134,6 +134,19 @@ export function PlayerCareerScreen() {
         )}
       </div>
 
+      {/* Overall progression sparkline */}
+      {(p.developmentLog?.length ?? 0) >= 2 && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-2">Overall progression</h2>
+          <Sparkline points={p.developmentLog.map((d) => ({ x: d.year, y: d.ovr }))} />
+          <div className="flex justify-between text-[11px] text-slate-500 mt-1">
+            <span>{p.developmentLog[0].year} · OVR {p.developmentLog[0].ovr}</span>
+            <span>Peak {Math.max(...p.developmentLog.map((d) => d.ovr))}</span>
+            <span>{p.developmentLog[p.developmentLog.length - 1].year} · OVR {p.developmentLog[p.developmentLog.length - 1].ovr}</span>
+          </div>
+        </div>
+      )}
+
       {/* Past seasons */}
       {career.seasonHistory.length > 0 && (
         <div className="card p-4">
@@ -157,6 +170,22 @@ export function PlayerCareerScreen() {
 
       <p className="text-xs text-slate-500">Player: {fullName(p)}</p>
     </div>
+  );
+}
+
+function Sparkline({ points }: { points: { x: number; y: number }[] }) {
+  const W = 320, H = 48, pad = 4;
+  const ys = points.map((p) => p.y);
+  const minY = Math.min(...ys) - 1, maxY = Math.max(...ys) + 1;
+  const n = points.length;
+  const xAt = (i: number) => pad + (i / Math.max(1, n - 1)) * (W - pad * 2);
+  const yAt = (y: number) => H - pad - ((y - minY) / Math.max(1, maxY - minY)) * (H - pad * 2);
+  const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${xAt(i).toFixed(1)},${yAt(p.y).toFixed(1)}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-12" preserveAspectRatio="none">
+      <path d={d} fill="none" stroke="currentColor" className="text-accent-400" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      {points.map((p, i) => <circle key={i} cx={xAt(i)} cy={yAt(p.y)} r={1.8} className="text-accent-300" fill="currentColor" />)}
+    </svg>
   );
 }
 

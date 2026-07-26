@@ -2,10 +2,12 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 import { playerCareerOf, avatarSelectionBias } from '../../game/playerCareer';
+import { MANAGER_STYLE_LABEL } from '../../game/playerProgression';
 import { assignXI, resolveBench } from '../../engine/lineup';
 import { Rating, CrestBadge } from '../components/Rating';
 import { fullName, ageOf } from '../format';
 import type { AvatarMatchSummary } from '../../types/playerCareer';
+import type { Player } from '../../types/player';
 
 export function PlayerHome() {
   const navigate = useNavigate();
@@ -17,6 +19,7 @@ export function PlayerHome() {
   const answerConversation = useGameStore((s) => s.answerConversation);
   const requestMeeting = useGameStore((s) => s.requestMeeting);
   const answerPlayerPress = useGameStore((s) => s.answerPlayerPress);
+  const respondCallUp = useGameStore((s) => s.respondCallUp);
   const career = playerCareerOf(meta);
   const currentYear = season?.year ?? meta?.startYear ?? new Date().getFullYear();
 
@@ -62,7 +65,7 @@ export function PlayerHome() {
         <div className="flex-1 min-w-0">
           <div className="text-xl font-semibold text-white truncate">{fullName(p)}</div>
           <div className="text-sm text-slate-400">{p.position} · {ageOf(p, currentYear)} yrs · {club?.name ?? 'No club'}</div>
-          <div className="text-xs text-slate-500 mt-0.5">{career.status} · {career.archetype}</div>
+          <div className="text-xs text-slate-500 mt-0.5">{career.status} · {career.archetype}{career.managerStyle ? ` · Gaffer: ${MANAGER_STYLE_LABEL[career.managerStyle]}` : ''}</div>
         </div>
         <div className="text-right space-y-1">
           <div className="flex items-center gap-2 justify-end"><span className="text-[11px] uppercase tracking-wide text-slate-500">OVR</span><Rating value={p.overall} /></div>
@@ -115,6 +118,18 @@ export function PlayerHome() {
         );
       })()}
 
+      {/* International call-up (accept / withdraw) */}
+      {career.pendingCallUp && (
+        <div className="card p-4 border border-emerald-500/30 bg-emerald-500/5">
+          <div className="text-xs uppercase tracking-wide text-emerald-400 mb-1">🏴 International call-up</div>
+          <p className="text-sm text-slate-200 mb-3">The {career.pendingCallUp.nation} manager has called you into the senior squad{career.pendingCallUp.competition ? ` for the ${career.pendingCallUp.competition}` : ''}. Accept to win your first cap.</p>
+          <div className="flex gap-2">
+            <button className="btn-primary flex-1" onClick={() => void respondCallUp(true)}>Accept the call-up</button>
+            <button className="btn-ghost" onClick={() => void respondCallUp(false)}>Withdraw</button>
+          </div>
+        </div>
+      )}
+
       {/* Off-pitch nudge — decisions waiting elsewhere */}
       {((career.contractOffers ?? []).length > 0 || (career.loanOffers ?? []).length > 0 || (career.pendingSponsorOffers ?? []).length > 0) && (
         <button className="card p-3 w-full text-left border border-accent/30 bg-accent/5 hover:bg-accent/10 transition-colors" onClick={() => navigate('/off-pitch')}>
@@ -138,7 +153,11 @@ export function PlayerHome() {
         <div className="card p-4">
           <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">Manager trust</div>
           <TrustBar trust={career.managerTrust} />
-          <button className="btn-ghost text-xs mt-2 w-full" onClick={() => void requestMeeting()}>Ask for more minutes</button>
+          <div className="grid grid-cols-3 gap-1 mt-2">
+            <button className="btn-ghost text-[11px]" onClick={() => void requestMeeting('MINUTES')}>Minutes</button>
+            <button className="btn-ghost text-[11px]" onClick={() => void requestMeeting('ROLE')}>My role</button>
+            <button className="btn-ghost text-[11px]" onClick={() => void requestMeeting('NEW_DEAL')}>New deal</button>
+          </div>
         </div>
       </div>
 
@@ -199,6 +218,17 @@ export function PlayerHome() {
         <Stat label="Caps" value={career.international.capped ? `${career.international.caps}` : '—'} />
       </div>
 
+      {/* Fame — following + public persona */}
+      {(career.following > 0 || career.publicImage?.persona) && (
+        <div className="card p-3 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">Fame</div>
+            <div className="text-sm text-slate-200">{formatFollowing(career.following)} following{career.publicImage?.persona ? ` · ${career.publicImage.persona}` : ''}</div>
+          </div>
+          <div className="w-28 h-1.5 rounded bg-surface-700 overflow-hidden"><div className="h-full bg-sky-500/70" style={{ width: `${Math.min(100, Math.round(career.following / 500))}%` }} /></div>
+        </div>
+      )}
+
       <div className="grid sm:grid-cols-2 gap-3">
         {/* Rival for the shirt */}
         {career.rival && players[career.rival.playerId] && (() => {
@@ -215,7 +245,14 @@ export function PlayerHome() {
                 <span className="text-slate-300 truncate">{fullName(r)} <span className="text-slate-500">({r.position})</span></span>
                 <span className="font-mono text-slate-400">{r.overall} OVR · form {r.form > 0 ? '+' : ''}{Math.round(r.form / 10)}</span>
               </div>
-              <div className={`text-xs mt-2 ${ahead ? 'text-emerald-400' : 'text-amber-400'}`}>{ahead ? 'You’re ahead in the pecking order — keep it up.' : 'He’s the one to dislodge. Force the manager’s hand.'}</div>
+              {career.rival!.sidelined ? (
+                <div className="text-xs mt-2 text-emerald-400">🚑 He’s sidelined — the shirt is open. Seize it.</div>
+              ) : (
+                <div className={`text-xs mt-2 ${ahead ? 'text-emerald-400' : 'text-amber-400'}`}>{ahead ? 'You’re ahead in the pecking order — keep it up.' : 'He’s the one to dislodge. Force the manager’s hand.'}</div>
+              )}
+              {typeof career.rival!.edge === 'number' && career.rival!.edge !== 0 && (
+                <div className="text-[11px] mt-1 text-slate-500">Head-to-head: you’re {career.rival!.edge > 0 ? 'ahead' : 'behind'} by {Math.abs(career.rival!.edge)} on recent form.</div>
+              )}
             </div>
           );
         })()}
@@ -232,6 +269,9 @@ export function PlayerHome() {
           )}
         </div>
       </div>
+
+      {/* Competition for the shirt (depth at your position) */}
+      {clubId && <PositionBattle players={players} clubId={clubId} avatar={p} year={currentYear} />}
 
       {/* Last match */}
       {career.lastMatch && <LastMatchCard s={career.lastMatch} />}
@@ -254,6 +294,49 @@ export function PlayerHome() {
       </div>
     </div>
   );
+}
+
+function PositionBattle({ players, clubId, avatar, year }: { players: Record<string, Player>; clubId: string; avatar: Player; year: number }) {
+  const rivals = Object.values(players)
+    .filter((pl) => pl.contract.clubId === clubId && pl.positions.includes(avatar.position))
+    .sort((a, b) => b.overall - a.overall);
+  if (rivals.length <= 1) return null;
+  const myRank = rivals.findIndex((r) => r.id === avatar.id) + 1;
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold text-slate-400">Competition at {avatar.position}</h2>
+        <span className="text-xs text-slate-500">You’re #{myRank} of {rivals.length}</span>
+      </div>
+      <div className="space-y-1">
+        {rivals.slice(0, 5).map((r, i) => {
+          const me = r.id === avatar.id;
+          const out = r.injury || (r.cards?.suspendedFor ?? 0) > 0;
+          return (
+            <div key={r.id} className={`flex items-center justify-between text-sm rounded px-1 ${me ? 'bg-accent/10' : ''}`}>
+              <span className="truncate">
+                <span className="text-slate-600 mr-1.5">{i + 1}.</span>
+                <span className={me ? 'text-accent-300 font-medium' : 'text-slate-300'}>{fullName(r)}</span>
+                <span className="text-slate-500 text-xs ml-1">{ageOf(r, year)}y</span>
+                {out && <span className="text-rose-400 text-[11px] ml-1">out</span>}
+              </span>
+              <span className="font-mono text-sm flex items-center gap-2">
+                <span className="text-slate-500 text-xs">form {r.form > 0 ? '+' : ''}{Math.round(r.form / 10)}</span>
+                <Rating value={r.overall} />
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-slate-600 mt-2">Beat them on form and sharpness — or wait for a chance when one’s out — to climb the pecking order.</p>
+    </div>
+  );
+}
+
+function formatFollowing(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return `${Math.round(n)}`;
 }
 
 function TrustBar({ trust }: { trust: number }) {

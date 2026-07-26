@@ -22,11 +22,20 @@ export function PlayerPlayMenu() {
   const seasonMatches = useGameStore((s) => s.currentSeasonMatches());
   const stopSim = useGameStore((s) => s.stopSim);
 
-  // Play the avatar's next fixture: interactive if enabled + starting, else sim.
+  // Play the avatar's next fixture. Interactive if enabled + starting/coming on;
+  // otherwise (#47) fast-forward through fixtures he isn't involved in straight
+  // to the next match he actually plays, so there's no click-through busywork.
   const playNext = async () => {
-    const r = await beginPlayerMatch();
-    if (r === 'STARTED') navigate('/play-match');
-    else await toNext();
+    const first = await beginPlayerMatch();
+    if (first === 'STARTED') { navigate('/play-match'); return; }
+    if (first === 'AUTO' && !meta.careerSettings?.interactive) { await toNext(); return; }
+    for (let i = 0; i < 60; i++) {
+      if (useGameStore.getState().seasonComplete()) return;
+      await toNext();
+      const r = await useGameStore.getState().beginPlayerMatch();
+      if (r === 'STARTED') { navigate('/play-match'); return; }
+      if (r === 'NONE') return;
+    }
   };
 
   const clubId = meta.managerClubId;

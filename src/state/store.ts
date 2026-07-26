@@ -65,7 +65,7 @@ import { DEFAULT_CAREER_SETTINGS, EMPTY_MOMENT_STATS } from '../types/interactiv
 import type {
   KeyMoment, MomentDecision, MatchTick, GamePlan, InteractiveMatchRecord, CareerSettings,
 } from '../types/interactiveMatch';
-import { progressPlayerCareer, statusRank } from '../game/playerProgression';
+import { progressPlayerCareer, statusRank, resolveCallUp } from '../game/playerProgression';
 import {
   advanceOffPitch, executeContractOffer, executeLoanOffer, hireAgent, agentById, derivePersona,
 } from '../game/playerOffPitch';
@@ -80,7 +80,8 @@ import {
 } from '../game/playerEndgame';
 import { IDENTITY_LABEL } from '../types/playerLegacy';
 import {
-  postDropConversation, evaluatePromises, resolveConversation, requestMinutesOutcome, roleMeetingConversation,
+  postDropConversation, evaluatePromises, resolveConversation, requestMeetingOutcome, roleMeetingConversation,
+  maybeSurfaceConversation, captaincyConversation, type MeetingTopic,
 } from '../game/playerConversations';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
@@ -219,7 +220,8 @@ interface GameState {
   newGame: (config: NewGameConfig) => Promise<string>;
   newPlayerCareer: (config: NewPlayerCareerConfig) => Promise<string>;
   answerConversation: (id: string, choiceIdx: number) => Promise<void>;
-  requestMeeting: () => Promise<string>;
+  respondCallUp: (accept: boolean) => Promise<void>;
+  requestMeeting: (topic?: MeetingTopic) => Promise<string>;
   // --- Interactive match (Tier 3) ---
   beginPlayerMatch: () => Promise<'STARTED' | 'AUTO' | 'NONE'>;
   setInteractiveGamePlan: (plan: GamePlan) => void;
@@ -247,6 +249,8 @@ interface GameState {
   setLifestyle: (routine: Record<string, number>, autoManage: boolean) => Promise<void>;
   // --- Legacy & endgame (Tier 5) ---
   setDreamClub: (clubId: string | null) => Promise<void>;
+  addCustomAmbition: (text: string) => Promise<void>;
+  toggleCustomAmbition: (id: string) => Promise<void>;
   retrainAvatarPosition: (pos: import('../types/attributes').Position | null) => Promise<void>;
   becomeMentor: (menteeId: string) => Promise<string>;
   announceRetirement: (endOfSeason: boolean) => Promise<void>;
@@ -507,19 +511,31 @@ export const useGameStore = create<GameState>((set, get) => ({
     await persistMeta(newMeta);
   },
 
-  requestMeeting: async () => {
+  requestMeeting: async (topic: MeetingTopic = 'MINUTES') => {
     const { meta, players } = get();
     const pc = playerCareerOf(meta);
     if (!meta || !pc) return 'No active player career.';
     const avatar = players[pc.playerId];
     if (!avatar) return 'No player.';
-    const res = requestMinutesOutcome(pc, avatar, meta.currentDay);
+    const res = requestMeetingOutcome(pc, avatar, topic, meta.currentDay);
     const np: Player = { ...avatar, morale: clamp(avatar.morale + res.moraleDelta) as number };
     const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
     set({ meta: newMeta, players: { ...players, [pc.playerId]: np } });
     await putPlayers(meta.id, [np]);
     await persistMeta(newMeta);
     return res.news[0]?.body ?? 'You spoke with the manager.';
+  },
+
+  respondCallUp: async (accept) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc || !pc.pendingCallUp) return;
+    const avatar = players[pc.playerId];
+    if (!avatar) return;
+    const res = resolveCallUp(pc, avatar, accept, meta.currentDay);
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
   },
 
   // --- Interactive match (Tier 3) ----------------------------------------
@@ -537,7 +553,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!nextM) return 'NONE';
     if (!settings.interactive) return 'AUTO';
     const built = buildInteractiveInput(meta, players, clubs, nextM, avatar, pc);
-    if (!built.willStart) return 'AUTO'; // benched → nothing to play interactively
+    // Start if in the XI, or come off the bench for a late cameo — the one thing
+    // that gives benched & early-career players something to actually play.
+    if (!built.willStart && !built.willComeOn) return 'AUTO'; // out of the squad
     const input: InteractiveInput = { ...built.input, frequency: settings.momentFrequency };
     set({ interactivePlay: { input, decisions: [], pending: null, ticker: [], done: null, phase: 'PREMATCH', halfTimeSeen: false } });
     return 'STARTED';
@@ -852,6 +870,31 @@ export const useGameStore = create<GameState>((set, get) => ({
       ambitions = [...ambitions, { id: 'amb_dream', text: `Play for ${clubs[clubId].name}`, kind: 'DREAM_MOVE', clubId, achieved: avatar.contract.clubId === clubId }];
     }
     const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, dreamClubId: clubId ?? undefined, ambitions } };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  addCustomAmbition: async (text) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    const t = text.trim();
+    if (!meta || !pc || !t) return;
+    const ambition = { id: `amb_custom_${Date.now().toString(36)}`, text: t, kind: 'CUSTOM' as const, achieved: false };
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, ambitions: [...(pc.ambitions ?? []), ambition] } };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  toggleCustomAmbition: async (id) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const ambitions = (pc.ambitions ?? []).flatMap((a) => {
+      if (a.id !== id) return [a];
+      if (a.kind !== 'CUSTOM') return [a]; // only personal ambitions are hand-toggled
+      return [{ ...a, achieved: !a.achieved, achievedDay: !a.achieved ? meta.currentDay : undefined }];
+    });
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, ambitions } };
     set({ meta: newMeta });
     await persistMeta(newMeta);
   },
@@ -2859,7 +2902,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         let tournamentSquads = pc.tournamentSquads ?? [];
         const intlNews: NewsItem[] = [];
         if (pc.international.capped) {
-          const capsAdd = pc.status === 'STAR' || pc.status === 'CAPTAIN' ? 8 : pc.status === 'KEY' ? 5 : 3;
+          const baseCaps = pc.status === 'STAR' || pc.status === 'CAPTAIN' ? 8 : pc.status === 'KEY' ? 5 : 3;
+          // #40 — the national-team manager's trust weights how many caps you win.
+          const capsAdd = Math.max(1, Math.round(baseCaps * (0.6 + (pc.intlManagerTrust ?? 50) / 125)));
           const goalsAdd = Math.round(pc.seasonGoals * 0.18);
           international = { capped: true, caps: pc.international.caps + capsAdd, intlGoals: pc.international.intlGoals + goalsAdd };
           if ((result.tournaments?.length ?? 0) > 0 || result.worldCup) {
@@ -2899,6 +2944,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             apps: pc.seasonApps, goals: pc.seasonGoals, assists, avgRating: pc.seasonAvgRating, honours: seasonHonours,
           }],
           seasonApps: 0, seasonGoals: 0, seasonAvgRating: 0,
+          recentRatings: [], focusProgress: 0, trainingReport: undefined, pendingCallUp: null,
           objectives: avatar ? generateSeasonObjectives(avatar, (meta.seed ^ result.newSeason.year) >>> 0) : [],
           matchObjectives: [],
           lastMatch: null,
@@ -2910,6 +2956,20 @@ export const useGameStore = create<GameState>((set, get) => ({
           transferInterest: [], activeSagas: [], contractOffers: [], loanOffers: [],
           pendingPress: [], pendingSponsorOffers: [], transferRequestPending: false,
         };
+        // #48 — a season-in-review beat: what the avatar did, and how he grew.
+        {
+          const sc = avatar?.lastSeasonChange;
+          const ovrDelta = sc ? sc.ovrTo - sc.ovrFrom : 0;
+          const growth = ovrDelta !== 0 ? ` OVR ${ovrDelta > 0 ? '+' : ''}${ovrDelta}.` : '';
+          const honours = seasonHonours.length ? ` Honours: ${seasonHonours.join(', ')}.` : '';
+          newMeta.news = [...newMeta.news, {
+            id: `news_pc_review_${result.newSeason.year}`, day: 0, category: 'MILESTONE',
+            title: `Season review — ${finished?.label ?? ''}`,
+            body: `${clubName || 'The season'}: ${pc.seasonApps} apps, ${pc.seasonGoals} goals, ${assists} assists, avg rating ${pc.seasonAvgRating ? pc.seasonAvgRating.toFixed(1) : '—'}.${growth}${honours}`,
+            read: false,
+          }];
+        }
+
         // Keep the stand-in "manager club" on the avatar's club (e.g. after a
         // loan spell ends and he returns to his parent), so the world screens
         // follow him into the new season.
@@ -4010,13 +4070,21 @@ async function playDays(
         const cid = avatar.contract.clubId;
         const squad = Object.values(playersById).filter((pl) => pl.contract.clubId === cid);
         const prevInjured = !!avatarAtStart?.injury;
-        const prog = progressPlayerCareer(pc, avatar, squad, toYear, to, prevInjured);
+        const prog = progressPlayerCareer(pc, avatar, squad, toYear, to, prevInjured, cid ? clubsAfter[cid] : undefined, meta.seed);
         pc = prog.career; newsItems.push(...prog.news);
 
-        // 3) A demotion this advance triggers a manager sit-down.
+        // 3) A demotion this advance triggers a manager sit-down; a first-time
+        //    promotion to captain surfaces the armband offer; otherwise a state-
+        //    driven conversation (praise / warning / contract) may come up.
         if (statusRank(pc.status) < statusRank(careerAtStart.status) &&
             !(pc.pendingConversations ?? []).some((c) => c.trigger === 'DROPPED')) {
           pc = { ...pc, pendingConversations: [...(pc.pendingConversations ?? []), postDropConversation(pc.status, to)] };
+        } else if (pc.status === 'CAPTAIN' && careerAtStart.status !== 'CAPTAIN' &&
+            !(pc.pendingConversations ?? []).some((c) => c.trigger === 'CAPTAINCY')) {
+          pc = { ...pc, pendingConversations: [...(pc.pendingConversations ?? []), captaincyConversation(to)] };
+        } else {
+          const conv = maybeSurfaceConversation(pc, avatar, toYear, to, meta.seed);
+          if (conv) pc = { ...pc, pendingConversations: [...(pc.pendingConversations ?? []), conv] };
         }
 
         // 4) Promises falling due.

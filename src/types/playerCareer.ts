@@ -19,6 +19,9 @@ export type PlayerCareerOrigin = 'ACADEMY' | 'EXISTING' | 'CREATED';
 /** Squad-status ladder — the arc from academy hopeful to club captain. */
 export type SquadStatus = 'YOUTH' | 'PROSPECT' | 'ROTATION' | 'KEY' | 'STAR' | 'CAPTAIN';
 
+/** A manager's man-management style — shifts how trust builds & who they pick. */
+export type ManagerStyle = 'LOYAL' | 'RUTHLESS' | 'ROTATOR' | 'YOUTH_FOCUSED' | 'BALANCED';
+
 /** A dated line on the player's personal timeline (debut, first goal, …). */
 export interface CareerMilestone {
   day: number;
@@ -129,6 +132,10 @@ export interface Conversation {
 export interface CareerRival {
   playerId: string;
   relationship: number; // −100 bitter … +100 friendly
+  /** True while the rival is sidelined (injury/suspension) — the shirt is open. */
+  sidelined?: boolean;
+  /** Head-to-head: matches the avatar has out-started the rival, and vice-versa. */
+  edge?: number; // net starts won over the rival (+ = avatar ahead)
 }
 
 /** A tournament the avatar was named in a national squad for. */
@@ -171,6 +178,8 @@ export interface PlayerCareer {
   seasonGoals: number;
   seasonApps: number;
   seasonAvgRating: number;
+  /** Rolling ratings of the avatar's last few appearances (selection momentum). */
+  recentRatings?: number[];
 
   // --- Development & standing ------------------------------------------------
   objectives: CareerObjective[]; // season-long objectives
@@ -251,6 +260,24 @@ export interface PlayerCareer {
   // --- International (Tier 2) ------------------------------------------------
   intlManagerTrust?: number;
   tournamentSquads?: TournamentSquad[];
+  /** A senior call-up awaiting the player's accept/withdraw decision. */
+  pendingCallUp?: { nation: string; competition?: string; day: number } | null;
+
+  // --- The gaffer & the training ground (Tier 2 depth) ----------------------
+  /** The current manager's man-management style (derived from the club). */
+  managerStyle?: ManagerStyle;
+  /** Rapport with the position coach (0–100) — colours training advice. */
+  coachRelationship?: number;
+  /** The coach's current recommended training focus. */
+  coachAdviceFocus?: string;
+  /** Progress 0–100 toward the next attribute tick in the focused area. */
+  focusProgress?: number;
+  /** A short digest of last advance's training (surfaced on the Training screen). */
+  trainingReport?: { focus?: string; note: string; sharpnessNote?: string };
+
+  // --- Career-long peer duel (Tier 5 flavour) --------------------------------
+  /** A generated peer whose career the avatar races (Ballon d'Or, trophies). */
+  eraRival?: { playerId: string; name: string } | null;
 
   // --- Development (Tier 2) --------------------------------------------------
   /** Progress 0–100 toward the nearest not-yet-earned trait. */

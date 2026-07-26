@@ -11,7 +11,7 @@ import type { Position } from './attributes';
 /** A personal ambition the player is chasing — evaluated from real career data. */
 export type AmbitionKind =
   | 'LEAGUE_TITLE' | 'CONTINENTAL' | 'DOMESTIC_CUP' | 'CAREER_GOALS' | 'CAREER_APPS'
-  | 'PLAY_FOR_CLUB' | 'BALLON_DOR' | 'INTERNATIONAL_CAPS' | 'DREAM_MOVE';
+  | 'PLAY_FOR_CLUB' | 'BALLON_DOR' | 'INTERNATIONAL_CAPS' | 'DREAM_MOVE' | 'CUSTOM';
 
 export interface CareerAmbition {
   id: string;

@@ -271,6 +271,10 @@ export function createPlayerCareerGame(config: NewPlayerCareerConfig): WorldSnap
     .filter((m) => !m.neutral && (m.homeClubId === config.clubId || m.awayClubId === config.clubId))
     .sort((a, b) => a.day - b.day)[0];
   if (firstMatch) career = ensureAdvanceObjectives(career, avatar, [firstMatch], snapshot.meta.seed);
+  // #43 — nominate a career-long peer rival: the brightest young talent elsewhere
+  // in the world, whose career the avatar races (trophies, Ballon d'Or, legacy).
+  const peer = pickEraRival(snapshot.players, avatar, config.startYear);
+  if (peer) career = { ...career, eraRival: { playerId: peer.id, name: `${peer.name.first} ${peer.name.last}` } };
   snapshot.meta.playerCareer = career;
   snapshot.meta.news = [
     {
@@ -290,11 +294,28 @@ function avatarAgeLabel(avatar: Player, year: number): string {
   return `${age}-year-old`;
 }
 
+/** Pick the brightest young peer elsewhere in the world as the avatar's career-
+ *  long rival — the highest-potential player near his age at a different club. */
+function pickEraRival(players: Record<string, Player>, avatar: Player, year: number): Player | undefined {
+  const age = year - avatar.born.year;
+  return Object.values(players)
+    .filter((p) => p.id !== avatar.id && p.contract.clubId && p.contract.clubId !== avatar.contract.clubId
+      && Math.abs((year - p.born.year) - age) <= 3 && p.potential >= 82)
+    .sort((a, b) => (b.potential - a.potential) || a.id.localeCompare(b.id))[0];
+}
+
 // --- Selection model & trust (Tier 1 · Step 3) ------------------------------
 
 /** A small squad-status floor on selection priority (grows in Tier 2). */
 const STATUS_SELECTION_BUMP: Record<SquadStatus, number> = {
   YOUTH: 0, PROSPECT: 0.5, ROTATION: 1, KEY: 2.5, STAR: 3.5, CAPTAIN: 4,
+};
+
+/** How much a manager's style tilts selection toward the avatar (multiplier on
+ *  the earned bias) and how heavily it weights youth. Loyal/youth managers back
+ *  a trusted or young player harder; a ruthless one lives and dies by form. */
+const STYLE_BIAS_MULT: Record<import('../types/playerCareer').ManagerStyle, number> = {
+  LOYAL: 1.25, RUTHLESS: 0.85, ROTATOR: 1.0, YOUTH_FOCUSED: 1.15, BALANCED: 1.0,
 };
 
 /**
@@ -325,13 +346,56 @@ export function positionalScarcityBoost(avatar: Player, squad: Player[]): number
   return 0;
 }
 
-/** The full auto-selection bias for the avatar: trust + status + role scarcity. */
-export function avatarSelectionBias(
-  career: Pick<PlayerCareer, 'managerTrust' | 'status'>,
+/**
+ * Extra selection nudge from the avatar's live form, match sharpness, recent-
+ * rating momentum and the specific rival for his shirt. This is what turns the
+ * "will I start?" read from a foregone conclusion into a week-to-week battle: a
+ * hot streak or an injured rival forces the manager's hand; a cold run or an
+ * undercooked return costs you the shirt. Still bounded, and still on top of raw
+ * ability, so it flips genuinely-close calls without letting a poor player leap
+ * a clearly better one (attributes rule; the run modifies).
+ */
+export function selectionMomentum(
+  career: Pick<PlayerCareer, 'matchSharpness' | 'recentRatings' | 'rival'>,
   avatar: Player,
   squad: Player[],
 ): number {
-  return playerSelectionWeight(career) + positionalScarcityBoost(avatar, squad);
+  let m = 0;
+  // Form: a hot streak earns the shirt (~±4 at the extremes).
+  m += clamp(avatar.form, -30, 30) * 0.13;
+  // Sharpness: an undercooked return after injury dents the case (0 … ~−3.4).
+  m += (clamp(career.matchSharpness ?? 100, 0, 100) - 85) * 0.04;
+  // Recent-rating momentum: last few games vs a par 6.7 (~±3).
+  const rr = career.recentRatings ?? [];
+  if (rr.length) {
+    const avg = rr.reduce((a, b) => a + b, 0) / rr.length;
+    m += clamp((avg - PAR_MATCH_RATING) * 1.2, -3, 3);
+  }
+  // The specific rival: him being sidelined throws the shirt open; out-forming
+  // him tips a close call your way, being out-formed by him nudges you down.
+  const rivalId = career.rival?.playerId;
+  const rival = rivalId ? squad.find((p) => p.id === rivalId) : undefined;
+  if (rival) {
+    if (rival.injury || (rival.cards?.suspendedFor ?? 0) > 0) m += 4;
+    else {
+      const d = avatar.form - rival.form;
+      m += d > 20 ? 2 : d > 8 ? 1 : d < -20 ? -2 : d < -8 ? -1 : 0;
+    }
+  }
+  return m;
+}
+
+/** The full auto-selection bias for the avatar: trust + status + role scarcity,
+ *  the live form/sharpness/rival momentum, all tilted by the manager's style. */
+export function avatarSelectionBias(
+  career: Pick<PlayerCareer, 'managerTrust' | 'status' | 'matchSharpness' | 'recentRatings' | 'rival' | 'managerStyle'>,
+  avatar: Player,
+  squad: Player[],
+): number {
+  const earned = playerSelectionWeight(career) + positionalScarcityBoost(avatar, squad)
+    + selectionMomentum(career, avatar, squad);
+  const mult = STYLE_BIAS_MULT[career.managerStyle ?? 'BALANCED'];
+  return earned * mult;
 }
 
 /** Average match rating that leaves trust unchanged (a par performance). */
@@ -471,6 +535,10 @@ export function applyAvatarMatchday(
     // Didn't feature — trust untouched; tallies/objectives refreshed only.
     return { career: next, news, moraleDelta: 0 };
   }
+
+  // Rolling recent-rating window (last 5 appearances) feeds selection momentum.
+  const recentRatings = [...(career.recentRatings ?? []), ...appearances.map((a) => a.ps.rating)].slice(-5);
+  next = { ...next, recentRatings };
 
   // Trust drifts from the games played this advance — big games (cup/continental,
   // which aren't in the league competitions map) weigh a little heavier, and a

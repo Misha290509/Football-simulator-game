@@ -1,5 +1,10 @@
 # Player Career Mode — Audit & Prioritized Feature Backlog
 
+> **Implementation status (this branch).** Most of the backlog below has now been built. **Shipped (37):** #1–#7, #9–#12, #15–#24, #26–#29, #31, #32, #35, #38, #40, #42, #43, #45, #47–#50. **Partial / intentionally-scoped (4):** #8 & #14 (training-ground progress + breakthroughs shipped; a fully-interactive "prove-it" training moment is not), #13 (half-time confidence beat only — the deterministic match input is deliberately never mutated mid-game), #44 (legacy already scores records; no new concrete record-chases). **Deferred big-bets / higher-risk (9):** #25 youth graduation arc, #30 dressing-room bridge, #33 personal-terms counter-offer, #34 media rivalry, #36 brand identity, #37 life events, #39 playable international matches, #41 tournament runs, #46 interactive testimonial. All shipped work keeps the suite green (478 tests) and respects the determinism + additive-migration rules. See the commit for specifics.
+
+---
+
+
 _Scope: **Player Career Mode only** (`careerMode === 'PLAYER'`; the human is a single avatar in `world.players`, referenced by `playerCareer.playerId`). Manager mode is out of scope except at the shared engine and the player→manager transition. This document is an audit + proposal; no game code was modified to produce it._
 
 Design rules every proposal below respects: **attributes rule outcomes** (decisions modify, never override), **failure is always escapable**, **off-pitch content is opt-in with sane defaults**, **timers optional**, **determinism** (seed + decision log), **additive migration** (career saves keep working — new `PlayerCareer` fields are optional with `?? default`).
