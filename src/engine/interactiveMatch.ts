@@ -139,7 +139,7 @@ interface Running {
   teamGoals: number; oppGoals: number; oppPrevented: number;
   bigWon: number; bigLost: number; decisive: number; ratingBonus: number;
   penScored: number; penMissed: number; penSaved: number;
-  yellow: boolean; red: boolean; ticks: MatchTick[];
+  yellow: boolean; red: boolean; worldie: boolean; ticks: MatchTick[];
 }
 
 function traitFactor(p: Player, reward: MomentChoice['reward']): number {
@@ -199,7 +199,15 @@ function applyOutcome(input: InteractiveInput, moment: KeyMoment, choice: Moment
   switch (choice.reward) {
     case 'GOAL':
       run.avatarShots++;
-      if (success) { run.avatarGoals++; run.teamGoals++; bump(1.0); won(); run.ticks.push({ minute: moment.minute, text: `⚽ You score! (${input.avatar.name.last})`, kind: 'GOAL' }); run.ticks.push({ minute: moment.minute, text: teammateReaction(input, moment.minute, 'GOAL'), kind: 'INFO' }); }
+      if (success) {
+        run.avatarGoals++; run.teamGoals++; bump(1.0); won();
+        // A spectacular strike — a long-range screamer or a set-piece special —
+        // is a goal-of-the-season contender, worth an extra bit of rating shine.
+        const spectacular = moment.type === 'LONG_SHOT' || moment.type === 'FREE_KICK';
+        if (spectacular) { run.worldie = true; bump(0.3); run.ticks.push({ minute: moment.minute, text: `🚀 WHAT A GOAL! An unstoppable strike from ${input.avatar.name.last}!`, kind: 'GOAL' }); }
+        else run.ticks.push({ minute: moment.minute, text: `⚽ You score! (${input.avatar.name.last})`, kind: 'GOAL' });
+        run.ticks.push({ minute: moment.minute, text: teammateReaction(input, moment.minute, 'GOAL'), kind: 'INFO' });
+      }
       else { bump(-0.15); lost(); run.ticks.push({ minute: moment.minute, text: `Chance spurned — ${outcomeText(choice, false)}`, kind: 'CHANCE' }); }
       break;
     case 'ASSIST':
@@ -305,7 +313,7 @@ export function runInteractiveMatch(input: InteractiveInput, decisions: MomentDe
     avatarGoals: 0, avatarAssists: 0, avatarShots: 0, avatarSaves: 0, tacklesWon: 0, duelsWon: 0, clearances: 0, keyPasses: 0,
     teamGoals: plan.teammateGoals, oppGoals: plan.oppBaseGoals, oppPrevented: 0, oppGoalsBaseline: plan.oppBaseGoals,
     defensiveDanger: isDefensiveRole(input.role) ? plan.oppBaseGoals : 0, momentum: 0,
-    bigWon: 0, bigLost: 0, decisive: 0, ratingBonus: 0, penScored: 0, penMissed: 0, penSaved: 0, yellow: false, red: false, ticks: [],
+    bigWon: 0, bigLost: 0, decisive: 0, ratingBonus: 0, penScored: 0, penMissed: 0, penSaved: 0, yellow: false, red: false, worldie: false, ticks: [],
   };
   const decisionLog: MomentDecision[] = [];
 
@@ -389,6 +397,7 @@ function finalize(input: InteractiveInput, plan: MatchPlan, run: Running, decisi
   let standout: string | undefined;
   const won = finalTeam > finalOpp;
   if (run.avatarGoals >= 3) standout = `Scored a hat-trick against ${input.oppName}.`;
+  else if (run.worldie) standout = `Scored a stunning goal against ${input.oppName} — one for the goal-of-the-season shortlist.`;
   else if (run.decisive > 0 && won) standout = `Produced a decisive late contribution to beat ${input.oppName}.`;
   else if (run.penSaved > 0) standout = `Saved a penalty against ${input.oppName}.`;
   else if (run.avatarGoals >= 2) standout = `Scored a brace against ${input.oppName}.`;

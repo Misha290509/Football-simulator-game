@@ -143,6 +143,27 @@ describe('interactive match — off-the-ball positioning intent', () => {
   });
 });
 
+describe('interactive match — goal of the season', () => {
+  it('a spectacular strike (long shot / free kick) earns a worldie standout', () => {
+    // Auto-pick the goal-seeking choice on every moment; a shooting-heavy intent
+    // across a spread of seeds is (deterministically) certain to bury a screamer.
+    let found = false;
+    for (let seed = 1; seed <= 150 && !found; seed++) {
+      const inp: InteractiveInput = { ...input('ST', seed), intent: 'BETWEEN_LINES' };
+      const d: MomentDecision[] = [];
+      let step = runInteractiveMatch(inp, d);
+      let guard = 0;
+      while (step.kind === 'DECISION' && guard++ < 40) {
+        const goalChoice = step.moment.choices.find((c) => c.reward === 'GOAL') ?? step.moment.choices[0];
+        d.push({ momentId: step.moment.id, choiceId: goalChoice.id, autoResolved: false, followedGamePlan: false, success: false, effect: '' });
+        step = runInteractiveMatch(inp, d);
+      }
+      if (step.kind === 'DONE' && /goal-of-the-season/i.test(step.record.standout ?? '')) found = true;
+    }
+    expect(found).toBe(true);
+  });
+});
+
 describe('interactive match — half-time positioning switch', () => {
   const playMoments = (inp: InteractiveInput) => {
     const out: { minute: number; type: string }[] = [];
