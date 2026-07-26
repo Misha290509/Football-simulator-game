@@ -430,6 +430,8 @@ export function applyMatchdayToCareer(
 
 const DEBUT_PHRASE = 'senior debut';
 const FIRST_GOAL_PHRASE = 'first senior goal';
+const GOAL_MILESTONES = [25, 50, 100, 150, 200, 300];
+const APP_MILESTONES = [100, 200, 300, 400, 500];
 const hasMilestone = (c: PlayerCareer, phrase: string) =>
   c.milestones.some((m) => m.text.toLowerCase().includes(phrase));
 
@@ -607,6 +609,25 @@ export function applyAvatarMatchday(
     const scored = appearances.find((a) => a.ps.goals > 0)!;
     milestones.push({ day: scored.m.day, text: 'Scored his first senior goal.' });
     news.push(feed(`news_pc_firstgoal_${scored.m.day}`, scored.m.day, 'MILESTONE', 'First senior goal!', `${nameOf(avatar)} is off the mark.`));
+  }
+
+  // Records to chase: career goal + appearance milestones, raised the advance
+  // they're crossed. These feed the timeline and the legacy "Records" score.
+  const careerAll = seasonTotals(avatar, undefined);
+  const advApps = appearances.length;
+  const goalNow = careerAll.goals, goalPrior = goalNow - advGoals;
+  const appNow = careerAll.apps, appPrior = appNow - advApps;
+  for (const m of GOAL_MILESTONES) {
+    if (goalPrior < m && goalNow >= m) {
+      milestones.push({ day, text: `Reached ${m} career goals — a landmark record.` });
+      news.push(feed(`news_pc_goalrec_${m}_${day}`, day, 'MILESTONE', `${m} career goals`, `${nameOf(avatar)} brings up ${m} senior goals — one for the record books.`));
+    }
+  }
+  for (const m of APP_MILESTONES) {
+    if (appPrior < m && appNow >= m) {
+      milestones.push({ day, text: `Made his ${m}th senior appearance — a record of longevity.` });
+      news.push(feed(`news_pc_apprec_${m}_${day}`, day, 'MILESTONE', `${m} appearances`, `${nameOf(avatar)} reaches ${m} senior appearances.`));
+    }
   }
   next = { ...next, milestones };
 

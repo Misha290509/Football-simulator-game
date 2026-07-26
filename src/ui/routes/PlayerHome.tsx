@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
 import { playerCareerOf, avatarSelectionBias } from '../../game/playerCareer';
 import { MANAGER_STYLE_LABEL } from '../../game/playerProgression';
+import { playStylesOf, PLAYSTYLE_META } from '../../game/playStyles';
 import { assignXI, resolveBench } from '../../engine/lineup';
 import { Rating, CrestBadge } from '../components/Rating';
 import { fullName, ageOf } from '../format';
@@ -72,6 +73,15 @@ export function PlayerHome() {
           <div className="flex items-center gap-2 justify-end"><span className="text-[11px] uppercase tracking-wide text-slate-500">POT</span><Rating value={p.potential} /></div>
         </div>
       </div>
+
+      {/* PlayStyles — the evolving signature of your player */}
+      {playStylesOf(p).length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {playStylesOf(p).map((s) => (
+            <span key={s} className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/25" title={PLAYSTYLE_META[s].blurb}>★ {PLAYSTYLE_META[s].label}</span>
+          ))}
+        </div>
+      )}
 
       {/* Manager conversation (choice-driven) */}
       {(career.pendingConversations ?? []).length > 0 && (() => {

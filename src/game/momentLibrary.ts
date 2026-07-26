@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Position } from '../types/attributes';
-import type { MomentType, MomentChoice, GamePlan } from '../types/interactiveMatch';
+import type { MomentType, MomentChoice, GamePlan, PositioningIntent, PositioningOption } from '../types/interactiveMatch';
 
 export type MomentRole = 'GK' | 'CB' | 'FB' | 'CM' | 'WIDE' | 'ST';
 
@@ -51,6 +51,68 @@ export const ROLE_MOMENTS: Record<MomentRole, { type: MomentType; weight: number
     { type: 'SWEEPER', weight: 1 }, { type: 'GK_DISTRIBUTION', weight: 1 },
   ],
 };
+
+// --- Off-the-ball positioning (Tier 3, off-the-ball phases) ------------------
+
+/** The positioning options offered to each on-pitch role before kickoff. */
+export const ROLE_POSITIONING: Record<MomentRole, PositioningOption[]> = {
+  ST: [
+    { id: 'IN_BEHIND', label: 'Run in behind', blurb: 'Gamble on the shoulder — more one-on-ones, higher variance.' },
+    { id: 'SHOW_FOR_IT', label: 'Come short', blurb: 'Drop in and link play — more chances to create, fewer to finish.' },
+    { id: 'BETWEEN_LINES', label: 'Play the pocket', blurb: 'Find space between the lines — a mix of shots and key passes.' },
+  ],
+  WIDE: [
+    { id: 'STAY_WIDE', label: 'Hug the touchline', blurb: 'Stretch the play — more take-ons and crosses.' },
+    { id: 'BETWEEN_LINES', label: 'Drift inside', blurb: 'Come inside onto your stronger foot — more shots and through-balls.' },
+    { id: 'SHOW_FOR_IT', label: 'Support play', blurb: 'Link with the midfield — safer, more assists.' },
+  ],
+  CM: [
+    { id: 'BETWEEN_LINES', label: 'Get forward', blurb: 'Break the lines — more driving runs and killer passes.' },
+    { id: 'SHOW_FOR_IT', label: 'Dictate deep', blurb: 'Take the ball off the back four — retain and switch play.' },
+    { id: 'PRESS', label: 'Hunt the ball', blurb: 'Press aggressively — more tackles, more involvement, card risk.' },
+  ],
+  FB: [
+    { id: 'STAY_WIDE', label: 'Overlap', blurb: 'Get up the line — more crosses, less cover behind.' },
+    { id: 'HOLD_SHAPE', label: 'Stay disciplined', blurb: 'Keep your shape — more defensive duels, safer.' },
+    { id: 'PRESS', label: 'Jump the winger', blurb: 'Step out and press — more tackles, more risk in behind.' },
+  ],
+  CB: [
+    { id: 'HOLD_SHAPE', label: 'Hold the line', blurb: 'Read and cover — more blocks and clearances.' },
+    { id: 'PRESS', label: 'Step out', blurb: 'Follow runners and step in — more interceptions, more exposure.' },
+    { id: 'SHOW_FOR_IT', label: 'Play out', blurb: 'Take it and build — more on-the-ball moments from the back.' },
+  ],
+  GK: [
+    { id: 'HOLD_SHAPE', label: 'Stay on your line', blurb: 'Set for shots — more shot-stopping moments.' },
+    { id: 'PRESS', label: 'Sweep high', blurb: 'Command the space — more one-on-ones and sweeping.' },
+    { id: 'SHOW_FOR_IT', label: 'Play it out', blurb: 'Start attacks — more distribution moments.' },
+  ],
+};
+
+/** Per-intent weight multipliers on moment types (default 1.0 when unlisted). */
+const INTENT_TYPE_MULT: Record<PositioningIntent, Partial<Record<MomentType, number>>> = {
+  IN_BEHIND: { RUN_IN_BEHIND: 2.4, ONE_ON_ONE: 2.0, FIRST_TIME_FINISH: 1.3, LONG_SHOT: 0.4, SHOOT_OR_SQUARE: 0.7 },
+  SHOW_FOR_IT: { SHOOT_OR_SQUARE: 1.8, THROUGH_BALL: 1.6, RETENTION_PASS: 1.6, CROSS_OR_CUT: 1.3, ONE_ON_ONE: 0.6, RUN_IN_BEHIND: 0.5 },
+  STAY_WIDE: { CROSS_OR_CUT: 2.2, TAKE_ON: 1.9, LONG_SHOT: 0.6, THROUGH_BALL: 0.7 },
+  BETWEEN_LINES: { THROUGH_BALL: 1.9, DRIVE_FORWARD: 1.7, LONG_SHOT: 1.6, TAKE_ON: 1.3, RETENTION_PASS: 0.7 },
+  PRESS: { MIDFIELD_TACKLE: 2.2, SLIDE_TACKLE: 2.0, OFFSIDE_TRAP: 1.4, BLOCK_SHOT: 1.3, GK_ONE_ON_ONE: 1.6, SWEEPER: 1.6 },
+  HOLD_SHAPE: { BLOCK_SHOT: 1.8, AERIAL_DUEL: 1.6, CLEAR_OR_PLAY_OUT: 1.6, SHOT_STOP: 1.6, CLAIM_CROSS: 1.4, MIDFIELD_TACKLE: 0.6 },
+};
+
+/** How the intent shifts total involvement (extra/fewer moments in the budget). */
+export const INTENT_INVOLVEMENT: Record<PositioningIntent, number> = {
+  IN_BEHIND: 0, SHOW_FOR_IT: 1, STAY_WIDE: 0, BETWEEN_LINES: 1, PRESS: 1, HOLD_SHAPE: -1,
+};
+
+/** The weight multiplier a positioning intent applies to a moment type. */
+export function intentWeight(intent: PositioningIntent | undefined, type: MomentType): number {
+  if (!intent) return 1;
+  return INTENT_TYPE_MULT[intent]?.[type] ?? 1;
+}
+
+/** The default positioning for a role (the first, most natural option). */
+export function defaultPositioning(role: MomentRole): PositioningIntent {
+  return ROLE_POSITIONING[role][0].id;
+}
 
 const C = (id: string, label: string, risk: MomentChoice['risk'], baseSuccess: number, reward: MomentChoice['reward'], attributes: string[]): MomentChoice =>
   ({ id, label, risk, baseSuccess, reward, attributes });

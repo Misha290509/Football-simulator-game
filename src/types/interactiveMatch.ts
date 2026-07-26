@@ -68,6 +68,19 @@ export interface MomentDecision {
 
 export type GamePlan = 'ATTACK' | 'SUPPORT' | 'BALANCED' | 'CONTAIN' | 'POSSESSION';
 
+/**
+ * The avatar's off-the-ball movement — how he positions himself when he doesn't
+ * have possession. Unlike the game plan (a risk/reward posture on the ball), the
+ * intent shapes *which* moments come his way and how many: a striker gambling on
+ * runs in behind gets more one-on-ones and higher variance; one showing for it
+ * links play and creates. A pre-match choice, so the match stays a pure function
+ * of (seed, decisionLog) — nothing here is drawn before its decision.
+ */
+export type PositioningIntent =
+  | 'IN_BEHIND' | 'SHOW_FOR_IT' | 'STAY_WIDE' | 'BETWEEN_LINES' | 'PRESS' | 'HOLD_SHAPE';
+
+export interface PositioningOption { id: PositioningIntent; label: string; blurb: string }
+
 export interface InteractiveMatchRecord {
   matchId: string;
   seed: number;

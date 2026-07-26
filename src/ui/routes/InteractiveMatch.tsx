@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../state/store';
-import type { GamePlan, KeyMoment, InteractiveMatchRecord } from '../../types/interactiveMatch';
+import type { GamePlan, KeyMoment, InteractiveMatchRecord, PositioningIntent } from '../../types/interactiveMatch';
 import type { InteractiveInput } from '../../engine/interactiveMatch';
+import { ROLE_POSITIONING } from '../../game/momentLibrary';
 import type { Match } from '../../types/match';
 
 const PLAN_INFO: Record<GamePlan, { label: string; blurb: string }> = {
@@ -19,6 +20,7 @@ export function InteractiveMatch() {
   const ip = useGameStore((s) => s.interactivePlay);
   const meta = useGameStore((s) => s.meta);
   const setPlan = useGameStore((s) => s.setInteractiveGamePlan);
+  const setPositioning = useGameStore((s) => s.setInteractivePositioning);
   const kickOff = useGameStore((s) => s.kickOffInteractive);
   const decide = useGameStore((s) => s.decideMoment);
   const autoMoment = useGameStore((s) => s.autoResolveMoment);
@@ -61,7 +63,8 @@ export function InteractiveMatch() {
           {ip.input.cameo && (
             <div className="text-xs px-2.5 py-1.5 rounded border border-sky-500/30 bg-sky-500/5 text-sky-200">You’re on the bench — this is a late cameo to make an impact. Fewer chances, so make them count.</div>
           )}
-          <p className="text-sm text-slate-400">The manager sets your instruction for the match. You can follow it — or back your instincts.</p>
+          <p className="text-sm text-slate-400">The manager sets your instruction — and you choose how you move off the ball. Both shape your game.</p>
+          <div className="text-[11px] uppercase tracking-wide text-slate-500">On the ball — game plan</div>
           <div className="grid sm:grid-cols-2 gap-2">
             {(Object.keys(PLAN_INFO) as GamePlan[]).map((p) => (
               <button key={p} onClick={() => setPlan(p)} className={`text-left p-3 rounded-lg border ${ip.input.gamePlan === p ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}>
@@ -70,7 +73,16 @@ export function InteractiveMatch() {
               </button>
             ))}
           </div>
-          <div className="flex gap-2">
+          <div className="text-[11px] uppercase tracking-wide text-slate-500 pt-1">Off the ball — your movement</div>
+          <div className="grid sm:grid-cols-3 gap-2">
+            {(ROLE_POSITIONING[ip.input.role] ?? []).map((o) => (
+              <button key={o.id} onClick={() => setPositioning(o.id)} className={`text-left p-3 rounded-lg border ${ip.input.intent === o.id ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}>
+                <div className="font-medium text-white text-sm">{o.label}</div>
+                <div className="text-[11px] text-slate-400 mt-0.5">{o.blurb}</div>
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 pt-1">
             <button className="btn-primary flex-1" onClick={() => kickOff()}>Kick off ▸</button>
             <button className="btn-ghost" onClick={() => { autoRest(); }}>Sim it</button>
           </div>
@@ -162,21 +174,64 @@ function MatchDone({ input, record, match, onContinue }: {
   input: InteractiveInput; record: InteractiveMatchRecord; match: Match; onContinue: () => void;
 }) {
   const av = match.playerStats.find((s) => s.playerId === input.avatar.id);
+  const rating = av?.rating ?? 6.5;
+  const attempts = record.decisionLog.length;
+  const successes = record.decisionLog.filter((d) => d.success).length;
+  const onPlan = record.decisionLog.filter((d) => d.followedGamePlan).length;
+  const t = record.tally;
+  // Player of the match: a strong rating with real end-product.
+  const potm = rating >= 7.8 && (av?.goals || av?.assists || t.decisive > 0 || t.penSaved > 0);
+
   return (
-    <div className="card p-4 space-y-3">
-      <h1 className="page-title">Full time</h1>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-        <Cell label="Rating" value={av ? av.rating.toFixed(1) : '—'} />
-        <Cell label="Goals" value={`${av?.goals ?? 0}`} />
-        <Cell label="Assists" value={`${av?.assists ?? 0}`} />
-        <Cell label="Plan adherence" value={`${Math.round(record.gamePlanAdherence * 100)}%`} />
+    <div className="card p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="page-title">Full time</h1>
+        {potm && <span className="text-xs font-semibold px-2 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">★ Player of the Match</span>}
       </div>
-      {record.standout && <div className="text-sm text-amber-300">⭐ {record.standout}</div>}
+
+      {/* Headline rating ring + line */}
+      <div className="flex items-center gap-4">
+        <RatingRing value={rating} />
+        <div className="flex-1">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <span className="text-slate-300">⚽ {av?.goals ?? 0} <span className="text-slate-500">goals</span></span>
+            <span className="text-slate-300">🅰 {av?.assists ?? 0} <span className="text-slate-500">assists</span></span>
+            <span className="text-slate-300">{av?.shots ?? 0} <span className="text-slate-500">shots</span></span>
+            {av?.saves != null && <span className="text-slate-300">🧤 {av.saves} <span className="text-slate-500">saves</span></span>}
+          </div>
+          {record.standout && <div className="text-sm text-amber-300 mt-1.5">⭐ {record.standout}</div>}
+        </div>
+      </div>
+
+      {/* Contribution breakdown */}
+      <div>
+        <div className="flex items-center justify-between text-xs mb-1">
+          <span className="uppercase tracking-wide text-slate-500">Moments won</span>
+          <span className="font-mono text-slate-400">{successes}/{attempts}</span>
+        </div>
+        <div className="h-2 rounded bg-surface-700 overflow-hidden flex">
+          <div className="h-full bg-emerald-500" style={{ width: `${attempts ? (successes / attempts) * 100 : 0}%` }} />
+          <div className="h-full bg-rose-500/60" style={{ width: `${attempts ? ((attempts - successes) / attempts) * 100 : 0}%` }} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+        <Cell label="Big moments" value={`${t.bigWon}–${t.bigLost}`} />
+        <Cell label="Decisive" value={`${t.decisive}`} />
+        <Cell label="On-plan" value={`${attempts ? Math.round((onPlan / attempts) * 100) : 0}%`} />
+        <Cell label="Off the ball" value={INTENT_LABEL[input.intent ?? 'IN_BEHIND']} />
+      </div>
+      {(t.penScored + t.penMissed + t.penSaved) > 0 && (
+        <div className="text-xs text-slate-400">Penalties — scored {t.penScored}, missed {t.penMissed}, saved {t.penSaved}.</div>
+      )}
+
       <div>
         <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">Your moments</div>
         <ul className="space-y-1 max-h-40 overflow-y-auto text-sm">
           {record.decisionLog.map((d, i) => (
-            <li key={i} className="text-slate-400"><span className="text-slate-600 mr-2">{i + 1}.</span>{d.effect}{d.followedGamePlan ? '' : ' (off-plan)'}</li>
+            <li key={i} className={d.success ? 'text-slate-300' : 'text-slate-500'}>
+              <span className="text-slate-600 mr-2">{i + 1}.</span>{d.success ? '✓ ' : '· '}{d.effect}{d.followedGamePlan ? '' : ' (off-plan)'}
+            </li>
           ))}
         </ul>
       </div>
@@ -185,6 +240,27 @@ function MatchDone({ input, record, match, onContinue }: {
   );
 }
 
+const INTENT_LABEL: Record<PositioningIntent, string> = {
+  IN_BEHIND: 'In behind', SHOW_FOR_IT: 'Came short', STAY_WIDE: 'Wide', BETWEEN_LINES: 'The pocket', PRESS: 'Pressing', HOLD_SHAPE: 'Held shape',
+};
+
+function RatingRing({ value }: { value: number }) {
+  const pct = Math.max(0, Math.min(1, (value - 4) / 6)); // 4.0–10 → 0–1
+  const tone = value >= 7.5 ? '#34d399' : value < 6 ? '#fb7185' : '#e2e8f0';
+  const r = 26, C = 2 * Math.PI * r;
+  return (
+    <div className="relative w-[68px] h-[68px] shrink-0">
+      <svg viewBox="0 0 68 68" className="w-full h-full -rotate-90">
+        <circle cx="34" cy="34" r={r} fill="none" stroke="currentColor" className="text-surface-700" strokeWidth="6" />
+        <circle cx="34" cy="34" r={r} fill="none" stroke={tone} strokeWidth="6" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pct)} />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-xl font-bold tabular-nums" style={{ color: tone }}>{value.toFixed(1)}</span>
+      </div>
+    </div>
+  );
+}
+
 function Cell({ label, value }: { label: string; value: string }) {
-  return <div className="card p-2"><div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div><div className="text-lg font-semibold text-white">{value}</div></div>;
+  return <div className="card p-2"><div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div><div className="text-base font-semibold text-white">{value}</div></div>;
 }
