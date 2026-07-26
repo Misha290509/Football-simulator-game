@@ -11,7 +11,7 @@ import type { Competition } from '../types/competition';
 import type { PlayerCareer } from '../types/playerCareer';
 import type { GamePlan } from '../types/interactiveMatch';
 import { buildLineupProfile, resolveBench } from '../engine/lineup';
-import { momentRole } from './momentLibrary';
+import { momentRole, defaultPositioning } from './momentLibrary';
 import { avatarSelectionBias } from './playerCareer';
 import type { InteractiveInput } from '../engine/interactiveMatch';
 
@@ -76,6 +76,7 @@ export function buildInteractiveInput(
     gamePlan: plan,
     frequency: 'NORMAL', // overridden from settings by the store
     cameo: !willStart && onBench,
+    intent: defaultPositioning(role),
   };
   return { input, willStart, willComeOn: onBench };
 }

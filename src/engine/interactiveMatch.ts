@@ -19,7 +19,9 @@ import type {
 } from '../types/interactiveMatch';
 import { Rng, clamp } from './rng';
 import { traitsOf } from './traits';
-import { MOMENT_DEFS, ROLE_MOMENTS, gamePlanAlignedChoices, isDefensiveRole, type MomentRole } from '../game/momentLibrary';
+import { MOMENT_DEFS, ROLE_MOMENTS, gamePlanAlignedChoices, isDefensiveRole, intentWeight, INTENT_INVOLVEMENT, type MomentRole } from '../game/momentLibrary';
+import { playStylesOf, playStyleFactor } from '../game/playStyles';
+import type { PositioningIntent } from '../types/interactiveMatch';
 
 export interface InteractiveInput {
   matchId: string;
@@ -39,6 +41,8 @@ export interface InteractiveInput {
   frequency: 'LOW' | 'NORMAL' | 'HIGH';
   /** The avatar comes off the bench: a short late cameo (fewer, later moments). */
   cameo?: boolean;
+  /** Off-the-ball movement — reshapes which moments come his way (pre-match). */
+  intent?: PositioningIntent;
 }
 
 // --- Small deterministic helpers -------------------------------------------
@@ -80,6 +84,7 @@ function momentBudget(rng: Rng, input: InteractiveInput): number {
   base += input.frequency === 'LOW' ? -2 : input.frequency === 'HIGH' ? 2 : 0;
   if (input.status === 'STAR' || input.status === 'CAPTAIN') base += 1;
   else if (input.status === 'YOUTH') base -= 1;
+  if (input.intent) base += INTENT_INVOLVEMENT[input.intent]; // off-the-ball involvement
   return clamp(base + rng.int(-1, 1), 4, 10);
 }
 
@@ -95,7 +100,10 @@ function buildPlan(rng: Rng, input: InteractiveInput): MatchPlan {
   // A cameo's chances fall in the closing stretch; a start spans the whole game.
   const [lo, hi] = input.cameo ? [66, 90] : [3, 90];
   const minutes = Array.from({ length: n }, () => rng.int(lo, hi)).sort((a, b) => a - b);
-  const moments: { type: MomentType; minute: number }[] = minutes.map((minute) => ({ type: pickWeighted(rng, ROLE_MOMENTS[input.role]).type, minute }));
+  // Off-the-ball intent re-weights which moments come the avatar's way (same
+  // number of RNG draws, so the deterministic stream stays aligned).
+  const pool = ROLE_MOMENTS[input.role].map((m) => ({ type: m.type, weight: m.weight * intentWeight(input.intent, m.type) }));
+  const moments: { type: MomentType; minute: number }[] = minutes.map((minute) => ({ type: pickWeighted(rng, pool).type, minute }));
 
   // #15 — set-piece specialists get their signature moments regardless of the
   // general frequency: a dead-ball taker earns free-kicks, a penalty ace the
@@ -142,6 +150,8 @@ function resolveMoment(
   // perfect choice still usually fails; a world-class one can pull off a poor one.
   p *= clamp(0.5 + (a - 50) / 70, 0.35, 1.7);
   p *= traitFactor(input.avatar, choice.reward);
+  // PlayStyles: a modest, targeted edge on the moments they suit (attrs still rule).
+  p *= playStyleFactor(playStylesOf(input.avatar), moment.type, choice.reward);
   // Context bites: fatigue late, pressure in big games (unless Big-Game Player),
   // and low confidence all degrade the outcome.
   const fatigue = clamp(1 - input.fitness / 100 + moment.minute / 320, 0, 0.6);

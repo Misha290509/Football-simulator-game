@@ -3,6 +3,7 @@ import { useGameStore } from '../../state/store';
 import { playerCareerOf } from '../../game/playerCareer';
 import { awardMeta } from '../../game/awardMeta';
 import { traitsOf, TRAIT_LABEL, type PlayerTrait } from '../../engine/traits';
+import { playStylesOf, PLAYSTYLE_META } from '../../game/playStyles';
 import { fullName, formatMoney } from '../format';
 
 export function PlayerCareerScreen() {
@@ -53,6 +54,11 @@ export function PlayerCareerScreen() {
 
       {/* Development / traits */}
       <div className="card p-4">
+        <h2 className="text-sm font-semibold text-slate-400 mb-2">PlayStyles</h2>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {playStylesOf(p).length === 0 ? <span className="text-xs text-slate-500">No signature PlayStyles yet — push the right attributes over the line in training to unlock them.</span> :
+            playStylesOf(p).map((s) => <span key={s} className="bg-gold/10 text-amber-300 border border-amber-500/25 rounded px-2 py-1 text-xs" title={PLAYSTYLE_META[s].blurb}>★ {PLAYSTYLE_META[s].label}</span>)}
+        </div>
         <h2 className="text-sm font-semibold text-slate-400 mb-2">Traits &amp; development</h2>
         <div className="flex flex-wrap gap-2 mb-3">
           {traitsOf(p).length === 0 ? <span className="text-xs text-slate-500">No signature traits yet — train to develop them.</span> :

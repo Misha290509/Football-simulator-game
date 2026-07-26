@@ -118,6 +118,31 @@ describe('interactive match — impact-sub cameo (benched avatar)', () => {
   });
 });
 
+describe('interactive match — off-the-ball positioning intent', () => {
+  it('reshapes the moment mix deterministically (runs in behind → more direct chances)', () => {
+    const behind: InteractiveInput = { ...input('ST'), intent: 'IN_BEHIND' };
+    const short: InteractiveInput = { ...input('ST'), intent: 'SHOW_FOR_IT' };
+    const typeCounts = (inp: InteractiveInput) => {
+      const seen: Record<string, number> = {};
+      let step = runInteractiveMatch(inp, []); const d: MomentDecision[] = [];
+      while (step.kind === 'DECISION' && d.length < 30) {
+        seen[step.moment.type] = (seen[step.moment.type] ?? 0) + 1;
+        d.push({ momentId: step.moment.id, choiceId: step.moment.choices[0].id, autoResolved: false, followedGamePlan: false, success: false, effect: '' });
+        step = runInteractiveMatch(inp, d);
+      }
+      return seen;
+    };
+    const b = typeCounts(behind);
+    const s = typeCounts(short);
+    const directBehind = (b.RUN_IN_BEHIND ?? 0) + (b.ONE_ON_ONE ?? 0);
+    const directShort = (s.RUN_IN_BEHIND ?? 0) + (s.ONE_ON_ONE ?? 0);
+    // Running in behind should, over the match, yield at least as many direct
+    // chances as coming short — and the same intent always reproduces.
+    expect(directBehind).toBeGreaterThanOrEqual(directShort);
+    expect(typeCounts(behind)).toEqual(b);
+  });
+});
+
 describe('interactive match — no stat inflation', () => {
   it('an auto-first-choice striker averages a sane number of goals per match', () => {
     let goals = 0; const N = 40;

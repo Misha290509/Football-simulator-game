@@ -225,6 +225,7 @@ interface GameState {
   // --- Interactive match (Tier 3) ---
   beginPlayerMatch: () => Promise<'STARTED' | 'AUTO' | 'NONE'>;
   setInteractiveGamePlan: (plan: GamePlan) => void;
+  setInteractivePositioning: (intent: import('../types/interactiveMatch').PositioningIntent) => void;
   kickOffInteractive: () => void;
   decideMoment: (choiceId: string, autoResolved?: boolean) => void;
   autoResolveMoment: () => void;
@@ -565,6 +566,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const ip = get().interactivePlay;
     if (!ip || ip.phase !== 'PREMATCH') return;
     set({ interactivePlay: { ...ip, input: { ...ip.input, gamePlan: plan } } });
+  },
+
+  setInteractivePositioning: (intent) => {
+    const ip = get().interactivePlay;
+    if (!ip || ip.phase !== 'PREMATCH') return;
+    set({ interactivePlay: { ...ip, input: { ...ip.input, intent } } });
   },
 
   kickOffInteractive: () => {
