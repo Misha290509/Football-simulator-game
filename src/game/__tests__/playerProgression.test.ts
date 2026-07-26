@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  deriveSquadStatus, updateStatus, updateRival, updateTraits, updateAdversity, updateInternational, resolveCallUp, statusRank,
+  deriveSquadStatus, updateStatus, updateRival, updateTraits, updateAdversity, updateInternational, resolveCallUp, statusRank, applyNewManager,
 } from '../playerProgression';
 import { resolveConversation, evaluatePromises, requestMinutesOutcome, roleMeetingConversation } from '../playerConversations';
 import { generatePlayer } from '../../engine/generator';
@@ -146,6 +146,25 @@ describe('adversity', () => {
     const bad = updateAdversity(career({ confidence: 40, lastMatch: { rating: 5.0 } as never }), p, false, 30);
     expect(bad.career.confidence).toBeLessThan(40);
     expect(bad.formDelta).toBeLessThanOrEqual(0);
+  });
+});
+
+describe('a new manager', () => {
+  const club = { id: 'C', name: 'City FC', reputation: 70 } as never;
+
+  it('resets trust to a fresh start, voids old promises, and bumps the era', () => {
+    const c = career({ managerTrust: 88, managerEra: 0, promises: [{ text: 'play you', kind: 'PLAYING_TIME', deadline: 500 }] as never });
+    const res = applyNewManager(c, club, 777, 40);
+    expect(res.career.managerEra).toBe(1);
+    expect(res.career.managerTrust).toBeLessThan(88);
+    expect(res.career.promises).toHaveLength(0);
+    expect(res.news.some((n) => /new manager/i.test(n.title))).toBe(true);
+  });
+
+  it('is deterministic and can change the man-management style across eras', () => {
+    const a = applyNewManager(career({ managerEra: 0 }), club, 777, 40);
+    const b = applyNewManager(career({ managerEra: 0 }), club, 777, 40);
+    expect(a.career.managerStyle).toBe(b.career.managerStyle);
   });
 });
 

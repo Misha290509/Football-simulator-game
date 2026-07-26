@@ -294,6 +294,9 @@ export interface PlayerCareer {
   comeback?: { weeksOut: number; sinceDay: number; returned: boolean } | null;
   /** Club ids where a "club legend" moment has already been celebrated (once each). */
   legendMilestones?: string[];
+  /** Which manager era the avatar is on at the club — bumped when a new manager
+   *  arrives, so his man-management style is re-rolled and trust starts fresh. */
+  managerEra?: number;
 
   // --- Adversity (Tier 2) ----------------------------------------------------
   confidence?: number; // 0–100 slump mechanic

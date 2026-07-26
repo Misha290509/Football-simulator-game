@@ -148,6 +148,35 @@ export function updateRival(career: PlayerCareer, avatar: Player, squad: Player[
   return { career: nextCareer, news };
 }
 
+// --- A new manager (Tier 2 depth) -------------------------------------------
+
+const NEW_MGR_LINES: Record<ManagerStyle, string> = {
+  LOYAL: 'Word is he backs his players through thick and thin — earn his faith and you’ll have a friend in the dugout.',
+  RUTHLESS: 'A hard man with no time for sentiment. Perform or perish — your past standing counts for nothing now.',
+  ROTATOR: 'He likes to shuffle his pack. Nailing down a regular starting spot just got harder.',
+  YOUTH_FOCUSED: 'He’s built his name on trusting young players. This could be the opening you’ve waited for.',
+  BALANCED: 'A measured operator who judges what he sees. A clean slate — go and make an impression.',
+};
+
+/**
+ * A manager change at the avatar's club (a season-boundary event). Bumps the
+ * manager era so his style is re-rolled, resets trust to a neutral fresh start,
+ * and voids the old manager's outstanding promises. Deterministic; the caller
+ * decides *whether* it happens (a seeded per-season chance).
+ */
+export function applyNewManager(career: PlayerCareer, club: Club | undefined, seed: number, day: number): { career: PlayerCareer; news: NewsItem[] } {
+  const era = (career.managerEra ?? 0) + 1;
+  const styleSeed = (seed ^ hashSeed(`mgrera_${era}`)) >>> 0;
+  const style = deriveManagerStyle(club, styleSeed);
+  const hadPromises = (career.promises ?? []).length > 0;
+  const news = [feed(day, 'BOARD', 'A new manager walks in',
+    `${club?.name ?? 'The club'} have appointed a new manager. ${NEW_MGR_LINES[style]}${hadPromises ? ' Whatever the last man promised you left with him.' : ''} You start from zero in his eyes.`)];
+  return {
+    career: { ...career, managerEra: era, managerStyle: style, managerTrust: 46, promises: [] },
+    news,
+  };
+}
+
 // --- Manager style (Tier 2 depth) -------------------------------------------
 
 const MANAGER_STYLES: ManagerStyle[] = ['LOYAL', 'RUTHLESS', 'ROTATOR', 'YOUTH_FOCUSED', 'BALANCED'];
@@ -373,8 +402,13 @@ export function progressPlayerCareer(
   let career = careerIn;
   const news: NewsItem[] = [];
 
-  // The manager's man-management style (set once, refreshed if the club changed).
-  if (club) career = { ...career, managerStyle: deriveManagerStyle(club, seed) };
+  // The manager's man-management style. Stable per club, but a new manager (a
+  // bumped era) re-rolls it. Era 0 uses the raw seed, preserving prior behaviour.
+  if (club) {
+    const era = career.managerEra ?? 0;
+    const styleSeed = era === 0 ? seed : (seed ^ hashSeed(`mgrera_${era}`)) >>> 0;
+    career = { ...career, managerStyle: deriveManagerStyle(club, styleSeed) };
+  }
 
   const s = updateStatus(career, avatar, year, day); career = s.career; news.push(...s.news);
   const r = updateRival(career, avatar, squad, day); career = r.career; news.push(...r.news);

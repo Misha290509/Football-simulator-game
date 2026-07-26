@@ -65,7 +65,7 @@ import { DEFAULT_CAREER_SETTINGS, EMPTY_MOMENT_STATS } from '../types/interactiv
 import type {
   KeyMoment, MomentDecision, MatchTick, GamePlan, InteractiveMatchRecord, CareerSettings,
 } from '../types/interactiveMatch';
-import { progressPlayerCareer, statusRank, resolveCallUp } from '../game/playerProgression';
+import { progressPlayerCareer, statusRank, resolveCallUp, applyNewManager } from '../game/playerProgression';
 import {
   advanceOffPitch, executeContractOffer, executeLoanOffer, hireAgent, agentById, derivePersona,
 } from '../game/playerOffPitch';
@@ -3002,6 +3002,18 @@ export const useGameStore = create<GameState>((set, get) => ({
             body: `${card.headline} ${clubName || 'The season'}: ${pc.seasonApps} apps, ${pc.seasonGoals} goals, ${assists} assists, avg rating ${pc.seasonAvgRating ? pc.seasonAvgRating.toFixed(1) : '—'}.${growth}${honours}`,
             read: false,
           }];
+        }
+
+        // A new manager may walk in over the summer — a fresh start with the
+        // gaffer: style re-rolled, trust reset, the old man's promises void.
+        {
+          const cid2 = result.players[pc.playerId]?.contract.clubId;
+          const mgrRng = new Rng((meta.seed ^ hashSeed(`mgrchange_${result.newSeason.year}`)) >>> 0);
+          if (cid2 && mgrRng.chance(0.22)) {
+            const nm = applyNewManager(newMeta.playerCareer, result.clubs[cid2], meta.seed, 0);
+            newMeta.playerCareer = nm.career;
+            newMeta.news = [...newMeta.news, ...nm.news];
+          }
         }
 
         // Keep the stand-in "manager club" on the avatar's club (e.g. after a
