@@ -113,13 +113,20 @@ export interface CareerPromise {
   kept?: boolean; // set once evaluated
 }
 
-/** A pending choice-driven manager conversation surfaced in the feed. */
+/** A pending choice-driven conversation surfaced in the feed. Most are with the
+ *  manager (trust/relationship/promise), but the same channel now carries press
+ *  and peer flashpoints that ripple the public image and the rival bond. */
 export interface ConversationChoice {
   text: string;
   trust?: number;
   morale?: number;
   relationship?: number;
   promise?: CareerPromise['kind'];
+  /** Public-image / peer ripples (rival press reactions, etc.). */
+  fanRating?: number;
+  following?: number; // social following delta (can be large for viral moments)
+  confidence?: number; // 0–100 adversity mechanic
+  rivalRelationship?: number; // moves career.rival.relationship (−100…100)
 }
 export interface Conversation {
   id: string;

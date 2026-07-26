@@ -105,6 +105,21 @@ export function contractTalkConversation(day: number): Conversation {
   };
 }
 
+/** The press corner the avatar when his rival takes the shirt and talks it up.
+ *  How he answers shapes his public image and the rivalry itself. */
+export function rivalJabConversation(rivalLast: string, day: number): Conversation {
+  return {
+    id: `conv_rivaljab_${day}`,
+    trigger: 'RIVAL_PRESS',
+    prompt: `${rivalLast} has the shirt and made sure the press knew it. A reporter turns to you: your response?`,
+    choices: [
+      { text: 'Fire back — “I’ll take his shirt, and his quotes with it.”', following: 4000, fanRating: 1, rivalRelationship: -12, morale: 2 },
+      { text: 'Stay classy — “He’s a top player. I’ll keep working.”', fanRating: 3, rivalRelationship: 8, morale: 0 },
+      { text: 'Let my football talk — say nothing, smile, walk on.', confidence: 4, trust: 2, morale: 1 },
+    ],
+  };
+}
+
 // --- Resolution -------------------------------------------------------------
 
 export interface TalkResult { career: PlayerCareer; news: NewsItem[]; moraleDelta: number }
@@ -120,6 +135,11 @@ export function resolveConversation(career: PlayerCareer, conv: Conversation, ch
     clubRelationship: clamp((career.clubRelationship ?? 50) + (c.relationship ?? 0), 0, 100) as number,
     pendingConversations: (career.pendingConversations ?? []).filter((x) => x.id !== conv.id),
   };
+  // Public-image / peer ripples (press & rival flashpoints).
+  if (c.fanRating != null) next = { ...next, fanRating: clamp((next.fanRating ?? 50) + c.fanRating, 0, 100) as number };
+  if (c.following != null) next = { ...next, following: Math.max(0, (next.following ?? 0) + c.following) };
+  if (c.confidence != null) next = { ...next, confidence: clamp((next.confidence ?? 60) + c.confidence, 0, 100) as number };
+  if (c.rivalRelationship != null && next.rival) next = { ...next, rival: { ...next.rival, relationship: clamp((next.rival.relationship ?? 0) + c.rivalRelationship, -100, 100) as number } };
   const news: NewsItem[] = [];
   if (c.promise) {
     const promise: CareerPromise = { text: `The manager promised to ${promiseText(c.promise)}.`, kind: c.promise, deadline: day + PROMISE_WINDOW_DAYS };

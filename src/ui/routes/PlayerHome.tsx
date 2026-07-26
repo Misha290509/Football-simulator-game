@@ -86,9 +86,12 @@ export function PlayerHome() {
       {/* Manager conversation (choice-driven) */}
       {(career.pendingConversations ?? []).length > 0 && (() => {
         const conv = career.pendingConversations![0];
+        const header = conv.trigger === 'RIVAL_PRESS' ? 'The press want a reaction'
+          : conv.trigger === 'CAPTAINCY' ? 'The armband'
+          : 'Manager wants a word';
         return (
           <div className="card p-4 border border-accent/30 bg-accent/5">
-            <div className="text-xs uppercase tracking-wide text-accent-400 mb-1">Manager wants a word</div>
+            <div className="text-xs uppercase tracking-wide text-accent-400 mb-1">{header}</div>
             <p className="text-sm text-slate-200 mb-3">{conv.prompt}</p>
             <div className="flex flex-col gap-2">
               {conv.choices.map((c, i) => (

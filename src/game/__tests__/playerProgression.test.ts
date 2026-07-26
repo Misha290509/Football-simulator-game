@@ -66,6 +66,22 @@ describe('positional rival', () => {
     expect(res.career.rival!.playerId).toBe(newRival.id);
   });
 
+  it('the rival taking the shirt corners you for a press reaction (a queued choice)', () => {
+    const avatar = mk(70, { position: 'ST' });
+    avatar.form = -40; // out-formed → edge slides down
+    const rivalST = mk(78, { position: 'ST' });
+    rivalST.form = 40;
+    const c = career({ rival: { playerId: rivalST.id, relationship: 0, edge: -5 } });
+    const res = updateRival(c, avatar, [avatar, rivalST], 210);
+    expect(res.career.rival!.edge).toBeLessThanOrEqual(-6);
+    const conv = (res.career.pendingConversations ?? [])[0];
+    expect(conv?.trigger).toBe('RIVAL_PRESS');
+    // Firing back should cost the rival relationship but grow the following.
+    const answered = resolveConversation(res.career, conv!, 0, 210);
+    expect(answered.career.rival!.relationship).toBeLessThan(0);
+    expect((answered.career.following ?? 0)).toBeGreaterThan(c.following ?? 0);
+  });
+
   it('a decisive head-to-head edge fires "the shirt is yours"', () => {
     const avatar = mk(70, { position: 'ST' });
     avatar.form = 40; // out-forming him tips the edge up

@@ -14,6 +14,8 @@ import { POSITION_GROUP } from '../types/attributes';
 import type { PlayerCareer, SquadStatus, StatusChange, ManagerStyle } from '../types/playerCareer';
 import { clamp, Rng, hashSeed } from '../engine/rng';
 import { traitsOf, TRAIT_LABEL, type PlayerTrait } from '../engine/traits';
+import { rivalJabConversation } from './playerConversations';
+import type { Conversation } from '../types/playerCareer';
 
 let _seq = 0;
 const feed = (day: number, category: NewsItem['category'], title: string, body: string): NewsItem =>
@@ -95,6 +97,7 @@ export function updateRival(career: PlayerCareer, avatar: Player, squad: Player[
   if (!pick) return { career: { ...career, rival: null }, news: [] };
 
   const news: NewsItem[] = [];
+  let pendingConv: Conversation | null = null;
   const prev = career.rival;
   const sameRival = prev?.playerId === pick.id;
   let relationship = sameRival ? prev!.relationship : 0;
@@ -127,13 +130,22 @@ export function updateRival(career: PlayerCareer, avatar: Player, squad: Player[
     }
     // A decisive turn in the head-to-head — the shirt battle is won or lost.
     if (edge >= 6 && prevEdge < 6) news.push(feed(day, 'MILESTONE', 'The shirt is yours', pickQ(SHIRT_WON, `${pick.id}:${day}`)));
-    else if (edge <= -6 && prevEdge > -6) news.push(feed(day, 'GENERAL', `${pick.name.last} has the shirt`, pickQ(RIVAL_JAB, `${pick.id}:${day}`)));
+    else if (edge <= -6 && prevEdge > -6) {
+      news.push(feed(day, 'GENERAL', `${pick.name.last} has the shirt`, pickQ(RIVAL_JAB, `${pick.id}:${day}`)));
+      // ...and the press corner you for a reaction (a choice that ripples).
+      if ((career.pendingConversations ?? []).length === 0) pendingConv = rivalJabConversation(pick.name.last, day);
+    }
     // #5 — the rivalry crosses into open enmity or grudging respect.
     if (relationship <= -60 && (prev!.relationship ?? 0) > -60) news.push(feed(day, 'GENERAL', 'No love lost', `Things have turned frosty between you and ${nameOf(pick)} — this is personal now.`));
     else if (relationship >= 60 && (prev!.relationship ?? 0) < 60) news.push(feed(day, 'GENERAL', 'Rivals and friends', `You and ${nameOf(pick)} push each other hard — but there's real respect there.`));
   }
 
-  return { career: { ...career, rival: { playerId: pick.id, relationship, sidelined, edge } }, news };
+  const nextCareer: PlayerCareer = {
+    ...career,
+    rival: { playerId: pick.id, relationship, sidelined, edge },
+    ...(pendingConv ? { pendingConversations: [...(career.pendingConversations ?? []), pendingConv] } : {}),
+  };
+  return { career: nextCareer, news };
 }
 
 // --- Manager style (Tier 2 depth) -------------------------------------------
