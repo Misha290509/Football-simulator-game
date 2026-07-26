@@ -114,6 +114,31 @@ describe('adversity', () => {
     expect(res.news.some((n) => n.category === 'INJURY')).toBe(true);
   });
 
+  it('a serious injury opens a comeback arc that returns and then completes', () => {
+    const hurt = mk(78);
+    hurt.injury = { type: 'Ligament', weeksOut: 12, description: 'A ruptured knee ligament', occurredOnDay: 30 } as never;
+    const onset = updateAdversity(career({ matchSharpness: 100, confidence: 60 }), hurt, false, 30);
+    expect(onset.career.comeback?.returned).toBe(false);
+    expect(onset.news.some((n) => /serious blow/i.test(n.title))).toBe(true);
+
+    const fit = mk(78); fit.injury = null;
+    const back = updateAdversity({ ...onset.career, matchSharpness: 25 }, fit, true, 90);
+    expect(back.career.comeback?.returned).toBe(true);
+    expect(back.news.some((n) => /comeback/i.test(n.title))).toBe(true);
+
+    const done = updateAdversity({ ...back.career, matchSharpness: 90 }, fit, false, 150);
+    expect(done.news.some((n) => /all the way back/i.test(n.title))).toBe(true);
+    expect(done.career.comeback).toBeNull();
+  });
+
+  it('a minor knock stays a simple sidelining, no comeback arc', () => {
+    const p = mk(75);
+    p.injury = { type: 'Knock', weeksOut: 2, description: 'A dead leg', occurredOnDay: 30 } as never;
+    const res = updateAdversity(career({ matchSharpness: 100 }), p, false, 30);
+    expect(res.career.comeback ?? null).toBeNull();
+    expect(res.news.some((n) => /sidelined/i.test(n.title))).toBe(true);
+  });
+
   it('confidence tracks the last rating and a slump worsens form (escapably)', () => {
     const p = mk(75);
     const good = updateAdversity(career({ confidence: 40, lastMatch: { rating: 8.5 } as never }), p, false, 30);

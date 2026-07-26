@@ -290,6 +290,8 @@ export interface PlayerCareer {
   mentor?: CareerMentor | null;
   /** Standing in the dressing room + named team-mate bonds (story). */
   dressingRoom?: DressingRoomState | null;
+  /** An active comeback from a serious injury (long-layoff narrative arc). */
+  comeback?: { weeksOut: number; sinceDay: number; returned: boolean } | null;
 
   // --- Adversity (Tier 2) ----------------------------------------------------
   confidence?: number; // 0–100 slump mechanic

@@ -185,7 +185,14 @@ export function PlayerHome() {
       </div>
       {p.injury && (
         <div className="card p-3 border border-rose-500/30 bg-rose-500/5 text-sm text-rose-300">
-          🚑 Injured — out for a spell. You’ll return to reduced sharpness.
+          {career.comeback && !career.comeback.returned
+            ? `🚑 Serious injury — around ${career.comeback.weeksOut} weeks out. The long road back starts here.`
+            : '🚑 Injured — out for a spell. You’ll return to reduced sharpness.'}
+        </div>
+      )}
+      {!p.injury && career.comeback?.returned && (
+        <div className="card p-3 border border-amber-500/30 bg-amber-500/5 text-sm text-amber-300">
+          💪 On the comeback trail — back in the squad after {career.comeback.weeksOut} weeks out. Build your sharpness back to full to complete the comeback.
         </div>
       )}
 

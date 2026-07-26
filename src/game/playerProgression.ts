@@ -261,14 +261,38 @@ export function updateAdversity(career: PlayerCareer, avatar: Player, prevInjure
   let confidence = career.confidence ?? 60;
   let formDelta = 0;
   const news: NewsItem[] = [];
+  let comeback = career.comeback ?? null;
+  const SERIOUS_WEEKS = 6;
 
   if (injuredNow && !prevInjured) {
-    sharpness = 35; // will return undercooked
-    news.push(feed(day, 'INJURY', 'Sidelined by injury', `${nameOf(avatar)} picks up a knock and faces a spell out. Fight back to full sharpness on return.`));
+    const weeks = avatar.injury!.weeksOut;
+    const serious = weeks >= SERIOUS_WEEKS;
+    sharpness = serious ? 25 : 35; // a long lay-off returns him further undercooked
+    if (serious) {
+      comeback = { weeksOut: weeks, sinceDay: day, returned: false };
+      confidence = clamp(confidence - 8, 0, 100);
+      news.push(feed(day, 'INJURY', 'A serious blow', `${avatar.injury!.description} — ${nameOf(avatar)} faces around ${weeks} weeks out. The long road back starts now.`));
+    } else {
+      news.push(feed(day, 'INJURY', 'Sidelined by injury', `${nameOf(avatar)} picks up a knock and faces a spell out. Fight back to full sharpness on return.`));
+    }
   } else if (!injuredNow && prevInjured) {
-    news.push(feed(day, 'INJURY', 'Back in training', `${nameOf(avatar)} is over the injury — but it'll take a few games to look fully sharp again.`));
+    if (comeback && !comeback.returned) {
+      // The big return after a long lay-off — a genuine lift.
+      comeback = { ...comeback, returned: true };
+      confidence = clamp(confidence + 8, 0, 100);
+      news.push(feed(day, 'INJURY', 'The comeback', `After ${comeback.weeksOut} weeks out, ${nameOf(avatar)} is back in the squad. Undercooked, emotional, and hungry — now to fight all the way back.`));
+    } else {
+      news.push(feed(day, 'INJURY', 'Back in training', `${nameOf(avatar)} is over the injury — but it'll take a few games to look fully sharp again.`));
+    }
   }
   if (!injuredNow) sharpness = clamp(sharpness + 9, 0, 100);
+
+  // All the way back: full sharpness after a long-injury comeback closes the arc.
+  if (comeback?.returned && !injuredNow && sharpness >= 95) {
+    confidence = clamp(confidence + 5, 0, 100);
+    news.push(feed(day, 'MILESTONE', 'All the way back', `${nameOf(avatar)} is back to full sharpness and looking every bit himself again. The injury is behind him — the comeback complete.`));
+    comeback = null;
+  }
   if (sharpness < 80) formDelta -= (80 - sharpness) * 0.04;
 
   // Confidence tracks the most recent outing.
@@ -283,7 +307,7 @@ export function updateAdversity(career: PlayerCareer, avatar: Player, prevInjure
   // lifestyle block recovers fitness and lifts this. Always escapable.
   if (avatar.fitness < 55) formDelta -= 1;
 
-  return { career: { ...career, matchSharpness: sharpness, confidence }, news, formDelta };
+  return { career: { ...career, matchSharpness: sharpness, confidence, comeback }, news, formDelta };
 }
 
 // --- International call-up (Step 7) ------------------------------------------
