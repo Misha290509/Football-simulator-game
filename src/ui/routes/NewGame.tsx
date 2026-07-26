@@ -10,6 +10,8 @@ import { CHALLENGES, challengeById, pickChallengeClub } from '../../game/challen
 import { PLAYER_ARCHETYPES } from '../../game/playerCareer';
 import { YOUTH_POSITIONS } from '../../engine/academy';
 import { POSITION_LABEL } from '../../engine/lineup';
+import { SkillPointsEditor, type SkillState } from './SkillPointsEditor';
+import { recommendedBuild, floorMentality, targetOvrFor, attrCapFor } from '../../game/skillPoints';
 
 const START_YEAR = 2025;
 const SEASON_LABEL = `${START_YEAR}/${((START_YEAR + 1) % 100).toString().padStart(2, '0')}`;
@@ -41,6 +43,7 @@ export function NewGame() {
   const [position, setPosition] = useState<Position>('ST');
   const [foot, setFoot] = useState<Foot>('R');
   const [archetype, setArchetype] = useState<string>(PLAYER_ARCHETYPES[0].id);
+  const [skill, setSkill] = useState<SkillState | null>(null);
 
   useEffect(() => {
     void getActiveDataset().then((d) => {
@@ -53,6 +56,27 @@ export function NewGame() {
     () => dataset?.countries.find((c) => c.id === countryId),
     [dataset, countryId],
   );
+
+  // Reputation of the selected club — anchors the skill-point budget/start OVR.
+  const selectedClubRep = useMemo(() => {
+    if (!dataset || !selectedClub) return 65;
+    const ctry = dataset.countries.find((c) => c.id === countryId);
+    for (const lg of ctry?.leagues ?? []) {
+      const c = lg.clubs.find((x) => x.abbrev === selectedClub);
+      if (c) return c.reputation;
+    }
+    return 65;
+  }, [dataset, countryId, selectedClub]);
+
+  // (Re)seed the allocation with the recommended build whenever the basis
+  // (position / archetype / club) changes; keep any mentality choices.
+  useEffect(() => {
+    if (mode !== 'PLAYER') return;
+    setSkill((s) => ({
+      attributes: recommendedBuild(position, targetOvrFor(archetype, selectedClubRep), attrCapFor(archetype)),
+      mentality: s?.mentality ?? floorMentality(),
+    }));
+  }, [mode, position, archetype, selectedClubRep]);
 
   if (!dataset || !country) {
     return <div className="p-6 text-slate-400">Loading dataset…</div>;
@@ -88,6 +112,8 @@ export function NewGame() {
           position,
           preferredFoot: foot,
           archetype,
+          customAttributes: skill?.attributes,
+          mentality: skill?.mentality,
         });
         navigate('/my-player');
       } else {
@@ -299,6 +325,15 @@ export function NewGame() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Build your player — skill-point allocation */}
+      {isPlayer && effAbbrev && skill && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-1">Build your player</h2>
+          <p className="text-xs text-slate-500 mb-3">Spend your skill points — your archetype and club set the budget. This is <em>your</em> player: specialise for a higher rating, or spread out for versatility.</p>
+          <SkillPointsEditor position={position} archetype={archetype} clubReputation={selectedClubRep} state={skill} onChange={setSkill} />
         </div>
       )}
 

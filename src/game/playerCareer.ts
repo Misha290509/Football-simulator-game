@@ -17,6 +17,8 @@ import type { CareerMode, PlayerCareer, PlayerCareerOrigin, SquadStatus, AvatarM
 import type { WorldSnapshot } from '../db/db';
 import { Rng, clamp, hashSeed } from '../engine/rng';
 import { generatePlayer } from '../engine/generator';
+import { overallAt } from '../engine/ratings';
+import { applyMentality } from './skillPoints';
 import { createNewGame } from './newGame';
 import {
   generateSeasonObjectives, generateMatchObjectives, evaluateMatchObjectives, updateSeasonObjectives,
@@ -96,6 +98,11 @@ export interface NewPlayerCareerConfig {
   /** Pre-built world to attach the career to (required for EXISTING; optional
    *  for CREATED). Lets a picker UI build once, then inherit a real player. */
   prebuiltWorld?: WorldSnapshot;
+  /** CREATED — the human's skill-point attribute allocation (overrides the
+   *  generated attributes). OVR is recomputed from it. */
+  customAttributes?: import('../types/attributes').Attributes;
+  /** CREATED — the human's mentality-pool allocation (hidden temperament). */
+  mentality?: import('./skillPoints').MentalityAlloc;
 }
 
 /** Build just the world for a Player career (no avatar yet), so a picker UI can
@@ -144,6 +151,18 @@ function buildCreatedAvatar(snapshot: WorldSnapshot, config: NewPlayerCareerConf
   }
   if (config.preferredFoot) p.preferredFoot = config.preferredFoot;
   p.id = `pc_${config.clubId}`; // one stable avatar id per save
+
+  // Player-allocated build: the human's skill-point allocation replaces the
+  // generated attributes. OVR is recomputed from the real model; the age-based
+  // growth headroom is preserved relative to the new overall (potBonus below).
+  if (config.customAttributes) {
+    const headroom = Math.max(0, p.potential - p.overall);
+    p.attributes = config.customAttributes;
+    p.overall = overallAt(config.customAttributes, position) as number;
+    p.potential = p.overall + headroom;
+    if (config.mentality) p.hidden = applyMentality(p.hidden, config.mentality);
+  }
+
   p.potential = clamp(Math.min(ratingCap, p.potential + arch.potBonus), p.overall + 3, ratingCap) as number;
   p.contract = {
     ...p.contract,

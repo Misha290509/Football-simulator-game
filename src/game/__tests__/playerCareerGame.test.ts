@@ -3,6 +3,7 @@ import { ENGLAND_DATASET } from '../../data/england';
 import { loadDataset } from '../../data/datasetLoader';
 import { createPlayerCareerGame, buildPlayerWorld, careerModeOf, playerCareerOf } from '../playerCareer';
 import { buildLineupProfile } from '../../engine/lineup';
+import { recommendedBuild, attrCapFor, overallOf } from '../skillPoints';
 
 function aClubId(): string {
   const world = loadDataset(ENGLAND_DATASET, 99, 2025);
@@ -47,6 +48,26 @@ describe('Player Career — new-game Player path (Tier 1 · Step 2)', () => {
     expect(profile.starters.length).toBe(11);
     // (He won't necessarily start as a 16-yo prospect — that battle is Step 3 —
     //  but he must be a candidate the engine considers, i.e. in the pool.)
+  });
+
+  it('uses a player-supplied skill-point allocation and recomputes OVR from it', () => {
+    const clubId = aClubId();
+    const alloc = recommendedBuild('ST', 66, attrCapFor('Prodigy'));
+    const snap = createPlayerCareerGame({
+      saveName: 'Custom — TEST', dataset: ENGLAND_DATASET, clubId, startYear: 2025, seed: 7,
+      origin: 'CREATED', playerName: { first: 'Bran', last: 'Cole' }, position: 'ST', archetype: 'Prodigy',
+      customAttributes: alloc,
+      mentality: { consistency: 80, bigGame: 85, professionalism: 70, durability: 60 },
+    });
+    const avatar = snap.players[playerCareerOf(snap.meta)!.playerId];
+    // Attributes are exactly the allocation, and OVR matches the model.
+    expect(avatar.attributes).toEqual(alloc);
+    expect(avatar.overall).toBe(overallOf(alloc, 'ST'));
+    // Mentality folded into the hidden block (durability → injuryProneness).
+    expect(avatar.hidden.bigGame).toBe(85);
+    expect(avatar.hidden.injuryProneness).toBe(40); // 100 − 60
+    // Potential still exceeds the (young, Prodigy) overall.
+    expect(avatar.potential).toBeGreaterThan(avatar.overall);
   });
 
   it('is deterministic under a fixed seed', () => {
