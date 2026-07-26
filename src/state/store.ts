@@ -84,6 +84,7 @@ import {
   maybeSurfaceConversation, captaincyConversation, type MeetingTopic,
 } from '../game/playerConversations';
 import { advanceMentor } from '../game/playerMentor';
+import { advanceDressingRoom } from '../game/dressingRoom';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -4085,6 +4086,11 @@ async function playDays(
         //     wing — a named relationship that lifts morale on the hard days.
         const men = advanceMentor(pc, avatar, squad, toYear, to, meta.seed);
         pc = men.career; newsItems.push(...men.news); moraleDelta += men.moraleDelta;
+
+        // 2c) The dressing room: standing among the group, named allies, and the
+        //     occasional bit of politics to navigate.
+        const dr = advanceDressingRoom(pc, avatar, squad, toYear, to, meta.seed);
+        pc = dr.career; newsItems.push(...dr.news); moraleDelta += dr.moraleDelta;
 
         // 3) A demotion this advance triggers a manager sit-down; a first-time
         //    promotion to captain surfaces the armband offer; otherwise a state-

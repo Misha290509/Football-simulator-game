@@ -75,6 +75,29 @@ export function PlayerRelationships() {
         )}
       </div>
 
+      {/* Dressing room */}
+      <div className="card p-4 space-y-2">
+        <h2 className="text-sm font-semibold text-slate-300">👥 The dressing room</h2>
+        <Meter label="Standing" value={career.dressingRoom?.standing ?? 50} tone="sky" />
+        {(career.dressingRoom?.bonds ?? []).length > 0 ? (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {(career.dressingRoom!.bonds).map((b) => (
+              <span key={b.playerId} className={`text-[11px] px-2 py-0.5 rounded-full border ${b.kind === 'ALLY' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25' : 'bg-rose-500/10 text-rose-300 border-rose-500/25'}`}>
+                {b.kind === 'ALLY' ? '🤝' : '⚡'} {b.name}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-slate-500">Still settling in — friendships form with time and minutes.</p>
+        )}
+        <p className="text-[11px] text-slate-500">
+          {(career.dressingRoom?.standing ?? 50) >= 78 ? 'One of the leaders in there — your voice carries.'
+            : (career.dressingRoom?.standing ?? 50) >= 55 ? 'Well regarded by the group.'
+            : (career.dressingRoom?.standing ?? 50) < 40 ? 'Still winning the room over.'
+            : 'Finding your place among the lads.'}
+        </p>
+      </div>
+
       {/* Rival */}
       <div className="card p-4 space-y-2">
         <h2 className="text-sm font-semibold text-slate-300">⚔️ Rival for the shirt</h2>

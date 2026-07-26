@@ -88,6 +88,7 @@ export function PlayerHome() {
         const conv = career.pendingConversations![0];
         const header = conv.trigger === 'RIVAL_PRESS' ? 'The press want a reaction'
           : conv.trigger === 'MENTOR_WORD' ? 'A word from your mentor'
+          : conv.trigger === 'DRESSING_ROOM' ? 'Dressing-room politics'
           : conv.trigger === 'CAPTAINCY' ? 'The armband'
           : 'Manager wants a word';
         return (

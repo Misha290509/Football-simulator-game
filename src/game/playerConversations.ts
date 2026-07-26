@@ -105,6 +105,22 @@ export function contractTalkConversation(day: number): Conversation {
   };
 }
 
+/** The senior lads are unhappy with the manager and want the avatar to carry
+ *  their message. Backing the group lifts his standing but costs trust; siding
+ *  with the manager does the reverse. A real dressing-room politics moment. */
+export function dressingRoomDilemma(instigatorLast: string, day: number): Conversation {
+  return {
+    id: `conv_dressing_${day}`,
+    trigger: 'DRESSING_ROOM',
+    prompt: `${instigatorLast} and a few of the senior lads are unhappy with the manager and want you to speak up on the group’s behalf. What do you do?`,
+    choices: [
+      { text: 'Back the group — say your piece to the manager.', standing: 9, trust: -6, morale: 1 },
+      { text: 'Stay out of it — not your fight.', standing: -2, morale: 0 },
+      { text: 'Side with the manager — tell them to knuckle down.', standing: -9, trust: 6, morale: -1 },
+    ],
+  };
+}
+
 /** The mentor pulls the avatar aside on a rough run. How he takes it moves his
  *  confidence and morale — the payoff of the bond made real as a choice. */
 export function mentorWordConversation(mentorLast: string, day: number): Conversation {
@@ -155,6 +171,7 @@ export function resolveConversation(career: PlayerCareer, conv: Conversation, ch
   if (c.following != null) next = { ...next, following: Math.max(0, (next.following ?? 0) + c.following) };
   if (c.confidence != null) next = { ...next, confidence: clamp((next.confidence ?? 60) + c.confidence, 0, 100) as number };
   if (c.rivalRelationship != null && next.rival) next = { ...next, rival: { ...next.rival, relationship: clamp((next.rival.relationship ?? 0) + c.rivalRelationship, -100, 100) as number } };
+  if (c.standing != null && next.dressingRoom) next = { ...next, dressingRoom: { ...next.dressingRoom, standing: clamp(next.dressingRoom.standing + c.standing, 0, 100) as number } };
   const news: NewsItem[] = [];
   if (c.promise) {
     const promise: CareerPromise = { text: `The manager promised to ${promiseText(c.promise)}.`, kind: c.promise, deadline: day + PROMISE_WINDOW_DAYS };

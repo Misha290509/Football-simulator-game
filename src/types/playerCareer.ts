@@ -127,6 +127,7 @@ export interface ConversationChoice {
   following?: number; // social following delta (can be large for viral moments)
   confidence?: number; // 0–100 adversity mechanic
   rivalRelationship?: number; // moves career.rival.relationship (−100…100)
+  standing?: number; // moves career.dressingRoom.standing (0–100)
 }
 export interface Conversation {
   id: string;
@@ -144,6 +145,20 @@ export interface CareerMentor {
   since: number; // year the relationship began
   words?: number; // times he's had a word / backed the avatar publicly
   departed?: boolean; // he's moved on, but the bond is remembered
+}
+
+/** A tracked bond with a specific team-mate in the dressing room. */
+export interface DressingRoomBond {
+  playerId: string;
+  name: string;
+  kind: 'ALLY' | 'TENSION';
+  bond: number; // 0–100
+}
+
+/** The avatar's standing in the dressing room and his named bonds there. */
+export interface DressingRoomState {
+  standing: number; // 0–100 — how the group regards him
+  bonds: DressingRoomBond[];
 }
 
 /** The avatar's rival for the starting shirt at their position. */
@@ -272,6 +287,8 @@ export interface PlayerCareer {
   rival?: CareerRival | null;
   /** A senior team-mate mentoring the avatar (peer relationship, Tier 2/story). */
   mentor?: CareerMentor | null;
+  /** Standing in the dressing room + named team-mate bonds (story). */
+  dressingRoom?: DressingRoomState | null;
 
   // --- Adversity (Tier 2) ----------------------------------------------------
   confidence?: number; // 0–100 slump mechanic
