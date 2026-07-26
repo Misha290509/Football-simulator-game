@@ -55,7 +55,7 @@ import type { Position } from '../types/attributes';
 import { createNewGame, type NewGameConfig } from '../game/newGame';
 import {
   createPlayerCareerGame, playerCareerOf, avatarSelectionBias, applyAvatarMatchday,
-  ensureAdvanceObjectives, type NewPlayerCareerConfig,
+  ensureAdvanceObjectives, seasonReportCard, type NewPlayerCareerConfig,
 } from '../game/playerCareer';
 import { generateSeasonObjectives } from '../game/playerObjectives';
 import { runInteractiveMatch, type InteractiveInput } from '../engine/interactiveMatch';
@@ -2992,10 +2992,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ovrDelta = sc ? sc.ovrTo - sc.ovrFrom : 0;
           const growth = ovrDelta !== 0 ? ` OVR ${ovrDelta > 0 ? '+' : ''}${ovrDelta}.` : '';
           const honours = seasonHonours.length ? ` Honours: ${seasonHonours.join(', ')}.` : '';
+          const card = seasonReportCard({
+            apps: pc.seasonApps, goals: pc.seasonGoals, assists, avgRating: pc.seasonAvgRating,
+            ovrDelta, honours: seasonHonours, position: avatar?.position ?? 'CM', year: result.newSeason.year,
+          });
           newMeta.news = [...newMeta.news, {
             id: `news_pc_review_${result.newSeason.year}`, day: 0, category: 'MILESTONE',
-            title: `Season review — ${finished?.label ?? ''}`,
-            body: `${clubName || 'The season'}: ${pc.seasonApps} apps, ${pc.seasonGoals} goals, ${assists} assists, avg rating ${pc.seasonAvgRating ? pc.seasonAvgRating.toFixed(1) : '—'}.${growth}${honours}`,
+            title: `Season review — ${finished?.label ?? ''} · Grade ${card.grade}`,
+            body: `${card.headline} ${clubName || 'The season'}: ${pc.seasonApps} apps, ${pc.seasonGoals} goals, ${assists} assists, avg rating ${pc.seasonAvgRating ? pc.seasonAvgRating.toFixed(1) : '—'}.${growth}${honours}`,
             read: false,
           }];
         }

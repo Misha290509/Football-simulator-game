@@ -9,6 +9,7 @@ import type { SaveGame, NewsItem } from '../types/league';
 import type { Dataset } from '../types/dataset';
 import type { Player, Foot } from '../types/player';
 import type { Position } from '../types/attributes';
+import { POSITION_GROUP } from '../types/attributes';
 import type { Club } from '../types/club';
 import type { Competition } from '../types/competition';
 import type { Match } from '../types/match';
@@ -649,4 +650,43 @@ function matchFeedLine(s: AvatarMatchSummary, goals: number, assists: number): s
 
 function feed(id: string, day: number, category: NewsItem['category'], title: string, body: string): NewsItem {
   return { id, day, category, title, body, read: false };
+}
+
+// --- Season report card (§ Drama) -------------------------------------------
+
+export interface SeasonCard { grade: string; headline: string }
+
+/**
+ * Grade a completed season and give it a headline, synthesising rating,
+ * involvement, end-product and silverware into one payoff. Pure & deterministic
+ * (a stable hash on the year varies the wording). Attacking players are judged
+ * more on goals; everyone is judged first on how they actually played.
+ */
+export function seasonReportCard(input: {
+  apps: number; goals: number; assists: number; avgRating: number;
+  ovrDelta: number; honours: string[]; position: Position; year: number;
+}): SeasonCard {
+  const { apps, goals, assists, avgRating, ovrDelta, honours, position, year } = input;
+  const attacking = POSITION_GROUP[position] === 'ATT' || POSITION_GROUP[position] === 'MID';
+  let s = (avgRating - 6.4) * 26;
+  s += Math.min(apps, 45) * 0.7;
+  s += goals * (attacking ? 1.6 : 3.2) + assists * 1.4;
+  s += honours.length * 8;
+  s += Math.max(0, ovrDelta) * 2;
+  const grade = s >= 72 ? 'A+' : s >= 58 ? 'A' : s >= 46 ? 'B+' : s >= 34 ? 'B' : s >= 22 ? 'C' : 'D';
+
+  const pick = (arr: string[]) => arr[hashSeed(`card_${year}`) % arr.length];
+  let headline: string;
+  if (honours.length > 0 && (grade === 'A+' || grade === 'A')) {
+    headline = pick(['Silverware and standout numbers — a season to frame.', 'Trophies won and a name made — the campaign of a career so far.']);
+  } else if (grade === 'A+' || grade === 'A') {
+    headline = pick(['A career-best campaign — the level everyone hoped for.', 'A breakout year: you didn’t just play, you led.']);
+  } else if (grade === 'B+' || grade === 'B') {
+    headline = pick(['A solid, steady season — foundations to build on.', 'Good without being great — the next step is yours to take.']);
+  } else if (grade === 'C') {
+    headline = pick(['A stop-start season — flashes of quality, room to grow.', 'A learning year more than a defining one.']);
+  } else {
+    headline = pick(['A season to forget — bounce back stronger.', 'It didn’t click this year. It has to next.']);
+  }
+  return { grade, headline };
 }
