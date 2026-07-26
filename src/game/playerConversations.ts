@@ -105,6 +105,21 @@ export function contractTalkConversation(day: number): Conversation {
   };
 }
 
+/** The mentor pulls the avatar aside on a rough run. How he takes it moves his
+ *  confidence and morale — the payoff of the bond made real as a choice. */
+export function mentorWordConversation(mentorLast: string, day: number): Conversation {
+  return {
+    id: `conv_mentorword_${day}`,
+    trigger: 'MENTOR_WORD',
+    prompt: `${mentorLast} pulls you aside after a hard few weeks. “Talk to me — what’s going on up here?”`,
+    choices: [
+      { text: 'Open up, and take his advice to heart.', confidence: 6, morale: 3 },
+      { text: '“I just need one to go in.” Back yourself.', confidence: 3, morale: 2 },
+      { text: 'Brush it off — you’ve got this handled.', confidence: -1, morale: 1 },
+    ],
+  };
+}
+
 /** The press corner the avatar when his rival takes the shirt and talks it up.
  *  How he answers shapes his public image and the rivalry itself. */
 export function rivalJabConversation(rivalLast: string, day: number): Conversation {

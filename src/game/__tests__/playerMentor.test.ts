@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { advanceMentor, pickMentorCandidate } from '../playerMentor';
+import { resolveConversation } from '../playerConversations';
 import type { Player } from '../../types/player';
 import type { PlayerCareer } from '../../types/playerCareer';
 
@@ -62,9 +63,29 @@ describe('advanceMentor', () => {
     expect(r.news.some((n) => /moves on/i.test(n.title))).toBe(true);
   });
 
-  it('lifts morale with a quiet word on a cold streak', () => {
+  it('corners the avatar for a heart-to-heart on a cold streak (an interactive choice)', () => {
     const cold = career({ mentor: { playerId: 'vet', name: 'vet VET', bond: 60, since: 2023 }, recentRatings: [5.8, 5.9, 5.7] });
-    // Scan days for the deterministic beat; when it fires morale is positive.
+    // Scan days for the deterministic beat: it queues a MENTOR_WORD conversation.
+    let fired = false;
+    for (let day = 100; day < 400; day += 7) {
+      const r = advanceMentor(cold, me, squad, 2024, day, 7);
+      const conv = (r.career.pendingConversations ?? [])[0];
+      if (conv?.trigger === 'MENTOR_WORD') {
+        const answered = resolveConversation(r.career, conv, 0, day); // take his advice
+        expect(answered.moraleDelta).toBeGreaterThan(0);
+        expect((answered.career.confidence ?? 60)).toBeGreaterThan(cold.confidence ?? 60);
+        fired = true; break;
+      }
+    }
+    expect(fired).toBe(true);
+  });
+
+  it('falls back to an auto morale lift when a conversation is already pending', () => {
+    const cold = career({
+      mentor: { playerId: 'vet', name: 'vet VET', bond: 60, since: 2023 },
+      recentRatings: [5.8, 5.9, 5.7],
+      pendingConversations: [{ id: 'busy', trigger: 'X', prompt: '', choices: [] }],
+    });
     let fired = false;
     for (let day = 100; day < 400; day += 7) {
       const r = advanceMentor(cold, me, squad, 2024, day, 7);

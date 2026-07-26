@@ -87,6 +87,7 @@ export function PlayerHome() {
       {(career.pendingConversations ?? []).length > 0 && (() => {
         const conv = career.pendingConversations![0];
         const header = conv.trigger === 'RIVAL_PRESS' ? 'The press want a reaction'
+          : conv.trigger === 'MENTOR_WORD' ? 'A word from your mentor'
           : conv.trigger === 'CAPTAINCY' ? 'The armband'
           : 'Manager wants a word';
         return (

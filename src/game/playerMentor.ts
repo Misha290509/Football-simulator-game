@@ -12,8 +12,9 @@
 
 import type { Player } from '../types/player';
 import type { NewsItem } from '../types/league';
-import type { PlayerCareer, CareerMentor } from '../types/playerCareer';
+import type { PlayerCareer, CareerMentor, Conversation } from '../types/playerCareer';
 import { clamp, hashSeed } from '../engine/rng';
+import { mentorWordConversation } from './playerConversations';
 
 let _seq = 0;
 const feed = (day: number, category: NewsItem['category'], title: string, body: string): NewsItem =>
@@ -121,11 +122,18 @@ export function advanceMentor(
   let mentor: CareerMentor = { ...cur, bond };
 
   // --- At most one beat per advance, low-frequency ---------------------------
+  let pendingConv: Conversation | null = null;
   if (rr.length >= 3 && avg <= 6.1 && roll < 45) {
-    // A quiet word on a rough patch — a genuine morale lift.
+    // A quiet word on a rough patch. If the avatar isn't mid-conversation, the
+    // mentor corners him for a heart-to-heart (an interactive choice); otherwise
+    // it lands as a straightforward morale lift so the beat is never lost.
     mentor = { ...mentor, words: (mentor.words ?? 0) + 1, bond: clamp(mentor.bond + 2, 0, 100) };
-    news.push(feed(day, 'GENERAL', `A word from ${cur.name.split(' ').slice(-1)[0]}`, pick(WORD_LINES, `${cur.playerId}:${day}`)));
-    moraleDelta += 3;
+    if ((career.pendingConversations ?? []).length === 0) {
+      pendingConv = mentorWordConversation(cur.name.split(' ').slice(-1)[0], day);
+    } else {
+      news.push(feed(day, 'GENERAL', `A word from ${cur.name.split(' ').slice(-1)[0]}`, pick(WORD_LINES, `${cur.playerId}:${day}`)));
+      moraleDelta += 3;
+    }
   } else if (rr.length >= 3 && avg >= 7.3 && mentor.bond >= 70 && roll >= 55 && roll < 80) {
     // He backs the avatar publicly.
     mentor = { ...mentor, words: (mentor.words ?? 0) + 1 };
@@ -138,5 +146,10 @@ export function advanceMentor(
     moraleDelta += 1;
   }
 
-  return { career: { ...career, mentor }, news, moraleDelta };
+  const nextCareer: PlayerCareer = {
+    ...career,
+    mentor,
+    ...(pendingConv ? { pendingConversations: [...(career.pendingConversations ?? []), pendingConv] } : {}),
+  };
+  return { career: nextCareer, news, moraleDelta };
 }
