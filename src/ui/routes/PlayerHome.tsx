@@ -74,9 +74,12 @@ export function PlayerHome() {
         </div>
       </div>
 
-      {/* PlayStyles — the evolving signature of your player */}
-      {playStylesOf(p).length > 0 && (
+      {/* PlayStyles + public persona — the evolving signature of your player */}
+      {(playStylesOf(p).length > 0 || (career.publicImage?.persona && career.publicImage.persona !== 'Unknown')) && (
         <div className="flex flex-wrap gap-1.5">
+          {career.publicImage?.persona && career.publicImage.persona !== 'Unknown' && (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-fuchsia-500/10 text-fuchsia-300 border border-fuchsia-500/25">🎭 {career.publicImage.persona}</span>
+          )}
           {playStylesOf(p).map((s) => (
             <span key={s} className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/25" title={PLAYSTYLE_META[s].blurb}>★ {PLAYSTYLE_META[s].label}</span>
           ))}

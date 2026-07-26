@@ -153,8 +153,14 @@ export function PlayerRelationships() {
 
       {/* Public */}
       <div className="card p-4 space-y-2">
-        <h2 className="text-sm font-semibold text-slate-300">📣 The public</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-300">📣 The public</h2>
+          {career.publicImage?.persona && career.publicImage.persona !== 'Unknown' && (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-fuchsia-500/10 text-fuchsia-300 border border-fuchsia-500/25">{career.publicImage.persona}</span>
+          )}
+        </div>
         <Meter label="Fan rating" value={career.fanRating ?? 50} tone="rose" />
+        {career.publicImage && <Meter label="Controversy" value={career.publicImage.controversy} tone="amber" />}
         <div className="text-[11px] text-slate-500">{(career.following ?? 0).toLocaleString()} following</div>
       </div>
 
