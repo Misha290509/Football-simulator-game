@@ -128,6 +128,17 @@ export interface Conversation {
   choices: ConversationChoice[];
 }
 
+/** A senior team-mate who has taken the avatar under his wing. A named person
+ *  whose bond grows with shared success and who steps in on the hard days. */
+export interface CareerMentor {
+  playerId: string;
+  name: string; // cached display name (the mentor may leave the club later)
+  bond: number; // 0–100
+  since: number; // year the relationship began
+  words?: number; // times he's had a word / backed the avatar publicly
+  departed?: boolean; // he's moved on, but the bond is remembered
+}
+
 /** The avatar's rival for the starting shirt at their position. */
 export interface CareerRival {
   playerId: string;
@@ -252,6 +263,8 @@ export interface PlayerCareer {
 
   // --- The shirt battle (Tier 2) ---------------------------------------------
   rival?: CareerRival | null;
+  /** A senior team-mate mentoring the avatar (peer relationship, Tier 2/story). */
+  mentor?: CareerMentor | null;
 
   // --- Adversity (Tier 2) ----------------------------------------------------
   confidence?: number; // 0–100 slump mechanic
