@@ -56,6 +56,17 @@ describe('advanceMentor', () => {
     expect(c.mentor?.playerId).toBe('vet');
   });
 
+  it('pays it forward: a veteran, once-mentored avatar gets a one-time full-circle beat', () => {
+    const vet = player('me', { overall: 78, bornYear: 1990 }); // 34 in 2024
+    const c = career({ status: 'STAR', mentor: { playerId: 'vet', name: 'Old Hand', bond: 80, since: 2010 } });
+    const r = advanceMentor(c, vet, [vet, senior], 2024, 150, 7);
+    expect(r.career.mentor?.paidForward).toBe(true);
+    expect(r.news.some((n) => /circle turns/i.test(n.title))).toBe(true);
+    // Fires only once.
+    const again = advanceMentor(r.career, vet, [vet, senior], 2024, 157, 7);
+    expect(again.news.some((n) => /circle turns/i.test(n.title))).toBe(false);
+  });
+
   it('a mentor who leaves the club gets a send-off and the bond is remembered', () => {
     const c = career({ mentor: { playerId: 'vet', name: 'vet VET', bond: 70, since: 2023 } });
     const r = advanceMentor(c, me, [me], 2024, 300, 7); // 'vet' no longer in squad

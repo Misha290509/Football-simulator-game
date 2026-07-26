@@ -145,6 +145,7 @@ export interface CareerMentor {
   since: number; // year the relationship began
   words?: number; // times he's had a word / backed the avatar publicly
   departed?: boolean; // he's moved on, but the bond is remembered
+  paidForward?: boolean; // the avatar has since become a mentor himself (once)
 }
 
 /** A tracked bond with a specific team-mate in the dressing room. */

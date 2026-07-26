@@ -4055,6 +4055,28 @@ async function playDays(
       const ballon = gala.awards.find((a) => a.type === 'GLOBAL_BEST');
       const winner = ballon?.playerId ? playersById[ballon.playerId] : undefined;
       if (winner) ballonDor = { playerId: winner.id, name: `${winner.name.first} ${winner.name.last}`, year: gala.year };
+
+      // Personal recognition: when the avatar himself is among the winners, make
+      // it a moment — a celebratory feed item and a real lift, not just a line in
+      // the gala roll-call. (The award is already recorded on his honours.)
+      const careerPid = playerCareerOf(meta)?.playerId;
+      const myGala = careerPid ? gala.awards.filter((a) => a.playerId === careerPid) : [];
+      if (myGala.length && careerPid && playersById[careerPid]) {
+        const marquee = myGala.some((a) => a.type === 'GLOBAL_BEST');
+        for (const a of myGala) {
+          newsItems.push({
+            id: `news_pc_award_${a.type}_${gala.year}`, day: to, category: 'AWARD',
+            title: a.type === 'GLOBAL_BEST' ? '🏆 You won the Ballon d’Or!' : `🏅 You won the ${a.label}!`,
+            body: a.type === 'GLOBAL_BEST'
+              ? 'The best player on the planet this year — and it’s you. A career-defining night; whatever comes next, they can never take this.'
+              : `Recognised among the very best: the ${a.label} is yours. Nights like this are why you play.`,
+            read: false,
+          });
+        }
+        const av = playersById[careerPid];
+        playersById[careerPid] = { ...av, morale: clamp(av.morale + (marquee ? 10 : 5)) as number };
+        changedIds.add(careerPid);
+      }
       pendingGala = null;
     }
 

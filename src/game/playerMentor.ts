@@ -106,6 +106,18 @@ export function advanceMentor(
     return { career, news, moraleDelta };
   }
   if (!cur) return { career, news, moraleDelta };
+
+  // --- Full circle: the once-mentored avatar becomes the mentor (fires once) --
+  const senior = age >= 30 && (['KEY', 'STAR', 'CAPTAIN'].includes(career.status) || (career.dressingRoom?.standing ?? 0) >= 70);
+  if (senior && !cur.paidForward) {
+    const menteeId = career.mentorships?.[0]?.menteeId;
+    const mentee = menteeId ? squad.find((p) => p.id === menteeId) : undefined;
+    const who = mentee ? `young ${nameOf(mentee)}` : 'the young lads';
+    news.push(feed(day, 'GENERAL', 'The circle turns',
+      `Years ago ${cur.name} took a raw kid under his wing. Now ${who} look${mentee ? 's' : ''} to you the same way. Whatever you pass on, part of it came from him.`));
+    return { career: { ...career, mentor: { ...cur, paidForward: true } }, news, moraleDelta: 1 };
+  }
+
   if (cur.departed) return { career, news, moraleDelta };
 
   // --- He's moved on / retired: a send-off, bond remembered ------------------
