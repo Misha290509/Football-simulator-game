@@ -75,6 +75,13 @@ export function InteractiveMatch() {
               {ip.input.conditions.hostility > 0.4 ? <span className="text-rose-300"> · a hostile away end</span> : null}
             </div>
           )}
+          {ip.input.oppPlan && ip.input.oppPlan.attention >= 0.45 && (
+            <div className="text-xs px-2.5 py-1.5 rounded border border-rose-500/30 bg-rose-500/5 text-rose-200">
+              🎯 They've set up to stop you — {ip.input.oppPlan.label}
+              {ip.input.oppPlan.markerName ? <span className="text-rose-300"> ({ip.input.oppPlan.markerName} is glued to you)</span> : null}.
+              This is what being feared looks like.
+            </div>
+          )}
           {(ip.input.scout ?? []).length > 0 && (
             <div className="rounded border border-sky-500/30 bg-sky-500/5 p-2.5">
               <div className="text-[11px] uppercase tracking-wide text-sky-300 mb-1.5">📋 Scouting report</div>

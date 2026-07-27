@@ -21,6 +21,7 @@ import { overallAt } from '../engine/ratings';
 import { applyMentality } from './skillPoints';
 import { dpEarned, intensityOf } from './playerDevelopment';
 import { assignShirtNumber, takenNumbers, isMarqueeNumber } from './playerIdentity';
+import { updateBogeyTeams } from './opposition';
 
 /** A plausible second country for a dual-national: another nationality present
  *  in the world, so the courting story references a real footballing nation. */
@@ -605,6 +606,16 @@ export function applyAvatarMatchday(
   // Development Points earned from how he played (spent on the Training screen).
   const dp = dpEarned(appearances.map((a) => a.ps.rating), intensityOf(next));
   if (dp > 0) next = { ...next, developmentPoints: (next.developmentPoints ?? 0) + dp };
+
+  // Bogey sides: repeated quiet games against the same opponent means their
+  // manager has him worked out — until he finally produces against them.
+  for (const a of appearances) {
+    const oppId = a.m.homeClubId === clubId ? a.m.awayClubId : a.m.homeClubId;
+    const oppName = clubs[oppId]?.name;
+    if (!oppName) continue;
+    const bg = updateBogeyTeams(next, avatar, oppName, a.ps.rating, day);
+    next = bg.career; news.push(...bg.news);
+  }
 
   // Trust drifts from the games played this advance — big games (cup/continental,
   // which aren't in the league competitions map) weigh a little heavier, and a

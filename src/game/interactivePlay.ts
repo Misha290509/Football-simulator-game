@@ -18,6 +18,7 @@ import { POSITION_GROUP } from '../types/attributes';
 import type { MarkerInfo } from '../types/interactiveMatch';
 import { ritualIntact, ritualBreakLine } from './playerIdentity';
 import { deriveConditions, buildScoutReport } from './matchConditions';
+import { buildOppositionPlan, bogeyFactor } from './opposition';
 
 /** The specific opponent the avatar will duel all match: an attacker draws the
  *  best opposing defender, a defender the best striker, a midfielder his
@@ -91,6 +92,7 @@ export function buildInteractiveInput(
     : importance >= 0.65 ? { kind: 'BIG_MATCH', label: 'A big occasion' } : undefined;
   const plan = gamePlan ?? defaultGamePlan(myProfile.attack, oppProfile.defense, role);
 
+  const marker = pickMarker(avatar, oppSquad);
   const input: InteractiveInput = {
     matchId: match.id,
     seed: (meta.seed ^ hashId(match.id)) >>> 0,
@@ -110,12 +112,15 @@ export function buildInteractiveInput(
     cameo: !willStart && onBench,
     intent: defaultPositioning(role),
     occasion,
-    marker: pickMarker(avatar, oppSquad),
+    marker,
     // Superstition: when the pre-match routine is disrupted, he starts off-rhythm.
     ritualBroken: ritualIntact(career.identity, match.id, meta.seed) ? undefined : { line: ritualBreakLine(match.id) },
     celebration: career.identity?.celebration,
     conditions: deriveConditions(match.id, meta.seed, match.day, meta.seasonMaxDay ?? 0, clubs[isAvatarHome ? clubId : oppId], isAvatarHome),
     scout: buildScoutReport(match.id, meta.seed, oppSquad),
+    // Fame has a price: once he's dangerous, they set up specifically to stop him.
+    oppPlan: buildOppositionPlan(career, avatar, match.id, meta.seed, marker?.name),
+    bogeyFactor: bogeyFactor(career, oppName ?? ''),
   };
   return { input, willStart, willComeOn: onBench };
 }

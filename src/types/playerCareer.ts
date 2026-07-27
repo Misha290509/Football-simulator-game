@@ -293,6 +293,8 @@ export interface PlayerCareer {
   shirt?: ShirtNumber | null;
   /** A live dual-nationality decision awaiting his answer. */
   pendingAllegiance?: { nations: string[]; day: number } | null;
+  /** Sides that have worked him out — a bogey team until he breaks the pattern. */
+  bogeyTeams?: Record<string, import('../game/opposition').BogeyRecord>;
   /** Spendable bank balance — earnings you haven't spent on the good life yet. */
   bankBalance?: number;
   /** Lifestyle purchases the avatar owns (status symbols, homes, giving). */

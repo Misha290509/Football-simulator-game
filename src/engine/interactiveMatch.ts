@@ -27,6 +27,7 @@ import {
   isExplosiveChoice, fatigueLevel, fatigueGateFactor, clarityLevel,
   type MatchConditions, type ScoutNote,
 } from '../game/matchConditions';
+import { targetingFactor, tacticalFoulAt, tacticalFoulTick, foulFlowPenalty, type OppositionPlan } from '../game/opposition';
 import type { PositioningIntent, MarkerInfo } from '../types/interactiveMatch';
 
 export interface InteractiveInput {
@@ -66,6 +67,10 @@ export interface InteractiveInput {
   conditions?: MatchConditions;
   /** The pre-match dossier on the opponent (exploitable weaknesses). */
   scout?: ScoutNote[];
+  /** How the opposition have set up specifically to stop him. */
+  oppPlan?: OppositionPlan;
+  /** A side that has his number — they've worked him out. */
+  bogeyFactor?: number;
 }
 
 // --- Small deterministic helpers -------------------------------------------
@@ -201,6 +206,10 @@ function resolveMoment(
   p *= lateLegsFactor(input.scout, moment.minute);
   // Fatigue gating: explosive options desert you when the legs have gone.
   p *= fatigueGateFactor(fatigueLevel(input.fitness, moment.minute, input.conditions), isExplosiveChoice(moment.type, choice));
+  // The world adapting: a man-marker and a double-up make everything harder,
+  // and a side that's worked him out squeezes him a little further.
+  p *= targetingFactor(input.oppPlan, moment.type, choice.reward);
+  p *= input.bogeyFactor ?? 1;
   const success = rng.chance(clamp(p, 0.03, 0.96));
   run.momentum = success ? run.momentum + 1 : 0;
   const flowBefore = run.flow;
@@ -399,6 +408,11 @@ export function runInteractiveMatch(input: InteractiveInput, decisions: MomentDe
   const decisionLog: MomentDecision[] = [];
 
   for (let i = 0; i < plan.moments.length; i++) {
+    // Cynical fouls break his rhythm before he can build it.
+    if (tacticalFoulAt(input.oppPlan, input.matchId, i)) {
+      run.ticks.push(tacticalFoulTick(input.avatar, plan.moments[i].minute, input.matchId, i));
+      run.flow = clamp(run.flow - foulFlowPenalty(), 0, 100);
+    }
     const moment = buildMoment(input, plan.moments[i], i, run);
     const decided = decisions[i];
     if (!decided) {
