@@ -301,6 +301,12 @@ export interface PlayerCareer {
   language?: import('../game/squadLife').LanguageState | null;
   /** Teammate ids seen at the last advance — detects new marquee arrivals. */
   knownSquadIds?: string[];
+  /** He refused to sign and is playing out his deal for a free transfer. */
+  runDown?: import('../game/contractPressure').RunDownState | null;
+  /** Frozen out of the first team (the bomb squad) after a transfer request. */
+  exile?: import('../game/contractPressure').ExileState | null;
+  /** Clauses won at the negotiating table. */
+  clauses?: import('../game/contractPressure').ClauseId[];
   /** Spendable bank balance — earnings you haven't spent on the good life yet. */
   bankBalance?: number;
   /** Lifestyle purchases the avatar owns (status symbols, homes, giving). */

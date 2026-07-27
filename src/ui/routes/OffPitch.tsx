@@ -5,6 +5,7 @@ import { playerCareerOf } from '../../game/playerCareer';
 import { AGENT_ROSTER } from '../../game/playerOffPitch';
 import { lateKindOf, lateLabel } from '../../game/playerEndgame';
 import { LIFESTYLE_ITEMS } from '../../game/lifestyle';
+import { CLAUSES, negotiatingPower, canRunDown, type ClauseId } from '../../game/contractPressure';
 import { formatMoney } from '../format';
 import type { SquadStatus } from '../../types/playerCareer';
 
@@ -32,6 +33,10 @@ export function OffPitch() {
   const cancelTransferRequest = useGameStore((s) => s.cancelTransferRequest);
   const setLifestyle = useGameStore((s) => s.setLifestyle);
   const buyItem = useGameStore((s) => s.buyLifestyleItem);
+  const negotiateClauses = useGameStore((s) => s.negotiateContractClauses);
+  const declareRunDown = useGameStore((s) => s.declareContractRunDown);
+  const season = useGameStore((s) => s.currentSeason());
+  const [wanted, setWanted] = useState<ClauseId[]>([]);
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -67,6 +72,58 @@ export function OffPitch() {
       {image.controversy > 0 && (
         <Meter label="Controversy" value={image.controversy} tone={image.controversy >= 50 ? 'bad' : 'neutral'} />
       )}
+
+      {/* Exile — frozen out */}
+      {career.exile && (
+        <div className="card p-4 border border-rose-500/40 bg-rose-500/5">
+          <div className="text-xs uppercase tracking-wide text-rose-300 mb-1">🧊 Frozen out</div>
+          <p className="text-sm text-rose-200">You're training with the reserves — no squad, no minutes. Your sharpness and confidence are bleeding away every week. Withdraw your transfer request, or force the move.</p>
+        </div>
+      )}
+
+      {/* Running down the contract */}
+      {career.runDown?.declared ? (
+        <div className="card p-4 border border-amber-500/30 bg-amber-500/5">
+          <div className="text-xs uppercase tracking-wide text-amber-300 mb-1">📉 Running it down</div>
+          <p className="text-sm text-amber-200">You refused to sign. You'll leave for nothing in the summer — and your own supporters boo you every week until you do.</p>
+        </div>
+      ) : p && canRunDown(p, season?.year ?? meta.startYear) && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-1">Your contract is up</h2>
+          <p className="text-xs text-slate-500 mb-3">You're in the final year. Sign a new deal — or refuse, run it down, and walk away for free. The money is better. The fans will never forgive you.</p>
+          <button className="btn-ghost text-sm text-amber-300" onClick={async () => setToast(await declareRunDown())}>Refuse to sign — run it down</button>
+        </div>
+      )}
+
+      {/* Clause negotiation */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-semibold text-slate-400">Contract clauses</h2>
+          <span className="text-[11px] text-slate-500">Leverage {Math.round(negotiatingPower(career, p) * 100)}%</span>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">A contract is more than a wage. Pick what your people push for — your standing decides how much they'll actually grant.</p>
+        <div className="grid sm:grid-cols-2 gap-2 mb-3">
+          {CLAUSES.map((c) => {
+            const have = (career.clauses ?? []).includes(c.id);
+            const on = wanted.includes(c.id);
+            return (
+              <button key={c.id} disabled={have}
+                onClick={() => setWanted((w) => on ? w.filter((x) => x !== c.id) : [...w, c.id])}
+                className={`text-left p-2.5 rounded-lg border ${have ? 'border-emerald-500/30 bg-emerald-500/5' : on ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-white">{c.label}</span>
+                  <span className="text-[10px] text-slate-500">{have ? 'Have it ✓' : on ? 'Asking' : `${Math.round(c.cost * 100)}% leverage`}</span>
+                </div>
+                <span className="text-[11px] text-slate-500">{c.blurb}</span>
+              </button>
+            );
+          })}
+        </div>
+        <button className="btn-primary text-sm" disabled={wanted.length === 0}
+          onClick={async () => { setToast(await negotiateClauses(wanted)); setWanted([]); }}>
+          Push for {wanted.length || 'nothing'}
+        </button>
+      </div>
 
       {/* The good life — spend your money on status, homes & giving */}
       <div className="card p-4">

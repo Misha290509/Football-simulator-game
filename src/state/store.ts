@@ -89,6 +89,7 @@ import { advanceDressingRoom } from '../game/dressingRoom';
 import { investAttribute, INTENSITY, intensityOf } from '../game/playerDevelopment';
 import { updateShirt, checkBoyhoodMove, maybeAllegianceChoice, commitAllegiance, canRequestNumber, takenNumbers, isMarqueeNumber } from '../game/playerIdentity';
 import { deriveLeadership, leadershipNews, updateLanguage, detectMarqueeSignal, deliverTeamTalk } from '../game/squadLife';
+import { maybeExile, exileDrip, endExile, runDownDrip, negotiateClauses, declareRunDown, canRunDown, type ClauseId } from '../game/contractPressure';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -262,6 +263,8 @@ interface GameState {
   commitAllegianceAction: (nation: string) => Promise<string>;
   requestShirtNumber: (n: number) => Promise<string>;
   deliverCaptainTalk: (optionId: string) => Promise<string>;
+  negotiateContractClauses: (wanted: string[]) => Promise<string>;
+  declareContractRunDown: () => Promise<string>;
   // --- Legacy & endgame (Tier 5) ---
   setDreamClub: (clubId: string | null) => Promise<void>;
   addCustomAmbition: (text: string) => Promise<void>;
@@ -903,6 +906,41 @@ export const useGameStore = create<GameState>((set, get) => ({
     await putPlayers(meta.id, [np]);
     await persistMeta(newMeta);
     return `You've committed to ${nation}.`;
+  },
+
+  negotiateContractClauses: async (wanted) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar) return 'No player.';
+    const res = negotiateClauses(pc, avatar, wanted as ClauseId[], meta.currentDay);
+    const newMeta: SaveMeta = {
+      ...meta,
+      playerCareer: { ...pc, clauses: [...new Set([...(pc.clauses ?? []), ...res.granted])] },
+      news: [...meta.news, ...res.news],
+    };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return res.granted.length ? `Agreed: ${res.granted.length} clause(s).` : 'They wouldn’t budge.';
+  },
+
+  declareContractRunDown: async () => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    const season = get().currentSeason();
+    if (!avatar) return 'No player.';
+    if (!canRunDown(avatar, season?.year ?? meta.startYear)) return 'You can only run a deal down in its final year.';
+    if (pc.runDown?.declared) return 'You are already running it down.';
+    const res = declareRunDown(pc, avatar, meta.currentDay);
+    const np: Player = { ...avatar, morale: clamp(avatar.morale + res.moraleDelta) as number };
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta, players: { ...players, [pc.playerId]: np } });
+    await putPlayers(meta.id, [np]);
+    await persistMeta(newMeta);
+    return 'You will leave for nothing in the summer. The fans know.';
   },
 
   deliverCaptainTalk: async (optionId) => {
@@ -4287,6 +4325,23 @@ async function playDays(
           const marquee = detectMarqueeSignal(pc, avatar, squad, pc.knownSquadIds ?? squad.map((p) => p.id), to);
           newsItems.push(...marquee.news); moraleDelta += marquee.moraleDelta;
           pc = { ...marquee.career, knownSquadIds: squad.map((p) => p.id) };
+        }
+
+        // 2f) Career pressure: a transfer request can get him frozen out, exile
+        //     rots him while it lasts, and running down a deal turns the crowd.
+        {
+          if (pc.exile && !pc.transferRequestPending) {
+            const back = endExile(pc, avatar, to);
+            pc = back.career; newsItems.push(...back.news); moraleDelta += back.moraleDelta;
+          } else if (pc.exile) {
+            const drip = exileDrip(pc, to);
+            pc = drip.career; newsItems.push(...drip.news); moraleDelta += drip.moraleDelta;
+          } else {
+            const ex = maybeExile(pc, avatar, to, meta.seed);
+            pc = ex.career; newsItems.push(...ex.news); moraleDelta += ex.moraleDelta;
+          }
+          const rd = runDownDrip(pc, to);
+          pc = rd.career; newsItems.push(...rd.news);
         }
 
         // 3) A demotion this advance triggers a manager sit-down; a first-time
