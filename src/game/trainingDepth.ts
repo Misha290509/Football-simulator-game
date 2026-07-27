@@ -51,6 +51,27 @@ export interface HabitTally { dives: number; cards: number; wastedShots: number;
 const THRESHOLD = 5;
 
 /**
+ * Fold a match's decisions into the habit tally. Behaviour, not outcomes: going
+ * down under contact counts whether or not the referee buys it; backing yourself
+ * instead of squaring only counts when it doesn't come off; and diving in or
+ * stepping out and being wrong is what "doesn't track back" looks like from the
+ * touchline. Auto-resolved moments aren't his choices, so they don't count.
+ */
+export function tallyFromDecisions(
+  tally: HabitTally,
+  decisions: { choiceId: string; success: boolean; autoResolved: boolean }[],
+): HabitTally {
+  const out = { ...tally };
+  for (const d of decisions) {
+    if (d.autoResolved) continue;
+    if (d.choiceId === 'godown') out.dives += 1;
+    else if (d.choiceId === 'shoot' && !d.success) out.hoggedChances += 1;
+    else if ((d.choiceId === 'slide' || d.choiceId === 'step') && !d.success) out.missedTracks += 1;
+  }
+  return out;
+}
+
+/**
  * Harden repeated behaviour into a named bad habit. Deterministic and honest —
  * it only ever fires off things he actually did.
  */

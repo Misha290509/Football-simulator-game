@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   detectBadHabits, trainOutHabit, advanceHabits, habitFactor, refereeTrust, BAD_HABITS,
+  tallyFromDecisions,
   studyMoment, analysisFactor, MAX_ANALYSIS_BONUS,
   setBodyType, bodyOf, BODY,
   availableBadges, startBadge, advanceBadge, BADGES,
@@ -68,6 +69,45 @@ describe('bad habits', () => {
 
   it('every habit definition is well-formed', () => {
     for (const h of BAD_HABITS) { expect(h.label.length).toBeGreaterThan(0); expect(h.coachNote.length).toBeGreaterThan(0); }
+  });
+});
+
+describe('folding match decisions into the tally', () => {
+  const d = (choiceId: string, success: boolean, autoResolved = false) => ({ choiceId, success, autoResolved });
+
+  it('counts going down under contact whether or not the referee buys it', () => {
+    const t = tallyFromDecisions(tally(), [d('godown', true), d('godown', false)]);
+    expect(t.dives).toBe(2);
+  });
+
+  it('only counts backing yourself when it does not come off', () => {
+    const t = tallyFromDecisions(tally(), [d('shoot', true), d('shoot', false), d('shoot', false)]);
+    expect(t.hoggedChances).toBe(2);
+  });
+
+  it('counts diving in or stepping out and being wrong as not tracking back', () => {
+    const t = tallyFromDecisions(tally(), [d('slide', false), d('step', false), d('slide', true), d('jockey', false)]);
+    expect(t.missedTracks).toBe(2);
+  });
+
+  it('ignores moments he never actually chose', () => {
+    const t = tallyFromDecisions(tally(), [d('godown', true, true), d('shoot', false, true), d('slide', false, true)]);
+    expect(t).toEqual(tally());
+  });
+
+  it('accumulates onto what is already there without touching the rest', () => {
+    const start = { dives: 3, cards: 2, wastedShots: 1, hoggedChances: 0, missedTracks: 0 };
+    const t = tallyFromDecisions(start, [d('godown', true)]);
+    expect(t).toEqual({ dives: 4, cards: 2, wastedShots: 1, hoggedChances: 0, missedTracks: 0 });
+    // The input is not mutated.
+    expect(start.dives).toBe(3);
+  });
+
+  it('feeds thresholds that actually harden into the named habits', () => {
+    const decisions = Array.from({ length: 5 }, () => d('godown', true));
+    const t = tallyFromDecisions(tally(), decisions);
+    const r = detectBadHabits(career(), player(), t, 10);
+    expect(r.career.badHabits!.map((h) => h.id)).toEqual(['DIVES']);
   });
 });
 

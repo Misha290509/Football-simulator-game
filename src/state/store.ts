@@ -93,6 +93,7 @@ import { maybeExile, exileDrip, endExile, runDownDrip, negotiateClauses, declare
 import { punditJab, makePost, maybeOldPostResurfaces, maybeChant, takeProject, type PostTone } from '../game/mediaFame';
 import {
   detectBadHabits, advanceHabits, trainOutHabit, studyMoment, setBodyType, startBadge, advanceBadge, attendCamp,
+  tallyFromDecisions,
   type BadHabitId, type BodyType,
 } from '../game/trainingDepth';
 import { updateBurnout, burnoutFormPenalty, resolveBurnout, maybeChronic, maybeIncident, updateSpiral } from '../game/adversity';
@@ -712,8 +713,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     const htBoost = (ip as InteractivePlayState & { htBoost?: boolean }).htBoost ? 4 : 0;
 
     const milestones = record.standout ? [...pc.milestones, { day: meta2.currentDay, text: record.standout }] : pc.milestones;
+
+    // Behaviour, not just outcomes: the decisions he actually made feed the bad-
+    // habit tally (§ trainingDepth). Going down under contact counts whether or
+    // not the referee buys it; backing yourself instead of squaring only counts
+    // when it doesn't come off; and diving in or stepping out and being wrong is
+    // what "doesn't track back" looks like from the touchline.
+    const tally = tallyFromDecisions(
+      pc.habitTally ?? { dives: 0, cards: 0, wastedShots: 0, hoggedChances: 0, missedTracks: 0 },
+      record.decisionLog,
+    );
+
     const newPc = {
-      ...pc, momentStats: ms, milestones,
+      ...pc, momentStats: ms, milestones, habitTally: tally,
       managerTrust: clamp((pc.managerTrust ?? 50) + trustDelta, 0, 100) as number,
       confidence: clamp((pc.confidence ?? 60) + htBoost, 0, 100) as number,
     };

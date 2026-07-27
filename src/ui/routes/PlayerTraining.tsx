@@ -180,6 +180,38 @@ export function PlayerTraining() {
         </div>
       )}
 
+      {/* What the staff are noticing — the tally before it hardens into a habit */}
+      {career.habitTally && (() => {
+        const t = career.habitTally;
+        const have = new Set((career.badHabits ?? []).map((h) => h.id));
+        const rows = ([
+          ['DIVES', 'Going down easily', t.dives],
+          ['HOT_HEADED', 'Bookings', t.cards],
+          ['WASTEFUL', 'Wasteful shooting', t.wastedShots],
+          ['BALL_HOG', 'Shooting when a pass was on', t.hoggedChances],
+          ['LAZY_TRACKING', 'Diving in and getting caught', t.missedTracks],
+        ] as const).filter(([id, , n]) => n > 0 && !have.has(id));
+        if (rows.length === 0) return null;
+        return (
+          <div className="card p-4">
+            <h2 className="text-sm font-semibold text-slate-400 mb-1">What the staff are noticing</h2>
+            <p className="text-xs text-slate-500 mb-3">Do any of these five times and it becomes who you are. Nothing has hardened yet.</p>
+            <div className="space-y-1.5">
+              {rows.map(([id, label, n]) => (
+                <div key={id} className="flex items-center gap-3">
+                  <span className="text-xs text-slate-400 flex-1">{label}</span>
+                  <div className="w-24 h-1.5 rounded-full bg-surface-700 overflow-hidden">
+                    <div className={`h-full ${n >= 4 ? 'bg-rose-400' : n >= 2 ? 'bg-amber-400' : 'bg-slate-500'}`}
+                      style={{ width: `${Math.min(100, (n / 5) * 100)}%` }} />
+                  </div>
+                  <span className="text-[11px] text-slate-500 tabular-nums w-8 text-right">{n}/5</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Video analysis */}
       <div className="card p-4">
         <h2 className="text-sm font-semibold text-slate-400 mb-1">Video analysis</h2>

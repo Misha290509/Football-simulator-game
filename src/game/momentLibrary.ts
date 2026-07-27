@@ -149,6 +149,9 @@ export const MOMENT_DEFS: Record<MomentType, { prompt: string; choices: MomentCh
   TAKE_ON: { prompt: 'The fullback stands you up out wide.', choices: [
     C('takeon', 'Take him on', 'AMBITIOUS', 0.42, 'KEY_PASS', ['dribbling', 'agility']),
     C('simple', 'Pass it simple and recycle', 'SAFE', 0.88, 'RETAIN', ['shortPassing']),
+    // Going down under contact: the referee either buys it or he doesn't, and
+    // either way it goes on the record as the kind of thing you do.
+    C('godown', 'Go down under the contact', 'AMBITIOUS', 0.38, 'KEY_PASS', ['agility', 'composure']),
     { ...C('nutmeg', '⚡ Nutmeg him and burst clear', 'AMBITIOUS', 0.30, 'GOAL', ['dribbling', 'agility']), signature: true },
   ] },
   CROSS_OR_CUT: { prompt: 'You reach the byline with options.', choices: [
