@@ -16,6 +16,7 @@ import { clamp, Rng, hashSeed } from '../engine/rng';
 import { traitsOf, TRAIT_LABEL, type PlayerTrait } from '../engine/traits';
 import { rivalJabConversation } from './playerConversations';
 import type { Conversation } from '../types/playerCareer';
+import { INTENSITY, intensityOf } from './playerDevelopment';
 
 let _seq = 0;
 const feed = (day: number, category: NewsItem['category'], title: string, body: string): NewsItem =>
@@ -228,7 +229,8 @@ export function updateTrainingGround(career: PlayerCareer, avatar: Player, day: 
 
   if (focus) {
     const onAdvice = focus === coachAdviceFocus;
-    const gain = 6 + Math.max(0, avatar.form) * 0.12 + (career.seasonApps > 0 ? 3 : 0) + (onAdvice ? 2 : 0);
+    const intensityMult = INTENSITY[intensityOf(career)].focusMult;
+    const gain = (6 + Math.max(0, avatar.form) * 0.12 + (career.seasonApps > 0 ? 3 : 0) + (onAdvice ? 2 : 0)) * intensityMult;
     focusProgress = clamp(focusProgress + gain, 0, 100);
     trainingReport = { focus, note: `Poured your extra hours into ${focus.toLowerCase()}${onAdvice ? ' — just what the coach ordered.' : '.'}`, sharpnessNote: sharpNote };
     if (focusProgress >= 100) {

@@ -85,6 +85,7 @@ import {
 } from '../game/playerConversations';
 import { advanceMentor } from '../game/playerMentor';
 import { advanceDressingRoom } from '../game/dressingRoom';
+import { investAttribute, INTENSITY, intensityOf } from '../game/playerDevelopment';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -273,6 +274,8 @@ interface GameState {
   setTransferListed: (playerId: string, listed: boolean) => Promise<void>;
   setLoanListed: (playerId: string, listed: boolean) => Promise<void>;
   setTraining: (playerId: string, plan: { focus?: import('../types/player').PlayerTrainingFocus | null; retrainPosition?: import('../types/attributes').Position | null }) => Promise<void>;
+  setTrainingIntensity: (intensity: import('../game/playerDevelopment').TrainingIntensity) => Promise<void>;
+  investDevelopmentPoints: (attrKey: string) => Promise<string>;
   renewContract: (playerId: string, years: number, wage: number) => Promise<BidResult>;
   contractDemands: (playerId: string) => ContractOffer | null;
   offerContract: (playerId: string, offer: ContractOffer) => Promise<NegotiationResult>;
@@ -1219,6 +1222,30 @@ export const useGameStore = create<GameState>((set, get) => ({
     };
     set({ players: { ...players, [playerId]: np } });
     await putPlayers(meta.id, [np]);
+  },
+
+  setTrainingIntensity: async (intensity) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return;
+    const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, trainingIntensity: intensity } };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+  },
+
+  investDevelopmentPoints: async (attrKey) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const player = players[pc.playerId];
+    if (!player) return 'No player.';
+    const res = investAttribute(player, pc, attrKey as import('../types/attributes').AttributeKey, meta.ratingCap ?? 90);
+    if (!res.ok) return res.message;
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career };
+    set({ meta: newMeta, players: { ...players, [pc.playerId]: res.player } });
+    await putPlayers(meta.id, [res.player]);
+    await persistMeta(newMeta);
+    return res.message;
   },
 
   renewContract: async (playerId, years, wage) => {
@@ -4225,9 +4252,21 @@ async function playDays(
         const newForm = clamp(avatar.form + prog.formDelta) as number;
         const newMorale = clamp(avatar.morale + moraleDelta) as number;
         const offPatch = off.playerPatch ?? {};
-        if (newForm !== avatar.form || newMorale !== avatar.morale || Object.keys(offPatch).length) {
+        // Training intensity: push hard for growth at a fitness cost + knock risk.
+        const eff = INTENSITY[intensityOf(pc)];
+        const newFitness = clamp((avatar.fitness ?? 100) + eff.fitnessDelta, 0, 100) as number;
+        let injuryPatch: Partial<Player> = {};
+        if (eff.knockChance > 0 && !avatar.injury) {
+          const kr = new Rng((meta.seed ^ hashSeed(`trainknock_${to}`)) >>> 0);
+          if (kr.chance(eff.knockChance)) {
+            const weeks = kr.int(1, 2);
+            injuryPatch = { injury: { type: 'MUSCLE', description: 'A training-ground muscle strain', weeksOut: weeks, occurredOnDay: to } };
+            newsItems.push({ id: `news_pc_trainknock_${to}`, day: to, category: 'INJURY', title: 'Picked up a knock in training', body: `${avatar.name.first} ${avatar.name.last} tweaked a muscle pushing hard in training — around ${weeks} week${weeks > 1 ? 's' : ''} out. The price of intensity.`, read: false });
+          }
+        }
+        if (newForm !== avatar.form || newMorale !== avatar.morale || newFitness !== (avatar.fitness ?? 100) || Object.keys(offPatch).length || Object.keys(injuryPatch).length) {
           playersById = { ...playersById };
-          playersById[avatar.id] = { ...playersById[avatar.id], ...offPatch, form: newForm, morale: newMorale };
+          playersById[avatar.id] = { ...playersById[avatar.id], ...offPatch, ...injuryPatch, form: newForm, morale: newMorale, fitness: newFitness };
           changedIds.add(avatar.id);
         }
 

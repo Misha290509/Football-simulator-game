@@ -19,6 +19,7 @@ import { Rng, clamp, hashSeed } from '../engine/rng';
 import { generatePlayer } from '../engine/generator';
 import { overallAt } from '../engine/ratings';
 import { applyMentality } from './skillPoints';
+import { dpEarned, intensityOf } from './playerDevelopment';
 import { createNewGame } from './newGame';
 import {
   generateSeasonObjectives, generateMatchObjectives, evaluateMatchObjectives, updateSeasonObjectives,
@@ -561,6 +562,10 @@ export function applyAvatarMatchday(
   // Rolling recent-rating window (last 5 appearances) feeds selection momentum.
   const recentRatings = [...(career.recentRatings ?? []), ...appearances.map((a) => a.ps.rating)].slice(-5);
   next = { ...next, recentRatings };
+
+  // Development Points earned from how he played (spent on the Training screen).
+  const dp = dpEarned(appearances.map((a) => a.ps.rating), intensityOf(next));
+  if (dp > 0) next = { ...next, developmentPoints: (next.developmentPoints ?? 0) + dp };
 
   // Trust drifts from the games played this advance — big games (cup/continental,
   // which aren't in the league competitions map) weigh a little heavier, and a

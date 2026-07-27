@@ -319,6 +319,11 @@ export interface PlayerCareer {
   focusProgress?: number;
   /** A short digest of last advance's training (surfaced on the Training screen). */
   trainingReport?: { focus?: string; note: string; sharpnessNote?: string };
+  /** Development Points — earned from performances, spent to grow chosen
+   *  attributes on the Training screen (player-controlled progression). */
+  developmentPoints?: number;
+  /** Weekly training intensity — a growth/fitness/injury risk-reward choice. */
+  trainingIntensity?: 'LIGHT' | 'BALANCED' | 'INTENSE';
 
   // --- Career-long peer duel (Tier 5 flavour) --------------------------------
   /** A generated peer whose career the avatar races (Ballon d'Or, trophies). */

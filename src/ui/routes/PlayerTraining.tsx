@@ -6,8 +6,9 @@ import { YOUTH_POSITIONS } from '../../engine/academy';
 import { POSITION_LABEL } from '../../engine/lineup';
 import { focusRating, flattenAttributes } from '../../engine/development';
 import { ratingColor } from '../format';
+import { INTENSITY, intensityOf, investCost, attrCeiling, type TrainingIntensity } from '../../game/playerDevelopment';
 import type { PlayerTrainingFocus } from '../../types/player';
-import type { Position } from '../../types/attributes';
+import type { Position, AttributeKey } from '../../types/attributes';
 
 const FOCI: { id: PlayerTrainingFocus; label: string; blurb: string }[] = [
   { id: 'SHOOTING', label: 'Shooting', blurb: 'Finishing, long shots, composure.' },
@@ -27,6 +28,8 @@ export function PlayerTraining() {
   const meta = useGameStore((s) => s.meta);
   const players = useGameStore((s) => s.players);
   const setTraining = useGameStore((s) => s.setTraining);
+  const setTrainingIntensity = useGameStore((s) => s.setTrainingIntensity);
+  const investDP = useGameStore((s) => s.investDevelopmentPoints);
   const career = playerCareerOf(meta);
   const p = career ? players[career.playerId] : undefined;
   const [toast, setToast] = useState<string | null>(null);
@@ -69,6 +72,27 @@ export function PlayerTraining() {
         <div className="flex gap-4 text-center">
           <div><div className="text-[11px] uppercase tracking-wide text-slate-500">OVR</div><div className={`text-2xl font-bold ${ratingColor(p.overall)}`}>{p.overall}</div></div>
           <div><div className="text-[11px] uppercase tracking-wide text-slate-500">POT</div><div className={`text-2xl font-bold ${ratingColor(p.potential)}`}>{p.potential}</div></div>
+        </div>
+      </div>
+
+      {/* Development Points + weekly intensity — the hands-on progression */}
+      <div className="card p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-400">Development</h2>
+          <span className="text-sm"><span className="text-slate-500 text-xs uppercase tracking-wide mr-1">Points</span><span className="font-bold text-emerald-300 tabular-nums">{Math.round(career.developmentPoints ?? 0)}</span> <span className="text-slate-500 text-xs">DP</span></span>
+        </div>
+        <p className="text-xs text-slate-500">Earn Development Points by playing well, then spend them below to grow the attributes <em>you</em> choose (▲ next to each). Set your weekly training intensity — push hard for faster growth, or ease off to stay fresh.</p>
+        <div className="grid grid-cols-3 gap-2">
+          {(['LIGHT', 'BALANCED', 'INTENSE'] as TrainingIntensity[]).map((k) => {
+            const active = intensityOf(career) === k;
+            return (
+              <button key={k} onClick={() => { void setTrainingIntensity(k); flash(`Training: ${INTENSITY[k].label.toLowerCase()}.`); }}
+                className={`text-left p-2.5 rounded-lg border ${active ? 'border-accent bg-accent/10' : 'border-surface-700 hover:bg-surface-700/60'}`}>
+                <div className="text-sm font-medium text-white">{INTENSITY[k].label}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">{INTENSITY[k].blurb}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -153,14 +177,21 @@ export function PlayerTraining() {
         </div>
       </div>
 
-      {/* Full attribute breakdown */}
+      {/* Full attribute breakdown — spend DP to grow any of them */}
       <div className="card p-4">
-        <h2 className="text-sm font-semibold text-slate-400 mb-3">Your attributes</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-400">Your attributes</h2>
+          <span className="text-[11px] text-slate-500">▲ spend DP · ceiling {attrCeiling(p, meta.ratingCap ?? 90)}</span>
+        </div>
         <div className="grid sm:grid-cols-3 gap-x-6 gap-y-4">
           {(['technical', 'mental', 'physical'] as const).map((grp) => (
-            <AttrGroup key={grp} title={GROUP_LABEL[grp]} group={p.attributes[grp]} deltas={seasonDeltas} />
+            <AttrGroup key={grp} title={GROUP_LABEL[grp]} group={p.attributes[grp]} deltas={seasonDeltas}
+              dp={Math.round(career.developmentPoints ?? 0)} ceiling={attrCeiling(p, meta.ratingCap ?? 90)}
+              onInvest={async (k) => flash(await investDP(k))} />
           ))}
-          {isGk && <AttrGroup title={GROUP_LABEL.goalkeeping} group={p.attributes.goalkeeping} deltas={seasonDeltas} />}
+          {isGk && <AttrGroup title={GROUP_LABEL.goalkeeping} group={p.attributes.goalkeeping} deltas={seasonDeltas}
+            dp={Math.round(career.developmentPoints ?? 0)} ceiling={attrCeiling(p, meta.ratingCap ?? 90)}
+            onInvest={async (k) => flash(await investDP(k))} />}
         </div>
       </div>
 
@@ -203,13 +234,19 @@ export function PlayerTraining() {
   );
 }
 
-function AttrGroup({ title, group, deltas }: { title: string; group: Record<string, number>; deltas?: Record<string, number> }) {
+function AttrGroup({ title, group, deltas, dp, ceiling, onInvest }: {
+  title: string; group: Record<string, number>; deltas?: Record<string, number>;
+  dp: number; ceiling: number; onInvest: (k: AttributeKey) => void;
+}) {
   return (
     <div>
       <h3 className="text-xs uppercase tracking-wide text-slate-500 mb-2">{title}</h3>
       <div className="space-y-1">
         {Object.entries(group).map(([k, v]) => {
           const d = deltas?.[k];
+          const cost = investCost(v);
+          const maxed = v >= ceiling;
+          const canBuy = !maxed && dp >= cost;
           return (
             <div key={k} className="flex items-center justify-between text-sm">
               <span className="text-slate-400 capitalize">{attrLabel(k)}</span>
@@ -218,6 +255,12 @@ function AttrGroup({ title, group, deltas }: { title: string; group: Record<stri
                   <span className={`text-[10px] font-mono font-semibold ${d > 0 ? 'text-emerald-400' : 'text-rose-400'}`} title="Change last season">{d > 0 ? '+' : ''}{d}</span>
                 )}
                 <span className={`font-mono ${ratingColor(v)}`}>{Math.round(v)}</span>
+                <button
+                  onClick={() => onInvest(k as AttributeKey)}
+                  disabled={!canBuy}
+                  title={maxed ? 'At its ceiling' : `Spend ${cost} DP to improve`}
+                  className={`w-6 h-5 rounded text-[10px] font-bold leading-none ${canBuy ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30' : 'bg-surface-700 text-slate-600 cursor-not-allowed'}`}
+                >{maxed ? '—' : '▲'}</button>
               </span>
             </div>
           );
