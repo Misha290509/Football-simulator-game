@@ -91,11 +91,16 @@ export function buildInteractiveInput(
   const compName = meta.competitions[match.competitionId]?.name;
   const bigNight = classifyBigNight(compName, clubs[oppId]?.reputation ?? 60, clubs[clubId]?.reputation ?? 60, false);
   if (bigNight) importance = Math.max(importance, bigNight.importance);
+  // The run-in: a league game in April with the table this tight is a cup tie.
+  const race = career.race && career.race.kind !== 'NOTHING' && meta.competitions[match.competitionId]
+    ? career.race : null;
+  if (race) importance = Math.max(importance, race.importance);
   const occasion: InteractiveInput['occasion'] = derby
     ? { kind: 'DERBY', label: `Derby day — ${clubs[oppId]?.shortName ?? 'your rivals'}` }
     : formerClub
     ? { kind: 'FORMER_CLUB', label: `Return to ${clubs[oppId]?.shortName ?? 'a former club'}` }
     : bigNight ? { kind: 'BIG_MATCH', label: bigNight.label, blurb: bigNight.blurb }
+    : race ? { kind: 'BIG_MATCH', label: race.label, blurb: race.blurb }
     : importance >= 0.65 ? { kind: 'BIG_MATCH', label: 'A big occasion' } : undefined;
   const plan = gamePlan ?? defaultGamePlan(myProfile.attack, oppProfile.defense, role);
 

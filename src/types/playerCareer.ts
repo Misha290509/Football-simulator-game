@@ -419,6 +419,14 @@ export interface PlayerCareer {
   /** The teenager coming for his place. */
   intlPretender?: import('../game/internationalCareer').IntlPretender | null;
 
+  // --- Season structure (Tier 3) ---------------------------------------------
+  /** Where the club went in July, and what it cost him. */
+  tour?: import('../game/seasonStructure').PreSeasonTour | null;
+  /** What the club is playing for in the closing weeks. */
+  race?: import('../game/seasonStructure').RaceContext | null;
+  /** Season the run-in beat has already fired for (so it fires once). */
+  runInYear?: number;
+
   // --- The gaffer & the training ground (Tier 2 depth) ----------------------
   /** The current manager's man-management style (derived from the club). */
   managerStyle?: ManagerStyle;

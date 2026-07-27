@@ -114,6 +114,7 @@ export function PlayerHome() {
           : conv.trigger === 'INTL_STANDBY' ? 'On standby'
           : conv.trigger === 'INTL_CUT' ? 'Left out of the squad'
           : conv.trigger === 'INTL_RIVAL' ? 'One shirt, two of you'
+          : conv.trigger === 'PRESEASON_TOUR' ? 'Pre-season'
           : conv.trigger === 'CAPTAINCY' ? 'The armband'
           : 'Manager wants a word';
         return (
@@ -243,6 +244,15 @@ export function PlayerHome() {
         <div className="card p-3 border border-rose-500/30 bg-rose-500/5 text-sm text-rose-200">
           🏚️ The club is in financial trouble — wages deferred, the training ground up for sale. Nobody knows how this ends.
         </div>
+      )}
+      {career.race && career.race.kind !== 'NOTHING' && (
+        <button
+          className="card p-3 border border-violet-500/30 bg-violet-500/5 text-left w-full"
+          onClick={() => navigate('/calendar')}
+        >
+          <div className="text-sm font-semibold text-violet-200">🏁 {career.race.label}</div>
+          <div className="text-xs text-violet-200/80 mt-0.5">{career.race.blurb}</div>
+        </button>
       )}
       {career.owner && (
         <div className="card p-3 border border-surface-600 text-xs text-slate-400">

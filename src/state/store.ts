@@ -102,6 +102,9 @@ import {
   nationOf, runQualifying, tournamentSelection, maybeIntlRival, maybePretender,
   pretenderPressure, shootoutBeat, intlRivalDrift,
 } from '../game/internationalCareer';
+import {
+  seasonPhase, phaseFatigueFactor, raceContext, runInNews, preSeasonTour, applyTour,
+} from '../game/seasonStructure';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -3398,6 +3401,25 @@ export const useGameStore = create<GameState>((set, get) => ({
           newMeta.news = [...newMeta.news, ...tk.news];
         }
 
+        // July: the club goes somewhere. The big names chase the money on the
+        // other side of the world; everybody else runs up a mountain.
+        if (avatar) {
+          const cid4 = result.players[pc.playerId]?.contract.clubId;
+          const t = preSeasonTour(avatar, cid4 ? result.clubs[cid4] : undefined, result.newSeason.year, meta.seed);
+          newMeta.playerCareer = {
+            ...newMeta.playerCareer,
+            tour: t.tour,
+            race: null,
+            pendingConversations: [
+              ...(newMeta.playerCareer.pendingConversations ?? []),
+              ...(t.conversation ? [t.conversation] : []),
+            ],
+          };
+          newMeta.news = [...newMeta.news, ...t.news];
+          const cur = result.players[pc.playerId];
+          if (cur) result.players[pc.playerId] = applyTour(cur, t.tour);
+        }
+
         // A year on the portfolio: things grow, and occasionally one goes under.
         if (avatar) {
           const inv = advanceInvestments(newMeta.playerCareer, avatar, result.newSeason.year, 0, meta.seed);
@@ -4687,6 +4709,40 @@ async function playDays(
           }
           const shirts = shirtSales(pc, avatar, to);
           pc = shirts.career; newsItems.push(...shirts.news);
+        }
+
+        // 2l) The shape of the year: where in the season we are, how many games
+        //     are coming, and what the club is actually playing for. The run-in
+        //     beat fires once a season, when the table starts to mean something.
+        {
+          const league = cid ? Object.values(meta.competitions).find(
+            (c) => c.id.startsWith('comp_') && c.tier != null && c.clubIds.includes(cid)) : undefined;
+          const all = Object.values(matches);
+          const maxDay = league
+            ? all.reduce((mx, m) => (m.competitionId === league.id && m.day > mx ? m.day : mx), 0)
+            : all.reduce((mx, m) => Math.max(mx, m.neutral ? 0 : m.day), 0);
+          const phase = seasonPhase(to, maxDay, cid ? clubsAfter[cid]?.countryId : undefined);
+          // The pile-up is a physical tax; a winter break hands some back.
+          const tax = Math.round((phaseFatigueFactor(phase.phase) - 1) * 6);
+          if (tax !== 0 && cid) {
+            const p = playersById[avatar.id];
+            if (p) playersById[avatar.id] = { ...p, fitness: clamp((p.fitness ?? 100) - tax, 20, 100) };
+          }
+          if (league && cid) {
+            const left = all.filter((m) => m.competitionId === league.id && !m.played &&
+              (m.homeClubId === cid || m.awayClubId === cid)).length;
+            const race = raceContext(computeStandings(league, all), cid, left, {
+              tier: league.tier ?? 1,
+              relegationPlaces: league.promotion?.autoRelegate ?? 3,
+              promotionPlaces: league.promotion?.autoPromote ?? 2,
+            });
+            pc = { ...pc, race: race ?? null };
+            if (race && phase.phase === 'RUN_IN' && pc.runInYear !== toYear) {
+              const beat = runInNews(race, clubsAfter[cid], to);
+              if (beat) newsItems.push(beat);
+              pc = { ...pc, runInYear: toYear };
+            }
+          }
         }
 
         // 3) A demotion this advance triggers a manager sit-down; a first-time
