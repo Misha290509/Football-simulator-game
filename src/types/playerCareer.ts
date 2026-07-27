@@ -342,6 +342,14 @@ export interface PlayerCareer {
   holdings?: import('../game/moneyLife').Holding[];
   /** The man handling his money — very good, or one day gone with the lot. */
   adviser?: import('../game/moneyLife').AdviserState | null;
+  /** The club's owners — a billionaire, an asset-stripper, or steady hands. */
+  owner?: import('../game/clubLife').OwnerState | null;
+  /** A live financial crisis at the club (deferred wages, protests). */
+  crisis?: import('../game/clubLife').CrisisState | null;
+  /** A relegation wage clause that has bitten. */
+  relegationClause?: { triggeredDay: number; oldWage: number; newWage: number } | null;
+  /** He shifts more shirts than anyone else at the club. */
+  topShirtSeller?: boolean;
   /** Spendable bank balance — earnings you haven't spent on the good life yet. */
   bankBalance?: number;
   /** Lifestyle purchases the avatar owns (status symbols, homes, giving). */

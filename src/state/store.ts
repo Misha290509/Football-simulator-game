@@ -97,6 +97,7 @@ import {
 } from '../game/trainingDepth';
 import { updateBurnout, burnoutFormPenalty, resolveBurnout, maybeChronic, maybeIncident, updateSpiral } from '../game/adversity';
 import { invest, advanceInvestments, hireAdviser, advanceAdviser, maybeFamilyAsk, FAMILY_HELP_COST, type InvestmentId } from '../game/moneyLife';
+import { maybeTakeover, maybeCrisis, crisisDrip, shirtSales, divisionMove } from '../game/clubLife';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -3299,6 +3300,39 @@ export const useGameStore = create<GameState>((set, get) => ({
           }];
         }
 
+        // Going up or down: compare the tier of the avatar's league across the
+        // rollover — a real wage clause, and a real decision about his future.
+        if (avatar) {
+          const cidNow = result.players[pc.playerId]?.contract.clubId ?? undefined;
+          const tierOf = (comps: Record<string, { tier?: number; clubIds: string[] }>, club: string | undefined) =>
+            club ? Object.values(comps).find((c) => c.tier != null && c.clubIds.includes(club))?.tier : undefined;
+          const before = tierOf(meta.competitions as never, cidNow);
+          const after = tierOf(result.competitions as never, cidNow);
+          if (before != null && after != null && after !== before) {
+            const dm = divisionMove(newMeta.playerCareer, avatar, cidNow ? result.clubs[cidNow] : undefined,
+              after > before ? 'RELEGATED' : 'PROMOTED', 0);
+            newMeta.playerCareer = dm.career;
+            newMeta.news = [...newMeta.news, ...dm.news];
+            if (dm.conversation) {
+              newMeta.playerCareer = {
+                ...newMeta.playerCareer,
+                pendingConversations: [...(newMeta.playerCareer.pendingConversations ?? []), dm.conversation],
+              };
+            }
+            if (dm.player !== avatar) result.players[pc.playerId] = dm.player;
+          }
+        }
+
+        // The club's own fortunes turn over the summer: a takeover, and the
+        // consequences of going up or down.
+        if (avatar) {
+          const cid3 = result.players[pc.playerId]?.contract.clubId;
+          const myClub = cid3 ? result.clubs[cid3] : undefined;
+          const tk = maybeTakeover(newMeta.playerCareer, avatar, myClub, result.newSeason.year, 0, meta.seed);
+          newMeta.playerCareer = tk.career;
+          newMeta.news = [...newMeta.news, ...tk.news];
+        }
+
         // A year on the portfolio: things grow, and occasionally one goes under.
         if (avatar) {
           const inv = advanceInvestments(newMeta.playerCareer, avatar, result.newSeason.year, 0, meta.seed);
@@ -4568,6 +4602,24 @@ async function playDays(
             newsItems.push(...fam.news);
             pc = { ...pc, pendingConversations: [...(pc.pendingConversations ?? []), fam.conversation] };
           }
+        }
+
+        // 2k) The club as a living thing: a financial crisis and the protest it
+        //     brings, and the day he becomes the club's best-selling shirt.
+        {
+          const myClub = cid ? clubsAfter[cid] : undefined;
+          if (pc.crisis) {
+            const drip = crisisDrip(pc, to);
+            pc = drip.career; newsItems.push(...drip.news); moraleDelta += drip.moraleDelta;
+          } else {
+            const cr = maybeCrisis(pc, myClub, to, meta.seed);
+            pc = cr.career; newsItems.push(...cr.news); moraleDelta += cr.moraleDelta;
+            if (cr.conversation && (pc.pendingConversations ?? []).length === 0) {
+              pc = { ...pc, pendingConversations: [...(pc.pendingConversations ?? []), cr.conversation] };
+            }
+          }
+          const shirts = shirtSales(pc, avatar, to);
+          pc = shirts.career; newsItems.push(...shirts.news);
         }
 
         // 3) A demotion this advance triggers a manager sit-down; a first-time

@@ -109,6 +109,8 @@ export function PlayerHome() {
           : conv.trigger === 'BURNOUT' ? 'You’re running on empty'
           : conv.trigger === 'INCIDENT' ? 'Off the pitch'
           : conv.trigger === 'FAMILY' ? 'A call from home'
+          : conv.trigger === 'RELEGATION' ? 'The club has gone down'
+          : conv.trigger === 'PROTEST' ? 'The supporters are protesting'
           : conv.trigger === 'CAPTAINCY' ? 'The armband'
           : 'Manager wants a word';
         return (
@@ -232,6 +234,16 @@ export function PlayerHome() {
       {career.chronic && (
         <div className="card p-3 border border-rose-500/30 bg-rose-500/5 text-sm text-rose-200">
           🦵 A chronic {career.chronic.kind.toLowerCase()} problem — it never fully healed. You're a different player now, and you'll manage it for the rest of your career.
+        </div>
+      )}
+      {career.crisis && (
+        <div className="card p-3 border border-rose-500/30 bg-rose-500/5 text-sm text-rose-200">
+          🏚️ The club is in financial trouble — wages deferred, the training ground up for sale. Nobody knows how this ends.
+        </div>
+      )}
+      {career.owner && (
+        <div className="card p-3 border border-surface-600 text-xs text-slate-400">
+          🏛️ Owned by {career.owner.name}{career.owner.kind === 'BILLIONAIRE' ? ' — and the money is about to change everything.' : career.owner.kind === 'ASSET_STRIPPER' ? ' — and nobody trusts them.' : '.'}
         </div>
       )}
       {career.spiral && (

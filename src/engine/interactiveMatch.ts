@@ -56,7 +56,7 @@ export interface InteractiveInput {
   intent2?: PositioningIntent;
   /** A special occasion framing the fixture (derby, former club, big match) —
    *  presentation + raised stakes; the importance value already reflects it. */
-  occasion?: { kind: 'DERBY' | 'FORMER_CLUB' | 'BIG_MATCH'; label: string };
+  occasion?: { kind: 'DERBY' | 'FORMER_CLUB' | 'BIG_MATCH'; label: string; blurb?: string };
   /** The specific opponent the avatar is locked in a personal duel with. */
   marker?: MarkerInfo;
   /** His pre-match routine was disrupted — superstition bites, flow starts low. */

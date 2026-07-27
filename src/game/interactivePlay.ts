@@ -20,6 +20,7 @@ import { ritualIntact, ritualBreakLine } from './playerIdentity';
 import { deriveConditions, buildScoutReport } from './matchConditions';
 import { buildOppositionPlan, bogeyFactor } from './opposition';
 import { habitFactor, analysisFactor } from './trainingDepth';
+import { classifyBigNight } from './clubLife';
 
 /** The specific opponent the avatar will duel all match: an attacker draws the
  *  best opposing defender, a defender the best striker, a midfielder his
@@ -86,10 +87,15 @@ export function buildInteractiveInput(
   let importance = meta.competitions[match.competitionId] ? 0.4 : 0.7; // cup/continental = bigger
   if (derby) importance = Math.max(importance, 0.78);
   else if (formerClub) importance = Math.max(importance, 0.72);
+  // Cup runs and European nights carry their own weight.
+  const compName = meta.competitions[match.competitionId]?.name;
+  const bigNight = classifyBigNight(compName, clubs[oppId]?.reputation ?? 60, clubs[clubId]?.reputation ?? 60, false);
+  if (bigNight) importance = Math.max(importance, bigNight.importance);
   const occasion: InteractiveInput['occasion'] = derby
     ? { kind: 'DERBY', label: `Derby day — ${clubs[oppId]?.shortName ?? 'your rivals'}` }
     : formerClub
     ? { kind: 'FORMER_CLUB', label: `Return to ${clubs[oppId]?.shortName ?? 'a former club'}` }
+    : bigNight ? { kind: 'BIG_MATCH', label: bigNight.label, blurb: bigNight.blurb }
     : importance >= 0.65 ? { kind: 'BIG_MATCH', label: 'A big occasion' } : undefined;
   const plan = gamePlan ?? defaultGamePlan(myProfile.attack, oppProfile.defense, role);
 
