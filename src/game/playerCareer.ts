@@ -615,6 +615,11 @@ export function applyAvatarMatchday(
     if (!oppName) continue;
     const bg = updateBogeyTeams(next, avatar, oppName, a.ps.rating, day);
     next = bg.career; news.push(...bg.news);
+    // Head-to-head history: how he's fared against each club he's faced.
+    next = {
+      ...next,
+      opponentLog: [...(next.opponentLog ?? []), { club: oppName, goals: a.ps.goals, rating: a.ps.rating, day }].slice(-400),
+    };
   }
 
   // Trust drifts from the games played this advance — big games (cup/continental,

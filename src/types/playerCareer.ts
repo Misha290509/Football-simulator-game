@@ -336,6 +336,8 @@ export interface PlayerCareer {
   incidents?: { kind: import('../game/adversity').IncidentKind; day: number }[];
   /** A compounding bad run he has to actively climb out of. */
   spiral?: import('../game/adversity').SpiralState | null;
+  /** Per-opponent history, for head-to-head records. */
+  opponentLog?: { club: string; goals: number; rating: number; day: number }[];
   /** Spendable bank balance — earnings you haven't spent on the good life yet. */
   bankBalance?: number;
   /** Lifestyle purchases the avatar owns (status symbols, homes, giving). */
