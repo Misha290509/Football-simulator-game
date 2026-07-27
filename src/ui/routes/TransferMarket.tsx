@@ -8,7 +8,6 @@ import { ageOf, fullName, formatMoney, formatWage } from '../format';
 import { marketView, eliteKnownIds, scoutStars, clubScoutRating, departmentStars, type MarketView } from '../../engine/marketScout';
 import { clubValuation, type FeeOffer } from '../../game/feeNegotiation';
 import { loanFee, canAgreePreContract, evaluateSwap, weeklyWageBill } from '../../game/transfers';
-import { gbeCheck } from '../../game/registration';
 import { rumourLine } from '../../game/rumours';
 import { agentDemands, evaluateContractOffer, type ContractOffer } from '../../game/contracts';
 import type { Player, SquadRole } from '../../types/player';
@@ -616,15 +615,6 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
         {player.position} · {seller ? seller.name : 'Free agent'} · {view.exact ? `OVR ${view.ovr}` : `estimated OVR ${view.ovr} (${view.stars}★)`}
       </p>
 
-      {(() => {
-        const gbe = gbeCheck(player, buyer);
-        if (buyer.countryId !== 'GB' || gbe.required === 0) return null;
-        return (
-          <div className={`rounded px-3 py-2 text-xs mb-3 ${gbe.allowed ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-200' : 'bg-rose-500/10 border border-rose-500/30 text-rose-200'}`}>
-            🛂 Work permit (GBE): {gbe.points} pts / {gbe.required} required — {gbe.allowed ? 'endorsement would be granted.' : 'he would be refused a work permit.'}
-          </div>
-        );
-      })()}
       {buyBack ? (
         <div className="rounded bg-sky-500/10 border border-sky-500/30 px-3 py-2 text-xs text-sky-200 mb-3">
           🔁 Buy-back clause — re-sign {player.name.last} for the agreed {formatMoney(player.buyBack?.price ?? 0)} fee. Just settle personal terms.

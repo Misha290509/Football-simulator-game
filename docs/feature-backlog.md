@@ -219,14 +219,10 @@ Risks: balance.
 
 ### C. Per-country realism (this game's biggest untapped edge)
 
-**15. Squad-registration rules.** ⭐
-What: homegrown quotas (PL 8/25), non-EU/foreign limits (La Liga 3 non-EU, Serie
-A, Saudi 8+1, Brazil's foreigner cap), enforced when registering/signing. Why:
-**the dataset spans 26 nations and models none of their rules** — this is the
-single most distinctive realism edge available. Insertion: `registration` config
-on `Competition` + a check in `game/transfers.ts` `evaluateBid` and at season
-registration. Effort: M–L. Impact: **Very High**. Deps: per-league rule data.
-Risks: migration additive, AI must respect it too.
+**15. Squad-registration rules.** ❌ **Built, then removed — do not rebuild.**
+Homegrown quotas, foreign-player limits and squad caps shipped as a compliance
+panel on the Squad screen. Cut at the owner's request: administrative paperwork
+that got in the way without making the game more fun to play.
 
 **16. MLS roster & cap rules.**
 What: salary cap, 3 Designated Players (cap-exempt), TAM/GAM, international slots,
@@ -263,11 +259,10 @@ What: continental for Saudi/Korea/China + USA/Mexico, on the same confederation
 framework. Insertion: `continental/install.ts` (post-#19). Effort: L (M once #19
 exists). Impact: Medium–High. Deps: #19.
 
-**21. Work permits / GBE (post-Brexit England).**
-What: non-UK signings need a points-based permit (from caps, league tier,
-minutes); fail → blocked or a hard sell. Why: extremely authentic, changes who
-English clubs can buy. Insertion: `game/transfers.ts` `evaluateBid` + a GBE
-calculator. Effort: M. Impact: Medium–High. Deps: #15 framework.
+**21. Work permits / GBE (post-Brexit England).** ❌ **Built, then removed — do
+not rebuild.** Points-based endorsements blocked non-domestic signings at English
+clubs. Cut at the owner's request: it only ever said no to a transfer you had
+already decided you wanted.
 
 **22. Brazilian state championships.**
 What: Paulista/Carioca etc. run Jan–Apr before Série A — a regional pre-season
@@ -541,7 +536,7 @@ modules. Why: 3.8k lines slows every feature after it. Effort: M. Impact: Medium
 
 **70. Confederation abstraction for continental football.**
 What: refactor `continental/install.ts` from UEFA-hardcoded to a confederation
-config, so #19–#21 slot in cleanly. Effort: M. Impact: Medium (enabler). Deps:
+config, so #19–#20 slot in cleanly. Effort: M. Impact: Medium (enabler). Deps:
 none. *Prerequisite for the CONMEBOL/AFC/CONCACAF bets.*
 
 ---
@@ -551,9 +546,8 @@ none. *Prerequisite for the CONMEBOL/AFC/CONCACAF bets.*
 1. **#9 Player roles** — the depth ceiling for the whole match/tactics half of
    the game; the current system is nearly inert, and roles make every other
    tactical feature meaningful.
-2. **#15 Squad-registration rules** — the single most distinctive edge available;
-   26 nations are modelled and *none* of their rules are. Nothing else here is as
-   unique.
+2. ~~**#15 Squad-registration rules**~~ — built and then removed at the owner's
+   request. Per-country *rules* are off the table; per-country **flavour** is not.
 3. **#67 Match-storage archival** — the one structural risk; do it before the
    data-heavy features so long saves stay fast.
 4. **#6 Title/relegation probabilities** — the highest-engagement GM widget, and
@@ -588,7 +582,7 @@ none. *Prerequisite for the CONMEBOL/AFC/CONCACAF bets.*
 - **#17 Misaligned league calendars** — reshapes the whole world clock and the
   transfer market; the deepest structural change.
 - **#9 Player roles** — redefines the match engine's tactical surface.
-- **#19–#21 Non-UEFA continental football** (via **#70**) — Libertadores/AFC/
+- **#19–#20 Non-UEFA continental football** (via **#70**) — Libertadores/AFC/
   CONCACAF give half the dataset a continental stage.
 - **#16 MLS roster & cap rules** — a genuinely different game mode inside the game.
 - **#60 Fantasy draft** — a whole new way to start.
@@ -613,7 +607,7 @@ clauses. In parallel: #42 board/fan split → #38 takeovers → #37 sponsorship 
 TV/tickets → #43 vision.
 
 **Phase 3 — Per-country realism (the edge):**
-#15 registration framework → #21 GBE → #16 MLS rules; #18 real cups; #70
+#16 MLS rules; #18 real cups; #70
 confederation refactor → #19 CONMEBOL → #20 AFC/CONCACAF; #24 coefficient slots.
 
 **Phase 4 — International & longevity:**

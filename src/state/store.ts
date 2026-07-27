@@ -134,7 +134,6 @@ import {
   type BidResult,
 } from '../game/transfers';
 import { advanceRumours } from '../game/rumours';
-import { gbeCheck } from '../game/registration';
 import { buildDeadlineFeed } from '../game/deadlineDay';
 import { generateSponsorOffers, generateStadiumOffers } from '../game/sponsorship';
 import { accrueHonours } from '../game/dynasty';
@@ -1722,10 +1721,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = players[playerId];
     if (!player) return { ok: false, message: 'Player not found.' };
     const buyer = clubs[meta.managerClubId];
-    // Work permit / GBE (§ #21): an English club needs an endorsement for a
-    // non-domestic player.
-    const gbe = gbeCheck(player, buyer);
-    if (!gbe.allowed) return { ok: false, message: gbe.reason };
     // With installments only this year's slice counts against the budget now.
     const years = Math.max(1, Math.min(4, Math.round(instalmentYears)));
     const perYear = years > 1 ? Math.round(fee / years) : fee;
@@ -1830,8 +1825,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { seasonYear, month } = get().preContractContext();
     const elig = canAgreePreContract(player, meta.managerClubId, seasonYear, month);
     if (!elig.ok) return { ok: false, message: elig.reason ?? 'He is not available on a pre-contract.' };
-    const gbePre = gbeCheck(player, clubs[meta.managerClubId]);
-    if (!gbePre.allowed) return { ok: false, message: gbePre.reason };
 
     const buyer = clubs[meta.managerClubId];
     const buyerSquad = get().getClubPlayers(buyer.id);
@@ -1873,8 +1866,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = players[playerId];
     if (!player) return { ok: false, message: 'Player not found.' };
     const toClub = clubs[meta.managerClubId];
-    const gbeLoan = gbeCheck(player, toClub);
-    if (!gbeLoan.allowed) return { ok: false, message: gbeLoan.reason };
     const fromClub = player.contract.clubId ? clubs[player.contract.clubId] : null;
     if (!fromClub || fromClub.id === toClub.id) return { ok: false, message: 'Cannot loan this player.' };
     // Soured relations shut the door on loans too, until the freeze lifts.

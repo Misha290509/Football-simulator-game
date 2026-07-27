@@ -7,7 +7,6 @@ import { ageOf, fullName, formatMoney, formatWage, playerStatus } from '../forma
 import type { Player } from '../../types/player';
 import { POSITION_GROUP, ALL_POSITIONS } from '../../types/attributes';
 import { squadChemistry, dressingRoom } from '../../engine/chemistry';
-import { squadCompliance } from '../../game/registration';
 import { OvrDeltaBadge, StatChangePanel } from '../components/SeasonChange';
 
 export function Squad() {
@@ -103,7 +102,6 @@ export function Squad() {
       </div>
 
       <ChemistryCard players={players} year={currentYear} captainId={club.captainId} />
-      <RegistrationCard players={players} club={club} />
 
       {view === 'table' ? (
         <>
@@ -157,29 +155,6 @@ function ChemistryCard({ players, year, captainId }: { players: Player[]; year: 
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function RegistrationCard({ players, club }: { players: Player[]; club: import('../../types/club').Club }) {
-  const comp = squadCompliance(players, club);
-  if (!comp) return null;
-  const ok = comp.violations.length === 0;
-  const chip = (label: string, cur: number, req: string, good: boolean) => (
-    <span className={`text-[11px] px-2 py-0.5 rounded-full border ${good ? 'border-emerald-500/30 text-emerald-300' : 'border-rose-500/30 text-rose-300'}`}>{label} {cur} {req}</span>
-  );
-  return (
-    <div className="card p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-      <div>
-        <div className="text-[10px] uppercase tracking-wide text-slate-500">Squad registration</div>
-        <div className={`text-sm ${ok ? 'text-emerald-400' : 'text-rose-400'}`}>{ok ? '✓ Compliant' : '⚠ Non-compliant'}</div>
-      </div>
-      <div className="flex flex-wrap gap-1.5 ml-auto">
-        {chip(club.countryId === 'US' ? 'Roster' : 'Squad', comp.squadCount, `/ ${comp.rules.squadLimit}`, comp.squadCount <= comp.rules.squadLimit)}
-        {comp.rules.homegrownMin > 0 && chip('Home-grown', comp.homegrown, `/ ${comp.rules.homegrownMin} min`, comp.homegrown >= comp.rules.homegrownMin)}
-        {comp.rules.nonDomesticMax != null && chip(club.countryId === 'US' ? 'Int’l slots' : 'Non-domestic', comp.nonDomestic, `/ ${comp.rules.nonDomesticMax} max`, comp.nonDomestic <= comp.rules.nonDomesticMax)}
-      </div>
-      {!ok && <div className="w-full text-xs text-rose-300/90">{comp.violations.join(' ')}</div>}
     </div>
   );
 }
