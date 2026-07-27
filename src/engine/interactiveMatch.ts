@@ -71,6 +71,10 @@ export interface InteractiveInput {
   oppPlan?: OppositionPlan;
   /** A side that has his number — they've worked him out. */
   bogeyFactor?: number;
+  /** Bad-habit drag on the relevant moments (1 = none). */
+  habitFactorFn?: (type: MomentType, reward: string) => number;
+  /** Video-analysis edge per moment type (1 = none). */
+  analysisFactorFn?: (type: MomentType) => number;
 }
 
 // --- Small deterministic helpers -------------------------------------------
@@ -210,6 +214,9 @@ function resolveMoment(
   // and a side that's worked him out squeezes him a little further.
   p *= targetingFactor(input.oppPlan, moment.type, choice.reward);
   p *= input.bogeyFactor ?? 1;
+  // Bad habits drag on the moments they touch; video study buys a small edge.
+  p *= input.habitFactorFn?.(moment.type, choice.reward) ?? 1;
+  p *= input.analysisFactorFn?.(moment.type) ?? 1;
   const success = rng.chance(clamp(p, 0.03, 0.96));
   run.momentum = success ? run.momentum + 1 : 0;
   const flowBefore = run.flow;

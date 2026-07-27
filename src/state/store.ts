@@ -91,6 +91,10 @@ import { updateShirt, checkBoyhoodMove, maybeAllegianceChoice, commitAllegiance,
 import { deriveLeadership, leadershipNews, updateLanguage, detectMarqueeSignal, deliverTeamTalk } from '../game/squadLife';
 import { maybeExile, exileDrip, endExile, runDownDrip, negotiateClauses, declareRunDown, canRunDown, type ClauseId } from '../game/contractPressure';
 import { punditJab, makePost, maybeOldPostResurfaces, maybeChant, takeProject, type PostTone } from '../game/mediaFame';
+import {
+  detectBadHabits, advanceHabits, trainOutHabit, studyMoment, setBodyType, startBadge, advanceBadge, attendCamp,
+  type BadHabitId, type BodyType,
+} from '../game/trainingDepth';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -268,6 +272,11 @@ interface GameState {
   declareContractRunDown: () => Promise<string>;
   postToSocial: (tone: string) => Promise<string>;
   takeMediaProject: (id: string) => Promise<string>;
+  trainOutBadHabit: (id: string) => Promise<string>;
+  studyMomentType: (type: string) => Promise<string>;
+  setPlayerBodyType: (type: string) => Promise<string>;
+  startCoachingBadge: (id: string) => Promise<string>;
+  attendTrainingCamp: (id: string) => Promise<string>;
   // --- Legacy & endgame (Tier 5) ---
   setDreamClub: (clubId: string | null) => Promise<void>;
   addCustomAmbition: (text: string) => Promise<void>;
@@ -909,6 +918,73 @@ export const useGameStore = create<GameState>((set, get) => ({
     await putPlayers(meta.id, [np]);
     await persistMeta(newMeta);
     return `You've committed to ${nation}.`;
+  },
+
+  trainOutBadHabit: async (id) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const res = trainOutHabit(pc, id as BadHabitId);
+    if (!res.ok) return res.message;
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return res.message;
+  },
+
+  studyMomentType: async (type) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar) return 'No player.';
+    const res = studyMoment(pc, type as import('../types/interactiveMatch').MomentType, meta.currentDay, avatar);
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return res.message;
+  },
+
+  setPlayerBodyType: async (type) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar) return 'No player.';
+    const res = setBodyType(pc, avatar, type as BodyType);
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta, players: { ...players, [pc.playerId]: res.player } });
+    await putPlayers(meta.id, [res.player]);
+    await persistMeta(newMeta);
+    return `You've reshaped your body.`;
+  },
+
+  startCoachingBadge: async (id) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const res = startBadge(pc, id, meta.currentDay);
+    if (!res.ok) return res.message;
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return res.message;
+  },
+
+  attendTrainingCamp: async (id) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar) return 'No player.';
+    const res = attendCamp(pc, avatar, id, meta.currentDay);
+    if (!res.ok) return res.message;
+    const np: Player = { ...avatar, morale: clamp(avatar.morale + res.moraleDelta) as number };
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta, players: { ...players, [pc.playerId]: np } });
+    await putPlayers(meta.id, [np]);
+    await persistMeta(newMeta);
+    return res.message;
   },
 
   postToSocial: async (tone) => {
@@ -4390,6 +4466,27 @@ async function playDays(
           pc = old.career; newsItems.push(...old.news); moraleDelta += old.moraleDelta;
           const chant = maybeChant(pc, avatar, to, meta.seed);
           pc = chant.career; newsItems.push(...chant.news); moraleDelta += chant.moraleDelta;
+        }
+
+        // 2h) Training depth: behaviour hardens into habits, habits get trained
+        //     out, and coaching badges tick toward completion.
+        {
+          const tally = pc.habitTally ?? { dives: 0, cards: 0, wastedShots: 0, hoggedChances: 0, missedTracks: 0 };
+          // Count what he actually did this advance.
+          let cards = tally.cards, wasted = tally.wastedShots;
+          for (const m of played) {
+            const ps = m.playerStats?.find((x) => x.playerId === avatar.id);
+            if (!ps) continue;
+            if (ps.yellow || ps.red) cards += 1;
+            if ((ps.shots ?? 0) >= 4 && (ps.goals ?? 0) === 0) wasted += 1;
+          }
+          pc = { ...pc, habitTally: { ...tally, cards, wastedShots: wasted } };
+          const hab = detectBadHabits(pc, avatar, pc.habitTally!, to);
+          pc = hab.career; newsItems.push(...hab.news);
+          const adv = advanceHabits(pc, avatar, to);
+          pc = adv.career; newsItems.push(...adv.news);
+          const bdg = advanceBadge(pc, avatar, to);
+          pc = bdg.career; newsItems.push(...bdg.news);
         }
 
         // 3) A demotion this advance triggers a manager sit-down; a first-time

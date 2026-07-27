@@ -19,6 +19,7 @@ import type { MarkerInfo } from '../types/interactiveMatch';
 import { ritualIntact, ritualBreakLine } from './playerIdentity';
 import { deriveConditions, buildScoutReport } from './matchConditions';
 import { buildOppositionPlan, bogeyFactor } from './opposition';
+import { habitFactor, analysisFactor } from './trainingDepth';
 
 /** The specific opponent the avatar will duel all match: an attacker draws the
  *  best opposing defender, a defender the best striker, a midfielder his
@@ -121,6 +122,8 @@ export function buildInteractiveInput(
     // Fame has a price: once he's dangerous, they set up specifically to stop him.
     oppPlan: buildOppositionPlan(career, avatar, match.id, meta.seed, marker?.name),
     bogeyFactor: bogeyFactor(career, oppName ?? ''),
+    habitFactorFn: (t, r) => habitFactor(career, t, r),
+    analysisFactorFn: (t) => analysisFactor(career, t),
   };
   return { input, willStart, willComeOn: onBench };
 }

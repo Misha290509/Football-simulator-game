@@ -7,6 +7,10 @@ import { POSITION_LABEL } from '../../engine/lineup';
 import { focusRating, flattenAttributes } from '../../engine/development';
 import { ratingColor } from '../format';
 import { INTENSITY, intensityOf, investCost, attrCeiling, type TrainingIntensity } from '../../game/playerDevelopment';
+import {
+  habitById, BODY, bodyOf, availableBadges, BADGES, CAMPS, versatilityRating,
+  type BodyType,
+} from '../../game/trainingDepth';
 import type { PlayerTrainingFocus } from '../../types/player';
 import type { Position, AttributeKey } from '../../types/attributes';
 
@@ -30,6 +34,12 @@ export function PlayerTraining() {
   const setTraining = useGameStore((s) => s.setTraining);
   const setTrainingIntensity = useGameStore((s) => s.setTrainingIntensity);
   const investDP = useGameStore((s) => s.investDevelopmentPoints);
+  const trainOutHabit = useGameStore((s) => s.trainOutBadHabit);
+  const studyMoment = useGameStore((s) => s.studyMomentType);
+  const setBody = useGameStore((s) => s.setPlayerBodyType);
+  const startBadge = useGameStore((s) => s.startCoachingBadge);
+  const attendCamp = useGameStore((s) => s.attendTrainingCamp);
+  const season = useGameStore((s) => s.currentSeason());
   const career = playerCareerOf(meta);
   const p = career ? players[career.playerId] : undefined;
   const [toast, setToast] = useState<string | null>(null);
@@ -143,6 +153,112 @@ export function PlayerTraining() {
             {career.trainingReport.sharpnessNote && <div className="text-slate-500 mt-0.5">{career.trainingReport.sharpnessNote}</div>}
           </div>
         )}
+      </div>
+
+      {/* Bad habits */}
+      {(career.badHabits ?? []).length > 0 && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-1">Habits to break</h2>
+          <p className="text-xs text-slate-500 mb-3">Repeated behaviour has hardened into a reputation. Weeks of unglamorous work will shift it.</p>
+          <div className="space-y-2">
+            {(career.badHabits ?? []).map((h) => {
+              const def = habitById(h.id)!;
+              return (
+                <div key={h.id} className="p-2.5 rounded-lg border border-rose-500/25 bg-rose-500/5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-rose-200">{def.label}</span>
+                    {h.trainingOut
+                      ? <span className="text-[10px] text-emerald-300">working on it · {Math.round(h.progress)}%</span>
+                      : <button className="btn-ghost text-[11px]" onClick={async () => flash(await trainOutHabit(h.id))}>Train it out</button>}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">{def.blurb}</div>
+                  {h.trainingOut && <div className="h-1 rounded bg-surface-700 overflow-hidden mt-1.5"><div className="h-full bg-emerald-500" style={{ width: `${h.progress}%` }} /></div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Video analysis */}
+      <div className="card p-4">
+        <h2 className="text-sm font-semibold text-slate-400 mb-1">Video analysis</h2>
+        <p className="text-xs text-slate-500 mb-3">Sit down with the analyst and study the situations you keep getting wrong. A small permanent edge on exactly that moment.</p>
+        <div className="flex flex-wrap gap-2">
+          {(['ONE_ON_ONE', 'LONG_SHOT', 'HEADER', 'TAKE_ON', 'THROUGH_BALL', 'SLIDE_TACKLE', 'SHOT_STOP'] as const).map((t) => {
+            const a = (career.analysis ?? []).find((x) => x.type === t);
+            return (
+              <button key={t} onClick={async () => flash(await studyMoment(t))}
+                className="text-left px-2.5 py-1.5 rounded-lg border border-surface-600 hover:border-accent hover:bg-accent/5">
+                <span className="text-xs text-slate-200 capitalize">{t.toLowerCase().replace(/_/g, ' ')}</span>
+                {a && <span className="text-[10px] text-emerald-300 ml-1.5">+{Math.round(a.bonus * 100)}%</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Body composition */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-semibold text-slate-400">Body composition</h2>
+          <span className="text-[11px] text-slate-500">Versatility {versatilityRating(p)}</span>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">Leaner and quicker, or heavier and harder to shift. A real trade-off in pace, strength and how easily you break down.</p>
+        <div className="grid sm:grid-cols-3 gap-2">
+          {(['LEAN', 'BALANCED', 'POWERFUL'] as BodyType[]).map((b) => (
+            <button key={b} onClick={async () => flash(await setBody(b))}
+              className={`text-left p-2.5 rounded-lg border ${bodyOf(career) === b ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}>
+              <div className="text-sm text-white">{BODY[b].label}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">{BODY[b].blurb}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Coaching badges */}
+      <div className="card p-4">
+        <h2 className="text-sm font-semibold text-slate-400 mb-1">Coaching badges</h2>
+        <p className="text-xs text-slate-500 mb-3">Study while you still play — it's what opens the dugout afterwards.</p>
+        {(career.badges ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {(career.badges ?? []).map((b) => (
+              <span key={b} className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/25">🎓 {BADGES.find((x) => x.id === b)?.label ?? b}</span>
+            ))}
+          </div>
+        )}
+        {career.badgeStudy ? (
+          <div className="text-xs text-sky-300">📚 Studying for the {BADGES.find((b) => b.id === career.badgeStudy!.id)?.label} — it takes time around training.</div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {availableBadges(career, (season?.year ?? meta.startYear) - p.born.year).map((b) => (
+              <button key={b.id} onClick={async () => flash(await startBadge(b.id))}
+                className="text-left p-2.5 rounded-lg border border-surface-600 hover:border-accent hover:bg-accent/5">
+                <div className="text-sm text-white">{b.label}</div>
+                <div className="text-[10px] text-slate-500">{b.blurb}</div>
+              </button>
+            ))}
+            {availableBadges(career, (season?.year ?? meta.startYear) - p.born.year).length === 0 && (
+              <p className="text-xs text-slate-500">Nothing available yet — the first badge opens up in your mid-twenties.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Off-season camp */}
+      <div className="card p-4">
+        <h2 className="text-sm font-semibold text-slate-400 mb-1">Off-season</h2>
+        <p className="text-xs text-slate-500 mb-3">How you spend the summer decides how you come back.{career.lastCamp ? ` Last summer: ${CAMPS.find((c) => c.id === career.lastCamp)?.label.toLowerCase()}.` : ''}</p>
+        <div className="grid sm:grid-cols-3 gap-2">
+          {CAMPS.map((c) => (
+            <button key={c.id} onClick={async () => flash(await attendCamp(c.id))}
+              className="text-left p-2.5 rounded-lg border border-surface-600 hover:border-accent hover:bg-accent/5">
+              <div className="text-sm text-white">{c.label}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">{c.blurb}</div>
+              <div className="text-[10px] text-slate-500 mt-1">{c.dp ? `+${c.dp} DP · ` : ''}{c.sharpness > 0 ? `+${c.sharpness} sharpness` : `${c.sharpness} sharpness`}{c.morale > 0 ? ` · +${c.morale} morale` : ''}</div>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Trait quests — how close you are to unlocking a perk */}

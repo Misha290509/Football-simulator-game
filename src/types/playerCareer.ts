@@ -315,6 +315,19 @@ export interface PlayerCareer {
   mediaProjects?: string[];
   /** The terraces have invented a song for him. */
   hasChant?: boolean;
+  /** Habits that have hardened into a reputation (trainable out). */
+  badHabits?: import('../game/trainingDepth').HabitState[];
+  /** Video-analysis study, per moment type — a small permanent edge. */
+  analysis?: import('../game/trainingDepth').AnalysisState[];
+  /** How he's built: lean, balanced or powerful. */
+  bodyType?: import('../game/trainingDepth').BodyType;
+  /** Coaching badges earned, and the one he's studying now. */
+  badges?: string[];
+  badgeStudy?: { id: string; startedDay: number; weeks: number } | null;
+  /** The off-season camp he last attended. */
+  lastCamp?: string;
+  /** Running tallies that harden into bad habits. */
+  habitTally?: import('../game/trainingDepth').HabitTally;
   /** Spendable bank balance — earnings you haven't spent on the good life yet. */
   bankBalance?: number;
   /** Lifestyle purchases the avatar owns (status symbols, homes, giving). */
