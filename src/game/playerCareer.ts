@@ -41,6 +41,7 @@ import { roleMeetingConversation } from './playerConversations';
 import { DEFAULT_CAREER_SETTINGS, EMPTY_MOMENT_STATS } from '../types/interactiveMatch';
 import { DEFAULT_LIFESTYLE, DEFAULT_PUBLIC_IMAGE } from '../types/playerOffPitch';
 import { defaultAmbitions } from './playerLegacy';
+import { CHALLENGE_BY_ID, DEFAULT_DIALS, normaliseDials } from './metaGame';
 
 /** The career mode of a save. Absent flag ⇒ 'MANAGER' (every legacy save). */
 export function careerModeOf(meta: Pick<SaveGame, 'careerMode'> | null | undefined): CareerMode {
@@ -122,6 +123,9 @@ export interface NewPlayerCareerConfig {
   boyhoodClub?: string | null;
   celebration?: string;
   rituals?: string[];
+  /** Meta: the scenario being played, and the difficulty/realism dials. */
+  challenge?: import('./metaGame').ChallengeId | null;
+  dials?: import('./metaGame').Dials;
 }
 
 /** Build just the world for a Player career (no avatar yet), so a picker UI can
@@ -330,6 +334,20 @@ export function createPlayerCareerGame(config: NewPlayerCareerConfig): WorldSnap
     homecoming: null,
   };
   career = { ...career, identity };
+  // Meta: the scenario and the realism dials chosen at creation. A scenario's
+  // own dials stack on top of the difficulty preset.
+  {
+    const challenge = config.challenge ?? null;
+    const forced = challenge ? CHALLENGE_BY_ID[challenge]?.dials : undefined;
+    career = {
+      ...career,
+      challenge,
+      dials: normaliseDials({ ...(config.dials ?? DEFAULT_DIALS), ...(forced ?? {}) }),
+      achievements: [],
+      countriesPlayedIn: club?.countryId ? [club.countryId] : [],
+      reachedTopTier: false,
+    };
+  }
   // The shirt he'll wear: a squad number to start, marquee ones to be earned.
   {
     const squad = Object.values(snapshot.players).filter((p) => p.contract.clubId === config.clubId);
@@ -604,7 +622,9 @@ export function applyAvatarMatchday(
   next = { ...next, recentRatings };
 
   // Development Points earned from how he played (spent on the Training screen).
-  const dp = dpEarned(appearances.map((a) => a.ps.rating), intensityOf(next));
+  // The growth dial scales how fast a career actually improves (§ meta).
+  const growth = career.dials?.growth ?? 1;
+  const dp = Math.round(dpEarned(appearances.map((a) => a.ps.rating), intensityOf(next)) * growth);
   if (dp > 0) next = { ...next, developmentPoints: (next.developmentPoints ?? 0) + dp };
 
   // Bogey sides: repeated quiet games against the same opponent means their
@@ -632,7 +652,15 @@ export function applyAvatarMatchday(
     if (a.ps.red) discipline -= 1.5;
   }
   const weightedRating = wTot > 0 ? wSum / wTot : PAR_MATCH_RATING;
-  next = { ...next, managerTrust: clamp(trustFromMatch(next.managerTrust, weightedRating) + discipline, 0, 100) as number };
+  {
+    // The manager-patience dial (§ meta) softens or sharpens how fast a bad run
+    // costs you his faith. Trust gained is untouched; only the fall is scaled.
+    const patience = career.dials?.managerPatience ?? 1;
+    const raw = trustFromMatch(next.managerTrust, weightedRating) + discipline;
+    const delta = raw - next.managerTrust;
+    const scaled = delta < 0 ? delta / patience : delta;
+    next = { ...next, managerTrust: clamp(next.managerTrust + scaled, 0, 100) as number };
+  }
 
   // Per-match objectives: evaluate each appearance's objectives against how the
   // avatar actually played, folding the outcome into trust + morale.

@@ -437,6 +437,18 @@ export interface PlayerCareer {
   /** His son, and the surname he has to carry. */
   child?: import('../game/afterCareer').ChildCareer | null;
 
+  // --- Meta & replayability (Tier 5) -------------------------------------------
+  /** Country ids he has actually played club football in. */
+  countriesPlayedIn?: string[];
+  /** Whether he has ever played in a top division. */
+  reachedTopTier?: boolean;
+  /** The scenario this save is being played under, if any. */
+  challenge?: import('../game/metaGame').ChallengeId | null;
+  /** Difficulty & realism dials for this save. */
+  dials?: import('../game/metaGame').Dials;
+  /** Achievement ids earned so far. */
+  achievements?: string[];
+
   // --- The gaffer & the training ground (Tier 2 depth) ----------------------
   /** The current manager's man-management style (derived from the club). */
   managerStyle?: ManagerStyle;

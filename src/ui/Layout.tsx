@@ -63,6 +63,7 @@ const PLAYER_NAV_GROUPS: { title: string; items: { to: string; label: string }[]
       { to: '/off-pitch', label: 'Off-Pitch' },
       { to: '/legacy', label: 'Legacy' },
       { to: '/after', label: 'After' },
+      { to: '/long-game', label: 'Long Game' },
       { to: '/career', label: 'Career' },
     ],
   },

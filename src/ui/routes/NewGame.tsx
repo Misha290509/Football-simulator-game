@@ -13,6 +13,7 @@ import { POSITION_LABEL } from '../../engine/lineup';
 import { SkillPointsEditor, type SkillState } from './SkillPointsEditor';
 import { recommendedBuild, floorMentality, targetOvrFor, attrCapFor } from '../../game/skillPoints';
 import { CELEBRATIONS, RITUALS, MAX_RITUALS } from '../../game/playerIdentity';
+import { DIFFICULTY_PRESETS, CHALLENGES as PLAYER_CHALLENGES, type Difficulty as PlayerDifficulty, type ChallengeId as PlayerChallengeId } from '../../game/metaGame';
 
 const START_YEAR = 2025;
 const SEASON_LABEL = `${START_YEAR}/${((START_YEAR + 1) % 100).toString().padStart(2, '0')}`;
@@ -51,6 +52,8 @@ export function NewGame() {
   const [boyhoodClub, setBoyhoodClub] = useState('');
   const [celebration, setCelebration] = useState('knee_slide');
   const [rituals, setRituals] = useState<string[]>([]);
+  const [pcDifficulty, setPcDifficulty] = useState<PlayerDifficulty>('REALISTIC');
+  const [pcChallenge, setPcChallenge] = useState<PlayerChallengeId | null>(null);
 
   useEffect(() => {
     void getActiveDataset().then((d) => {
@@ -126,6 +129,8 @@ export function NewGame() {
           boyhoodClub: boyhoodClub || undefined,
           celebration,
           rituals,
+          challenge: pcChallenge,
+          dials: DIFFICULTY_PRESETS[pcDifficulty].dials,
         });
         navigate('/my-player');
       } else {
@@ -390,6 +395,44 @@ export function NewGame() {
                   </button>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* How you want to play it — difficulty & a scenario */}
+      {isPlayer && (
+        <div className="card p-4 space-y-4">
+          <div>
+            <div className="text-xs text-slate-400 mb-1.5">Difficulty & realism</div>
+            <div className="grid sm:grid-cols-3 gap-2">
+              {(Object.keys(DIFFICULTY_PRESETS) as PlayerDifficulty[]).map((d) => (
+                <button key={d} type="button" onClick={() => setPcDifficulty(d)}
+                  className={`text-left p-2.5 rounded-md border text-sm ${pcDifficulty === d ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}>
+                  <div className="font-medium">{DIFFICULTY_PRESETS[d].label}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">{DIFFICULTY_PRESETS[d].blurb}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-400 mb-1.5">
+              Scenario <span className="text-slate-600">(optional — a deliberately hard hand with a stated goal)</span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              <button type="button" onClick={() => setPcChallenge(null)}
+                className={`text-left p-2.5 rounded-md border text-sm ${pcChallenge === null ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}>
+                <div className="font-medium">No scenario</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Just play. Let the career be whatever it turns out to be.</div>
+              </button>
+              {PLAYER_CHALLENGES.map((c) => (
+                <button key={c.id} type="button" onClick={() => setPcChallenge(c.id)}
+                  className={`text-left p-2.5 rounded-md border text-sm ${pcChallenge === c.id ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}>
+                  <div className="font-medium">{c.label}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">{c.blurb}</div>
+                  <div className="text-[10px] text-emerald-300/80 mt-1">Goal: {c.goal}</div>
+                </button>
+              ))}
             </div>
           </div>
         </div>

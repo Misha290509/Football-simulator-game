@@ -108,6 +108,7 @@ import {
 import {
   availablePaths, PATH_BY_ID, epilogueYear, maybeStatue, hallOfFame, maybeChild, advanceChild,
 } from '../game/afterCareer';
+import { PLAYER_ACHIEVEMENTS, evaluateAchievements, newlyEarned, normaliseDials } from '../game/metaGame';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -3459,6 +3460,38 @@ export const useGameStore = create<GameState>((set, get) => ({
           newMeta.news = [...newMeta.news, ...tk.news];
         }
 
+        // Where he has actually played, for the challenges and achievements.
+        if (avatar) {
+          const cid6 = result.players[pc.playerId]?.contract.clubId;
+          const country = cid6 ? result.clubs[cid6]?.countryId : undefined;
+          const tier = cid6 ? Object.values(result.competitions).find(
+            (c) => c.tier != null && c.clubIds.includes(cid6))?.tier : undefined;
+          newMeta.playerCareer = {
+            ...newMeta.playerCareer,
+            countriesPlayedIn: country
+              ? [...new Set([...(newMeta.playerCareer.countriesPlayedIn ?? []), country])]
+              : newMeta.playerCareer.countriesPlayedIn,
+            reachedTopTier: (newMeta.playerCareer.reachedTopTier ?? false) || tier === 1,
+          };
+        }
+
+        // Achievements: a long list of genuinely hard things, checked once a
+        // season so a newly-earned one lands in the feed.
+        {
+          const before = newMeta.playerCareer.achievements;
+          const states = evaluateAchievements(newMeta.playerCareer, result.players[pc.playerId], result.newSeason.year);
+          const fresh = newlyEarned(before, states);
+          newMeta.playerCareer = { ...newMeta.playerCareer, achievements: states.filter((s) => s.earned).map((s) => s.id) };
+          for (const id of fresh) {
+            const a = PLAYER_ACHIEVEMENTS.find((x) => x.id === id);
+            if (!a) continue;
+            newMeta.news = [...newMeta.news, {
+              id: `news_pc_ach_${id}_${result.newSeason.year}`, day: 0, category: 'MILESTONE',
+              title: `Achievement: ${a.label}`, body: a.blurb, read: false,
+            }];
+          }
+        }
+
         // A life outside the game keeps moving too: a son arrives somewhere in
         // the middle of the career, and grows up carrying the surname.
         if (avatar) {
@@ -4886,7 +4919,9 @@ async function playDays(
         }
 
         // Apply the avatar's form + morale nudges (+ any off-pitch player patch).
-        const newForm = clamp(avatar.form + prog.formDelta + burnoutFormPenalty(pc) + (pc.spiral ? -pc.spiral.depth * 0.6 : 0)) as number;
+        // Realism dials (§ meta): how violently form swings, and how fragile he is.
+        const dials = normaliseDials(pc.dials);
+        const newForm = clamp(avatar.form + prog.formDelta * dials.formSwing + burnoutFormPenalty(pc) + (pc.spiral ? -pc.spiral.depth * 0.6 : 0)) as number;
         const newMorale = clamp(avatar.morale + moraleDelta) as number;
         const offPatch = off.playerPatch ?? {};
         // Training intensity: push hard for growth at a fitness cost + knock risk.
@@ -4895,7 +4930,7 @@ async function playDays(
         let injuryPatch: Partial<Player> = {};
         if (eff.knockChance > 0 && !avatar.injury) {
           const kr = new Rng((meta.seed ^ hashSeed(`trainknock_${to}`)) >>> 0);
-          if (kr.chance(eff.knockChance)) {
+          if (kr.chance(clamp(eff.knockChance * dials.injuries, 0, 1))) {
             const weeks = kr.int(1, 2);
             injuryPatch = { injury: { type: 'MUSCLE', description: 'A training-ground muscle strain', weeksOut: weeks, occurredOnDay: to } };
             newsItems.push({ id: `news_pc_trainknock_${to}`, day: to, category: 'INJURY', title: 'Picked up a knock in training', body: `${avatar.name.first} ${avatar.name.last} tweaked a muscle pushing hard in training — around ${weeks} week${weeks > 1 ? 's' : ''} out. The price of intensity.`, read: false });

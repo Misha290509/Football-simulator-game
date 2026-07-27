@@ -92,7 +92,8 @@ export function marketHeat(career: PlayerCareer, avatar: Player, year: number): 
 export function updateInterest(
   career: PlayerCareer, avatar: Player, clubs: Record<string, Club>, year: number, day: number, seed: number,
 ): ClubInterest[] {
-  const heat = marketHeat(career, avatar, year);
+  // The market-interest dial (§ meta) scales how readily clubs come calling.
+  const heat = marketHeat(career, avatar, year) * (career.dials?.marketInterest ?? 1);
   const parent = clubs[avatar.contract.clubId ?? ''];
   const parentRep = parent?.reputation ?? 55;
   const network = career.agent?.network ?? 45; // self-rep reaches fewer clubs
