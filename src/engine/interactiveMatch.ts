@@ -22,6 +22,11 @@ import { traitsOf } from './traits';
 import { MOMENT_DEFS, ROLE_MOMENTS, gamePlanAlignedChoices, isDefensiveRole, intentWeight, INTENT_INVOLVEMENT, type MomentRole } from '../game/momentLibrary';
 import { playStylesOf, playStyleFactor } from '../game/playStyles';
 import { celebrationById } from '../game/playerIdentity';
+import {
+  conditionsFactor, conditionsFatigue, crowdFlowPenalty, scoutFactor, lateLegsFactor,
+  isExplosiveChoice, fatigueLevel, fatigueGateFactor, clarityLevel,
+  type MatchConditions, type ScoutNote,
+} from '../game/matchConditions';
 import type { PositioningIntent, MarkerInfo } from '../types/interactiveMatch';
 
 export interface InteractiveInput {
@@ -57,6 +62,10 @@ export interface InteractiveInput {
   ritualBroken?: { line: string };
   /** His signature celebration id (shown when he scores). */
   celebration?: string;
+  /** Weather, pitch, crowd and altitude for the day. */
+  conditions?: MatchConditions;
+  /** The pre-match dossier on the opponent (exploitable weaknesses). */
+  scout?: ScoutNote[];
 }
 
 // --- Small deterministic helpers -------------------------------------------
@@ -173,7 +182,7 @@ function resolveMoment(
   p *= playStyleFactor(playStylesOf(input.avatar), moment.type, choice.reward);
   // Context bites: fatigue late, pressure in big games (unless Big-Game Player),
   // and low confidence all degrade the outcome.
-  const fatigue = clamp(1 - input.fitness / 100 + moment.minute / 320, 0, 0.6);
+  const fatigue = clamp(1 - input.fitness / 100 + moment.minute / 320 + conditionsFatigue(input.conditions), 0, 0.75);
   const bigGame = traitsOf(input.avatar).includes('BIG_GAME_PLAYER');
   p *= 1 - fatigue * 0.18;
   p *= 1 - moment.context.pressure * (bigGame ? 0.02 : 0.14);
@@ -185,6 +194,13 @@ function resolveMoment(
   if (input.marker && isDuelMoment(moment.type)) p *= clamp(1 - (input.marker.rating - 70) / 200, 0.8, 1.18);
   // Signature flair: extra reward on success, and flow makes it land.
   if (choice.signature) p *= 0.9 + (clamp(run.flow, 0, 100) / 100) * 0.35;
+  // Conditions: rain kills the touch, wind swirls a cross, a rutted pitch bites.
+  p *= conditionsFactor(input.conditions, moment.type, choice.reward);
+  // Scouting: exploiting a real weakness pays; ignoring the dossier costs.
+  p *= scoutFactor(input.scout, moment.type, choice.id, choice.reward);
+  p *= lateLegsFactor(input.scout, moment.minute);
+  // Fatigue gating: explosive options desert you when the legs have gone.
+  p *= fatigueGateFactor(fatigueLevel(input.fitness, moment.minute, input.conditions), isExplosiveChoice(moment.type, choice));
   const success = rng.chance(clamp(p, 0.03, 0.96));
   run.momentum = success ? run.momentum + 1 : 0;
   const flowBefore = run.flow;
@@ -349,6 +365,14 @@ function buildMoment(input: InteractiveInput, spec: { type: MomentType; minute: 
     matchId: input.matchId, index, minute: spec.minute, type: spec.type, position: input.avatar.position,
     prompt, choices: def.choices, gamePlanAligned: gamePlanAlignedChoices(spec.type, input.gamePlan),
     context: ctxFor(input, run, spec.minute),
+    // Instinct vs information: under real pressure the picture gets fuzzy unless
+    // he has the temperament to keep his head.
+    clarity: clarityLevel(
+      ctxFor(input, run, spec.minute).pressure,
+      input.avatar.hidden?.bigGame ?? 50,
+      flatAttr(input.avatar, 'composure'),
+      input.conditions?.hostility ?? 0,
+    ),
   };
 }
 
@@ -364,7 +388,11 @@ export function runInteractiveMatch(input: InteractiveInput, decisions: MomentDe
     teamGoals: plan.teammateGoals, oppGoals: plan.oppBaseGoals, oppPrevented: 0, oppGoalsBaseline: plan.oppBaseGoals,
     defensiveDanger: isDefensiveRole(input.role) ? plan.oppBaseGoals : 0, momentum: 0,
     // A broken pre-match ritual starts him a touch off his rhythm.
-    flow: input.ritualBroken ? FLOW_START - 12 : FLOW_START, duelWon: 0, duelLost: 0,
+    flow: clamp(
+      (input.ritualBroken ? FLOW_START - 12 : FLOW_START)
+      - crowdFlowPenalty(input.conditions, input.avatar.hidden?.bigGame ?? 50),
+      0, 100),
+    duelWon: 0, duelLost: 0,
     bigWon: 0, bigLost: 0, decisive: 0, ratingBonus: 0, penScored: 0, penMissed: 0, penSaved: 0, yellow: false, red: false, worldie: false, ticks: [],
   };
   if (input.ritualBroken) run.ticks.push({ minute: 0, text: `🧿 ${input.ritualBroken.line} You're not quite in your rhythm.`, kind: 'INFO' });

@@ -567,7 +567,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       .sort((a, b) => a.day - b.day)[0];
     if (!nextM) return 'NONE';
     if (!settings.interactive) return 'AUTO';
-    const built = buildInteractiveInput(meta, players, clubs, nextM, avatar, pc);
+    const built = buildInteractiveInput({ ...meta, seasonMaxDay: get().seasonRefMaxDay() }, players, clubs, nextM, avatar, pc);
     // Start if in the XI, or come off the bench for a late cameo — the one thing
     // that gives benched & early-career players something to actually play.
     if (!built.willStart && !built.willComeOn) return 'AUTO'; // out of the squad

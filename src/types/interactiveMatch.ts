@@ -60,6 +60,9 @@ export interface KeyMoment {
   choices: MomentChoice[];
   /** Choice ids that align with the manager's game plan. */
   gamePlanAligned: string[];
+  /** 0–1: how clearly he reads his options. Under heat (and without big-game
+   *  temperament) this drops and the UI shows fuzzy descriptors, not exact risk. */
+  clarity?: number;
   context: MomentContext;
 }
 

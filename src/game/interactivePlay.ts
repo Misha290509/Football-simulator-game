@@ -17,6 +17,7 @@ import { areRivals } from './rivalries';
 import { POSITION_GROUP } from '../types/attributes';
 import type { MarkerInfo } from '../types/interactiveMatch';
 import { ritualIntact, ritualBreakLine } from './playerIdentity';
+import { deriveConditions, buildScoutReport } from './matchConditions';
 
 /** The specific opponent the avatar will duel all match: an attacker draws the
  *  best opposing defender, a defender the best striker, a midfielder his
@@ -49,7 +50,7 @@ export interface BuildInputResult { input: InteractiveInput; willStart: boolean;
  *  reports whether the selection engine (with the avatar's trust bias) picks
  *  the avatar — the caller only goes interactive when true. */
 export function buildInteractiveInput(
-  meta: { seed: number; competitions: Record<string, Competition> },
+  meta: { seed: number; competitions: Record<string, Competition>; seasonMaxDay?: number },
   players: Record<string, Player>,
   clubs: Record<string, Club>,
   match: Match,
@@ -113,6 +114,8 @@ export function buildInteractiveInput(
     // Superstition: when the pre-match routine is disrupted, he starts off-rhythm.
     ritualBroken: ritualIntact(career.identity, match.id, meta.seed) ? undefined : { line: ritualBreakLine(match.id) },
     celebration: career.identity?.celebration,
+    conditions: deriveConditions(match.id, meta.seed, match.day, meta.seasonMaxDay ?? 0, clubs[isAvatarHome ? clubId : oppId], isAvatarHome),
+    scout: buildScoutReport(match.id, meta.seed, oppSquad),
   };
   return { input, willStart, willComeOn: onBench };
 }

@@ -4,6 +4,7 @@ import { useGameStore } from '../../state/store';
 import type { GamePlan, KeyMoment, InteractiveMatchRecord, PositioningIntent } from '../../types/interactiveMatch';
 import { FLOW_HOT, FLOW_COLD, type InteractiveInput } from '../../engine/interactiveMatch';
 import { ROLE_POSITIONING } from '../../game/momentLibrary';
+import { isExplosiveChoice, fatigueLevel, FATIGUE_GATE, fuzzyDescriptor } from '../../game/matchConditions';
 import type { Match } from '../../types/match';
 
 const PLAN_INFO: Record<GamePlan, { label: string; blurb: string }> = {
@@ -68,6 +69,22 @@ export function InteractiveMatch() {
           {ip.input.cameo && (
             <div className="text-xs px-2.5 py-1.5 rounded border border-sky-500/30 bg-sky-500/5 text-sky-200">You’re on the bench — this is a late cameo to make an impact. Fewer chances, so make them count.</div>
           )}
+          {ip.input.conditions && (
+            <div className="text-xs px-2.5 py-1.5 rounded border border-surface-600 bg-surface-700/40 text-slate-300">
+              🌦️ {ip.input.conditions.label} · {ip.input.conditions.attendance.toLocaleString()} in
+              {ip.input.conditions.hostility > 0.4 ? <span className="text-rose-300"> · a hostile away end</span> : null}
+            </div>
+          )}
+          {(ip.input.scout ?? []).length > 0 && (
+            <div className="rounded border border-sky-500/30 bg-sky-500/5 p-2.5">
+              <div className="text-[11px] uppercase tracking-wide text-sky-300 mb-1.5">📋 Scouting report</div>
+              <ul className="space-y-1">
+                {(ip.input.scout ?? []).map((n) => (
+                  <li key={n.tag} className="text-xs text-slate-300">• {n.text} <span className="text-sky-300/80">{n.hint}</span></li>
+                ))}
+              </ul>
+            </div>
+          )}
           <p className="text-sm text-slate-400">The manager sets your instruction — and you choose how you move off the ball. Both shape your game.</p>
           <div className="text-[11px] uppercase tracking-wide text-slate-500">On the ball — game plan</div>
           <div className="grid sm:grid-cols-2 gap-2">
@@ -127,6 +144,8 @@ export function InteractiveMatch() {
             moment={ip.pending}
             gamePlanLabel={PLAN_INFO[ip.input.gamePlan].label}
             flow={ip.flow ?? 50}
+            fatigue={fatigueLevel(ip.input.fitness, ip.pending.minute, ip.input.conditions)}
+            scout={ip.input.scout}
             timed={!!settings?.timed}
             seconds={settings?.timerSeconds ?? 15}
             onDecide={(cid) => decide(cid)}
@@ -173,9 +192,11 @@ function MatchFeel({ flow, marker, duel }: { flow: number; marker?: { name: stri
   );
 }
 
-function MomentCard({ moment, gamePlanLabel, flow, timed, seconds, onDecide, onAutoMoment, onAutoRest }: {
+function MomentCard({ moment, gamePlanLabel, flow, fatigue, scout, timed, seconds, onDecide, onAutoMoment, onAutoRest }: {
   moment: KeyMoment;
-  gamePlanLabel: string; flow: number; timed: boolean; seconds: number;
+  gamePlanLabel: string; flow: number; fatigue: number;
+  scout?: { tag: string; hint: string }[];
+  timed: boolean; seconds: number;
   onDecide: (cid: string) => void; onAutoMoment: () => void; onAutoRest: () => void;
 }) {
   const m = moment;
@@ -196,13 +217,22 @@ function MomentCard({ moment, gamePlanLabel, flow, timed, seconds, onDecide, onA
     <div className="card p-4 space-y-3 border border-accent/30">
       <div className="flex items-center justify-between">
         <span className="font-mono text-sm text-accent-400">{m.minute}'</span>
-        <span className="text-[11px] uppercase tracking-wide text-slate-500">Plan: {gamePlanLabel}</span>
+        <span className="text-[11px] uppercase tracking-wide text-slate-500">
+          Plan: {gamePlanLabel}
+          {fatigue >= FATIGUE_GATE && <span className="text-rose-400 ml-2">🫁 tiring</span>}
+          {(m.clarity ?? 1) < 0.6 && <span className="text-slate-500 ml-2" title="Under this much pressure you can't read it clearly.">🌫️ instinct</span>}
+        </span>
         {timed && <span className={`text-sm font-mono ${left <= 3 ? 'text-rose-400' : 'text-slate-400'}`}>{left}s</span>}
       </div>
       <p className="text-base text-white font-medium">{m.prompt}</p>
+      {(scout ?? []).length > 0 && (
+        <div className="text-[11px] text-sky-300/80">📋 {(scout ?? []).map((n) => n.hint).join(' · ')}</div>
+      )}
       <div className="space-y-2">
         {m.choices.map((c, i) => {
           const locked = c.signature && flow < FLOW_HOT;
+          const gassed = fatigue >= FATIGUE_GATE && isExplosiveChoice(m.type, c);
+          const foggy = (m.clarity ?? 1) < 0.6;
           if (locked) {
             return (
               <div key={c.id} className="w-full text-left p-3 rounded-lg border border-dashed border-surface-600 opacity-50 flex items-center justify-between cursor-not-allowed" title="Get in the zone (high flow) to unlock your signature move">
@@ -212,9 +242,11 @@ function MomentCard({ moment, gamePlanLabel, flow, timed, seconds, onDecide, onA
             );
           }
           return (
-            <button key={c.id} onClick={() => onDecide(c.id)} className={`w-full text-left p-3 rounded-lg border flex items-center justify-between ${c.signature ? 'border-orange-500/50 bg-orange-500/5 hover:bg-orange-500/10' : 'border-surface-600 hover:border-accent hover:bg-accent/5'}`}>
+            <button key={c.id} onClick={() => onDecide(c.id)} title={gassed ? 'Your legs have gone — this is a big ask now.' : undefined} className={`w-full text-left p-3 rounded-lg border flex items-center justify-between ${gassed ? 'border-rose-500/30 bg-rose-500/5' : c.signature ? 'border-orange-500/50 bg-orange-500/5 hover:bg-orange-500/10' : 'border-surface-600 hover:border-accent hover:bg-accent/5'}`}>
               <span className="text-sm text-slate-100"><span className="text-slate-600 mr-2">{i + 1}</span>{c.label}{m.gamePlanAligned.includes(c.id) && <span className="text-[10px] text-accent-400 ml-2">✓ plan</span>}</span>
-              <span className={`text-[10px] uppercase tracking-wide ${c.signature ? 'text-orange-300' : RISK_TONE[c.risk]}`}>{c.signature ? 'signature' : c.risk.toLowerCase()}</span>
+              <span className={`text-[10px] uppercase tracking-wide ${c.signature ? 'text-orange-300' : foggy ? 'text-slate-500 italic' : RISK_TONE[c.risk]}`}>
+                {gassed ? '🫁 legs gone · ' : ''}{c.signature ? 'signature' : foggy ? fuzzyDescriptor(c.id, m.id) : c.risk.toLowerCase()}
+              </span>
             </button>
           );
         })}
