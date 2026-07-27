@@ -108,6 +108,7 @@ export function PlayerHome() {
           : conv.trigger === 'PUNDIT' ? 'On the panel tonight'
           : conv.trigger === 'BURNOUT' ? 'You’re running on empty'
           : conv.trigger === 'INCIDENT' ? 'Off the pitch'
+          : conv.trigger === 'FAMILY' ? 'A call from home'
           : conv.trigger === 'CAPTAINCY' ? 'The armband'
           : 'Manager wants a word';
         return (

@@ -338,6 +338,10 @@ export interface PlayerCareer {
   spiral?: import('../game/adversity').SpiralState | null;
   /** Per-opponent history, for head-to-head records. */
   opponentLog?: { club: string; goals: number; rating: number; day: number }[];
+  /** Investments he holds outside football. */
+  holdings?: import('../game/moneyLife').Holding[];
+  /** The man handling his money — very good, or one day gone with the lot. */
+  adviser?: import('../game/moneyLife').AdviserState | null;
   /** Spendable bank balance — earnings you haven't spent on the good life yet. */
   bankBalance?: number;
   /** Lifestyle purchases the avatar owns (status symbols, homes, giving). */

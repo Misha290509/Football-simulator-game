@@ -7,6 +7,7 @@ import { lateKindOf, lateLabel } from '../../game/playerEndgame';
 import { LIFESTYLE_ITEMS } from '../../game/lifestyle';
 import { CLAUSES, negotiatingPower, canRunDown, type ClauseId } from '../../game/contractPressure';
 import { POST_OPTIONS, availableProjects } from '../../game/mediaFame';
+import { INVESTMENTS, portfolioValue, wagePacket } from '../../game/moneyLife';
 import { formatMoney } from '../format';
 import type { SquadStatus } from '../../types/playerCareer';
 
@@ -40,6 +41,8 @@ export function OffPitch() {
   const [wanted, setWanted] = useState<ClauseId[]>([]);
   const postToSocial = useGameStore((s) => s.postToSocial);
   const takeMediaProject = useGameStore((s) => s.takeMediaProject);
+  const makeInvestment = useGameStore((s) => s.makeInvestment);
+  const hireAdviser = useGameStore((s) => s.hireFinancialAdviser);
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -75,6 +78,55 @@ export function OffPitch() {
       {image.controversy > 0 && (
         <Meter label="Controversy" value={image.controversy} tone={image.controversy >= 50 ? 'bad' : 'neutral'} />
       )}
+
+      {/* What it's actually worth — tax, net wage, portfolio */}
+      {(() => {
+        const country = clubs[p.contract.clubId ?? '']?.countryId;
+        const packet = wagePacket(p.contract.wage ?? 0, country, career.agent?.commissionPct ?? 0);
+        const portfolio = portfolioValue(career);
+        return (
+          <div className="card p-4">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-semibold text-slate-400">💷 What it’s actually worth</h2>
+              <span className="text-[11px] text-slate-500">Tax {Math.round(packet.rate * 100)}%{career.adviser ? ` · ${career.adviser.name}` : ''}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+              <Stat label="Gross / week" value={formatMoney(packet.gross)} />
+              <Stat label="Net / week" value={formatMoney(packet.net)} tone="good" />
+              <Stat label="Agent cut" value={formatMoney(packet.agentCut)} />
+              <Stat label="Portfolio" value={formatMoney(portfolio)} />
+            </div>
+            {!career.adviser && (
+              <button className="btn-ghost text-xs mb-3" onClick={async () => setToast(await hireAdviser())}>Hire a financial adviser</button>
+            )}
+            {career.adviser?.exposed && (
+              <div className="text-xs text-rose-300 mb-3">⚠️ {career.adviser.name} disappeared with a great deal of your money. The lawyers are still working on it.</div>
+            )}
+            <div className="grid sm:grid-cols-2 gap-2">
+              {INVESTMENTS.map((inv) => {
+                const held = (career.holdings ?? []).find((h) => h.id === inv.id);
+                const afford = (career.bankBalance ?? 0) >= inv.cost;
+                return (
+                  <button key={inv.id} disabled={!!held && !held.failed || !afford}
+                    onClick={async () => setToast(await makeInvestment(inv.id))}
+                    className={`text-left p-2.5 rounded-lg border ${held?.failed ? 'border-rose-500/30 bg-rose-500/5' : held ? 'border-emerald-500/30 bg-emerald-500/5' : afford ? 'border-surface-600 hover:border-accent hover:bg-accent/5' : 'border-surface-700 opacity-55 cursor-not-allowed'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-white">{inv.label}</span>
+                      <span className="text-xs font-mono text-slate-400">
+                        {held?.failed ? 'Lost' : held ? formatMoney(held.value) : formatMoney(inv.cost)}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500">{inv.blurb}</span>
+                    <span className="text-[10px] text-slate-600 block mt-0.5">
+                      ~{Math.round(inv.yield * 100)}% a year · {inv.risk >= 0.4 ? 'very risky' : inv.risk >= 0.2 ? 'risky' : inv.risk >= 0.05 ? 'some risk' : 'safe'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Social media */}
       <div className="card p-4">

@@ -96,6 +96,7 @@ import {
   type BadHabitId, type BodyType,
 } from '../game/trainingDepth';
 import { updateBurnout, burnoutFormPenalty, resolveBurnout, maybeChronic, maybeIncident, updateSpiral } from '../game/adversity';
+import { invest, advanceInvestments, hireAdviser, advanceAdviser, maybeFamilyAsk, FAMILY_HELP_COST, type InvestmentId } from '../game/moneyLife';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -274,6 +275,8 @@ interface GameState {
   postToSocial: (tone: string) => Promise<string>;
   takeMediaProject: (id: string) => Promise<string>;
   trainOutBadHabit: (id: string) => Promise<string>;
+  makeInvestment: (id: string) => Promise<string>;
+  hireFinancialAdviser: () => Promise<string>;
   studyMomentType: (type: string) => Promise<string>;
   setPlayerBodyType: (type: string) => Promise<string>;
   startCoachingBadge: (id: string) => Promise<string>;
@@ -534,6 +537,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     let res = resolveConversation(pc, conv, choiceIdx, meta.currentDay);
     // Addressing burnout (however he chose) lifts the worst of it.
     if (conv.trigger === 'BURNOUT') res = { ...res, career: resolveBurnout(res.career) };
+    // Helping family costs real money — the first two options both say yes.
+    if (conv.trigger === 'FAMILY' && choiceIdx < 2) {
+      res = { ...res, career: { ...res.career, bankBalance: Math.max(0, (res.career.bankBalance ?? 0) - FAMILY_HELP_COST) } };
+    }
     const avatar = players[pc.playerId];
     let newPlayers = players;
     if (avatar && res.moraleDelta !== 0) {
@@ -921,6 +928,32 @@ export const useGameStore = create<GameState>((set, get) => ({
     await putPlayers(meta.id, [np]);
     await persistMeta(newMeta);
     return `You've committed to ${nation}.`;
+  },
+
+  makeInvestment: async (id) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar) return 'No player.';
+    const res = invest(pc, avatar, id as InvestmentId, meta.currentDay);
+    if (!res.ok) return res.message;
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return res.message;
+  },
+
+  hireFinancialAdviser: async () => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    if (pc.adviser) return 'You already have someone handling it.';
+    const res = hireAdviser(pc, meta.currentDay, meta.seed);
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return `${res.career.adviser?.name} will handle your money.`;
   },
 
   trainOutBadHabit: async (id) => {
@@ -3266,6 +3299,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           }];
         }
 
+        // A year on the portfolio: things grow, and occasionally one goes under.
+        if (avatar) {
+          const inv = advanceInvestments(newMeta.playerCareer, avatar, result.newSeason.year, 0, meta.seed);
+          newMeta.playerCareer = inv.career;
+          newMeta.news = [...newMeta.news, ...inv.news];
+        }
+
         // A new manager may walk in over the summer — a fresh start with the
         // gaffer: style re-rolled, trust reset, the old man's promises void.
         {
@@ -4516,6 +4556,18 @@ async function playDays(
           }
           const spi = updateSpiral(pc, avatar, to);
           pc = spi.career; newsItems.push(...spi.news);
+        }
+
+        // 2j) Money & life outside: the portfolio, the adviser, and the calls
+        //     from home that arrive once he's visibly wealthy.
+        {
+          const adv = advanceAdviser(pc, avatar, to, meta.seed);
+          pc = adv.career; newsItems.push(...adv.news); moraleDelta += adv.moraleDelta;
+          const fam = maybeFamilyAsk(pc, avatar, to, meta.seed);
+          if (fam.conversation && (pc.pendingConversations ?? []).length === 0) {
+            newsItems.push(...fam.news);
+            pc = { ...pc, pendingConversations: [...(pc.pendingConversations ?? []), fam.conversation] };
+          }
         }
 
         // 3) A demotion this advance triggers a manager sit-down; a first-time
