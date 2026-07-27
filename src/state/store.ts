@@ -95,6 +95,7 @@ import {
   detectBadHabits, advanceHabits, trainOutHabit, studyMoment, setBodyType, startBadge, advanceBadge, attendCamp,
   type BadHabitId, type BodyType,
 } from '../game/trainingDepth';
+import { updateBurnout, burnoutFormPenalty, resolveBurnout, maybeChronic, maybeIncident, updateSpiral } from '../game/adversity';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -530,7 +531,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!meta || !pc) return;
     const conv = (pc.pendingConversations ?? []).find((c) => c.id === id);
     if (!conv) return;
-    const res = resolveConversation(pc, conv, choiceIdx, meta.currentDay);
+    let res = resolveConversation(pc, conv, choiceIdx, meta.currentDay);
+    // Addressing burnout (however he chose) lifts the worst of it.
+    if (conv.trigger === 'BURNOUT') res = { ...res, career: resolveBurnout(res.career) };
     const avatar = players[pc.playerId];
     let newPlayers = players;
     if (avatar && res.moraleDelta !== 0) {
@@ -4489,6 +4492,32 @@ async function playDays(
           pc = bdg.career; newsItems.push(...bdg.news);
         }
 
+        // 2i) Adversity: burnout, a knock that never heals, an off-field
+        //     incident, and the spiral that feeds on itself.
+        {
+          const apps = played.filter((m) => m.playerStats?.some((x) => x.playerId === avatar.id && x.minutes > 0)).length;
+          const burn = updateBurnout(pc, avatar, apps, to);
+          pc = burn.career; newsItems.push(...burn.news);
+          if (burn.conversation && (pc.pendingConversations ?? []).length === 0) {
+            pc = { ...pc, pendingConversations: [...(pc.pendingConversations ?? []), burn.conversation] };
+          }
+          if (avatar.injury && (avatar.injury.weeksOut ?? 0) >= 12) {
+            const chr = maybeChronic(pc, avatar, avatar.injury.weeksOut, to, meta.seed);
+            if (chr.news.length) {
+              pc = chr.career; newsItems.push(...chr.news);
+              playersById = { ...playersById, [avatar.id]: chr.player };
+              changedIds.add(avatar.id);
+            }
+          }
+          const inc = maybeIncident(pc, avatar, to, meta.seed);
+          pc = inc.career; newsItems.push(...inc.news); moraleDelta += inc.moraleDelta;
+          if (inc.conversation && (pc.pendingConversations ?? []).length === 0) {
+            pc = { ...pc, pendingConversations: [...(pc.pendingConversations ?? []), inc.conversation] };
+          }
+          const spi = updateSpiral(pc, avatar, to);
+          pc = spi.career; newsItems.push(...spi.news);
+        }
+
         // 3) A demotion this advance triggers a manager sit-down; a first-time
         //    promotion to captain surfaces the armband offer; otherwise a state-
         //    driven conversation (praise / warning / contract) may come up.
@@ -4557,7 +4586,7 @@ async function playDays(
         }
 
         // Apply the avatar's form + morale nudges (+ any off-pitch player patch).
-        const newForm = clamp(avatar.form + prog.formDelta) as number;
+        const newForm = clamp(avatar.form + prog.formDelta + burnoutFormPenalty(pc) + (pc.spiral ? -pc.spiral.depth * 0.6 : 0)) as number;
         const newMorale = clamp(avatar.morale + moraleDelta) as number;
         const offPatch = off.playerPatch ?? {};
         // Training intensity: push hard for growth at a fitness cost + knock risk.

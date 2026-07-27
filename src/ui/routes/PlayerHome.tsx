@@ -106,6 +106,8 @@ export function PlayerHome() {
           : conv.trigger === 'MENTOR_WORD' ? 'A word from your mentor'
           : conv.trigger === 'DRESSING_ROOM' ? 'Dressing-room politics'
           : conv.trigger === 'PUNDIT' ? 'On the panel tonight'
+          : conv.trigger === 'BURNOUT' ? 'You’re running on empty'
+          : conv.trigger === 'INCIDENT' ? 'Off the pitch'
           : conv.trigger === 'CAPTAINCY' ? 'The armband'
           : 'Manager wants a word';
         return (
@@ -218,6 +220,22 @@ export function PlayerHome() {
           {career.comeback && !career.comeback.returned
             ? `🚑 Serious injury — around ${career.comeback.weeksOut} weeks out. The long road back starts here.`
             : '🚑 Injured — out for a spell. You’ll return to reduced sharpness.'}
+        </div>
+      )}
+      {(career.burnout?.level ?? 0) >= 45 && (
+        <div className="card p-3 border border-violet-500/30 bg-violet-500/5 text-sm text-violet-200">
+          🧠 {(career.burnout!.level >= 70 ? 'Burnt out — this is affecting everything. Address it.' : 'Running low — the season is taking its toll.')}
+          <div className="h-1.5 rounded bg-surface-700 overflow-hidden mt-1.5"><div className="h-full bg-violet-400" style={{ width: `${career.burnout!.level}%` }} /></div>
+        </div>
+      )}
+      {career.chronic && (
+        <div className="card p-3 border border-rose-500/30 bg-rose-500/5 text-sm text-rose-200">
+          🦵 A chronic {career.chronic.kind.toLowerCase()} problem — it never fully healed. You're a different player now, and you'll manage it for the rest of your career.
+        </div>
+      )}
+      {career.spiral && (
+        <div className="card p-3 border border-amber-500/30 bg-amber-500/5 text-sm text-amber-200">
+          📉 You're in a spiral — form, trust and confidence all feeding each other downward. The only way out is through.
         </div>
       )}
       {!p.injury && career.comeback?.returned && (
