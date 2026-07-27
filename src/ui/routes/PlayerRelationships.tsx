@@ -170,7 +170,37 @@ export function PlayerRelationships() {
       <div className="card p-4 space-y-1">
         <h2 className="text-sm font-semibold text-slate-300">🌍 Your country</h2>
         {intl?.capped ? (
-          <p className="text-sm text-slate-300">{intl.caps} cap{intl.caps === 1 ? '' : 's'}{intl.intlGoals ? ` · ${intl.intlGoals} goal${intl.intlGoals === 1 ? '' : 's'}` : ''} — a full international.</p>
+          <>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm text-slate-300">{intl.caps} cap{intl.caps === 1 ? '' : 's'}{intl.intlGoals ? ` · ${intl.intlGoals} goal${intl.intlGoals === 1 ? '' : 's'}` : ''}</p>
+              {career.intlRole && <span className={`text-[11px] px-2 py-0.5 rounded-full border ${INTL_ROLE_TONE[career.intlRole]}`}>{INTL_ROLE_LABEL[career.intlRole]}</span>}
+            </div>
+            <Meter label="Manager's trust" value={career.intlManagerTrust ?? 50} tone="sky" />
+            {career.qualifying && (
+              <p className="text-xs text-slate-400">
+                {career.qualifying.competition} qualifying — {career.qualifying.won}W {career.qualifying.drawn}D {career.qualifying.lost}L,{' '}
+                {career.qualifying.qualified
+                  ? <span className="text-emerald-300">qualified ({career.qualifying.position === 1 ? 'group winners' : 'runners-up'})</span>
+                  : <span className="text-rose-300">missed out ({career.qualifying.position}th)</span>}
+              </p>
+            )}
+            {career.intlRival && (
+              <p className="text-xs text-amber-300/90">
+                ⚔ {career.intlRival.name} ({career.intlRival.rating}) wants the same shirt
+                {career.intlRival.clubmate ? ' — and sits in your dressing room' : ''}.
+              </p>
+            )}
+            {career.intlPretender && (
+              <p className="text-xs text-violet-300/90">
+                {career.intlPretender.tookShirt
+                  ? `🩱 ${career.intlPretender.name} has the shirt now.`
+                  : `👀 ${career.intlPretender.name} is coming for your place.`}
+              </p>
+            )}
+            {career.intlSnub && (
+              <p className="text-xs text-rose-300/90">Cut from the {career.intlSnub.competition} squad in {career.intlSnub.year}.</p>
+            )}
+          </>
         ) : (
           <p className="text-xs text-slate-500">Uncapped. Keep performing and the call will come.</p>
         )}
@@ -193,6 +223,17 @@ export function PlayerRelationships() {
     </div>
   );
 }
+
+const INTL_ROLE_LABEL: Record<string, string> = {
+  CAPTAIN: 'Captain', STARTER: 'First choice', SQUAD: 'In the squad', STANDBY: 'Standby', CUT: 'Left out',
+};
+const INTL_ROLE_TONE: Record<string, string> = {
+  CAPTAIN: 'bg-amber-500/10 text-amber-300 border-amber-500/25',
+  STARTER: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25',
+  SQUAD: 'bg-sky-500/10 text-sky-300 border-sky-500/25',
+  STANDBY: 'bg-slate-500/10 text-slate-300 border-slate-500/25',
+  CUT: 'bg-rose-500/10 text-rose-300 border-rose-500/25',
+};
 
 const TONE: Record<string, string> = {
   sky: 'bg-sky-400', emerald: 'bg-emerald-400', amber: 'bg-amber-400', violet: 'bg-violet-400', rose: 'bg-rose-400',

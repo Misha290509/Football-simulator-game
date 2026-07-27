@@ -408,6 +408,16 @@ export interface PlayerCareer {
   tournamentSquads?: TournamentSquad[];
   /** A senior call-up awaiting the player's accept/withdraw decision. */
   pendingCallUp?: { nation: string; competition?: string; day: number } | null;
+  /** The most recent qualifying campaign his nation ran. */
+  qualifying?: import('../game/internationalCareer').QualifyingCampaign | null;
+  /** Where he stands in the national-team pecking order. */
+  intlRole?: import('../game/internationalCareer').IntlRole;
+  /** The last time he was cut from a tournament squad. */
+  intlSnub?: { year: number; competition: string } | null;
+  /** The other man after his international shirt — often a clubmate. */
+  intlRival?: import('../game/internationalCareer').IntlRival | null;
+  /** The teenager coming for his place. */
+  intlPretender?: import('../game/internationalCareer').IntlPretender | null;
 
   // --- The gaffer & the training ground (Tier 2 depth) ----------------------
   /** The current manager's man-management style (derived from the club). */

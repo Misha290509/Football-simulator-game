@@ -70,7 +70,7 @@ import {
   advanceOffPitch, executeContractOffer, executeLoanOffer, hireAgent, agentById, derivePersona,
 } from '../game/playerOffPitch';
 import { buyLifestyleItem } from '../game/lifestyle';
-import type { SquadStatus } from '../types/playerCareer';
+import type { SquadStatus, Conversation, PlayerCareer } from '../types/playerCareer';
 import {
   updateAmbitions, updateDecline, earnedVeteranTraits, roleEvolutionOf, VETERAN_TRAITS,
   computeLegacy, careerTotals, managerRepSeed,
@@ -98,6 +98,10 @@ import {
 import { updateBurnout, burnoutFormPenalty, resolveBurnout, maybeChronic, maybeIncident, updateSpiral } from '../game/adversity';
 import { invest, advanceInvestments, hireAdviser, advanceAdviser, maybeFamilyAsk, FAMILY_HELP_COST, type InvestmentId } from '../game/moneyLife';
 import { maybeTakeover, maybeCrisis, crisisDrip, shirtSales, divisionMove } from '../game/clubLife';
+import {
+  nationOf, runQualifying, tournamentSelection, maybeIntlRival, maybePretender,
+  pretenderPressure, shootoutBeat, intlRivalDrift,
+} from '../game/internationalCareer';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -3212,34 +3216,93 @@ export const useGameStore = create<GameState>((set, get) => ({
         const clubName = avatar?.contract.clubId ? (result.clubs[avatar.contract.clubId]?.name ?? '') : '';
         let assists = 0;
         if (avatar && finished) for (const s of avatar.stats) if (s.seasonId === finished.id) assists += s.assists;
-        // International: accrue a season of caps/goals + any tournament squad.
+        // International: a full summer of it — the qualifying campaign, the squad
+        // announcement, the tournament (and the shootout), and the two men who
+        // want his shirt. All pure & hash-seeded (see game/internationalCareer).
         let international = pc.international;
         let tournamentSquads = pc.tournamentSquads ?? [];
         const intlNews: NewsItem[] = [];
-        if (pc.international.capped) {
-          const baseCaps = pc.status === 'STAR' || pc.status === 'CAPTAIN' ? 8 : pc.status === 'KEY' ? 5 : 3;
-          // #40 — the national-team manager's trust weights how many caps you win.
-          const capsAdd = Math.max(1, Math.round(baseCaps * (0.6 + (pc.intlManagerTrust ?? 50) / 125)));
-          const goalsAdd = Math.round(pc.seasonGoals * 0.18);
+        const intlConvos: Conversation[] = [];
+        const intlPatch: Partial<PlayerCareer> = {};
+        let intlMorale = 0;
+        if (pc.international.capped && avatar) {
+          const year = result.newSeason.year;
+          const nation = nationOf(avatar);
+          const who = `${avatar.name.first} ${avatar.name.last}`;
+          const tourneyName = result.worldCup ? 'World Cup' : result.tournaments?.[0]?.name;
+
+          // A tournament summer needs a squad announcement; the other years are
+          // spent grinding through qualifying.
+          let role = pc.intlRole ?? 'SQUAD';
+          if (tourneyName) {
+            const sel = tournamentSelection(pc, avatar, nation, tourneyName, year, meta.seed);
+            role = sel.role;
+            Object.assign(intlPatch, { intlRole: sel.career.intlRole, intlSnub: sel.career.intlSnub });
+            intlNews.push(...sel.news);
+            intlMorale += sel.moraleDelta;
+            if (sel.conversation) intlConvos.push(sel.conversation);
+            if (role !== 'CUT') {
+              tournamentSquads = [...tournamentSquads, { competition: tourneyName, season: finished?.label ?? '' }];
+            }
+            // Knockout football ends in a shootout more often than anyone likes.
+            const t = result.worldCup ?? result.tournaments?.[0];
+            const fin = t ? nationFinish(t, nation) : null;
+            const pens = t?.knockout.find((k) => k.pens && (k.homeNation === nation || k.awayNation === nation));
+            if (pens && fin && role !== 'CUT' && role !== 'STANDBY') {
+              const opp = pens.homeNation === nation ? pens.awayNation : pens.homeNation;
+              const so = shootoutBeat(avatar, nation, opp, pens.round, pens.winner === nation, 0, meta.seed);
+              intlNews.push(so.news);
+              intlMorale += so.moraleDelta;
+              intlPatch.confidence = clamp((intlPatch.confidence ?? 60) + so.confidenceDelta, 0, 100);
+            }
+          } else {
+            const comp = (year + 1) % 4 === 2 ? `World Cup ${year + 1}` : `European Championship ${year + 1}`;
+            const q = runQualifying(avatar, nation, comp, year, (pc.intlRole ?? 'SQUAD') !== 'CUT', meta.seed);
+            intlPatch.qualifying = q.campaign;
+            intlNews.push(...q.news);
+            intlMorale += q.moraleDelta;
+          }
+
+          // Caps & goals accrued across the international year.
+          const baseCaps = role === 'CAPTAIN' || role === 'STARTER' ? 8 : role === 'SQUAD' ? 5 : role === 'STANDBY' ? 2 : 0;
+          const capsAdd = baseCaps === 0 ? 0
+            : Math.max(1, Math.round(baseCaps * (0.6 + (pc.intlManagerTrust ?? 50) / 125)));
+          const goalsAdd = Math.round(pc.seasonGoals * 0.18 * (capsAdd > 0 ? 1 : 0));
           international = { capped: true, caps: pc.international.caps + capsAdd, intlGoals: pc.international.intlGoals + goalsAdd };
-          // International landmarks: caps milestones + the first goal for country.
-          const nation = avatar?.nationality ?? 'his country';
-          const who = avatar ? `${avatar.name.first} ${avatar.name.last}` : 'You';
           for (const mgoal of [25, 50, 100, 150]) {
             if (pc.international.caps < mgoal && international.caps >= mgoal) {
-              intlNews.push({ id: `news_pc_caps_${mgoal}_${result.newSeason.year}`, day: 0, category: 'MILESTONE', title: `${mgoal} caps for ${nation}`, body: `${who} brings up ${mgoal} senior international caps — a servant of the national team.`, read: false });
+              intlNews.push({ id: `news_pc_caps_${mgoal}_${year}`, day: 0, category: 'MILESTONE', title: `${mgoal} caps for ${nation}`, body: `${who} brings up ${mgoal} senior international caps — a servant of the national team.`, read: false });
             }
           }
           if (pc.international.intlGoals === 0 && international.intlGoals > 0) {
-            intlNews.push({ id: `news_pc_intlgoal1_${result.newSeason.year}`, day: 0, category: 'MILESTONE', title: `First goal for ${nation}`, body: `${who} is off the mark for ${nation} — the first of many, they'll hope.`, read: false });
+            intlNews.push({ id: `news_pc_intlgoal1_${year}`, day: 0, category: 'MILESTONE', title: `First goal for ${nation}`, body: `${who} is off the mark for ${nation} — the first of many, they'll hope.`, read: false });
           }
-          if ((result.tournaments?.length ?? 0) > 0 || result.worldCup) {
-            const compName = result.worldCup ? 'World Cup' : (result.tournaments?.[0]?.name ?? 'international tournament');
-            tournamentSquads = [...tournamentSquads, { competition: compName, season: finished?.label ?? '' }];
-            intlNews.push({ id: `news_pc_tsquad_${result.newSeason.year}`, day: 0, category: 'MILESTONE', title: 'Named in a tournament squad', body: `${avatar ? `${avatar.name.first} ${avatar.name.last}` : 'You'} made the squad for the ${compName}.`, read: false });
+
+          // The two men after his shirt: a peer now, and a teenager later.
+          {
+            const base = { ...pc, ...intlPatch } as PlayerCareer;
+            const rv = maybeIntlRival(base, avatar, Object.values(result.players), nation, 0, meta.seed);
+            Object.assign(intlPatch, { intlRival: rv.career.intlRival });
+            intlNews.push(...rv.news);
+            if (rv.conversation) intlConvos.push(rv.conversation);
+
+            const pr = maybePretender({ ...base, ...intlPatch } as PlayerCareer, avatar, year, 0, meta.seed);
+            Object.assign(intlPatch, { intlPretender: pr.career.intlPretender });
+            intlNews.push(...pr.news);
+            intlMorale += pr.moraleDelta;
+
+            const pp = pretenderPressure({ ...base, ...intlPatch } as PlayerCareer, avatar, year, pc.seasonAvgRating ?? 0, 0);
+            Object.assign(intlPatch, { intlPretender: pp.career.intlPretender, intlRole: pp.career.intlRole ?? intlPatch.intlRole });
+            intlNews.push(...pp.news);
+            intlMorale += pp.moraleDelta;
+            intlPatch.intlManagerTrust = clamp((pc.intlManagerTrust ?? 50) + pp.trustDelta, 0, 100);
           }
         }
         newMeta.news = [...newMeta.news, ...intlNews];
+        if (avatar && intlMorale !== 0) {
+          const cur = result.players[pc.playerId] ?? avatar;
+          result.players[pc.playerId] = { ...cur, morale: clamp(cur.morale + intlMorale, 0, 100) };
+        }
 
         // Off-pitch rollover (Tier 4): a loan spell that's run its course returns
         // the avatar to his parent club; expired sponsorships drop off. Interest,
@@ -3276,7 +3339,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           lastMatch: null,
           international, tournamentSquads,
           confidence: 60, matchSharpness: 100,
-          pendingConversations: [...(pc.pendingConversations ?? []), roleMeetingConversation(0)],
+          pendingConversations: [...(pc.pendingConversations ?? []), roleMeetingConversation(0), ...intlConvos],
+          // The international summer (selection, qualifying, rival, pretender).
+          ...intlPatch,
           // Off-pitch: fresh market slate; keep agent, image, following, lifestyle, earnings.
           loanSpell, sponsorships: survivingSponsors,
           transferInterest: [], activeSagas: [], contractOffers: [], loanOffers: [],
@@ -4543,6 +4608,8 @@ async function playDays(
           pc = old.career; newsItems.push(...old.news); moraleDelta += old.moraleDelta;
           const chant = maybeChant(pc, avatar, to, meta.seed);
           pc = chant.career; newsItems.push(...chant.news); moraleDelta += chant.moraleDelta;
+          // Two men after one shirt: form quietly moves the temperature between them.
+          if (rr.length > 0) pc = intlRivalDrift(pc, avg);
         }
 
         // 2h) Training depth: behaviour hardens into habits, habits get trained

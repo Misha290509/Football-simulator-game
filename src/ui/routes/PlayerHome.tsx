@@ -111,6 +111,9 @@ export function PlayerHome() {
           : conv.trigger === 'FAMILY' ? 'A call from home'
           : conv.trigger === 'RELEGATION' ? 'The club has gone down'
           : conv.trigger === 'PROTEST' ? 'The supporters are protesting'
+          : conv.trigger === 'INTL_STANDBY' ? 'On standby'
+          : conv.trigger === 'INTL_CUT' ? 'Left out of the squad'
+          : conv.trigger === 'INTL_RIVAL' ? 'One shirt, two of you'
           : conv.trigger === 'CAPTAINCY' ? 'The armband'
           : 'Manager wants a word';
         return (
