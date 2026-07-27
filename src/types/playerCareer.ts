@@ -307,6 +307,14 @@ export interface PlayerCareer {
   exile?: import('../game/contractPressure').ExileState | null;
   /** Clauses won at the negotiating table. */
   clauses?: import('../game/contractPressure').ClauseId[];
+  /** The pundit who has made a career of picking him apart. */
+  pundit?: import('../game/mediaFame').PunditState | null;
+  /** His posting history (old ones can resurface). */
+  posts?: { tone: import('../game/mediaFame').PostTone; day: number }[];
+  /** Long-form media projects he's completed. */
+  mediaProjects?: string[];
+  /** The terraces have invented a song for him. */
+  hasChant?: boolean;
   /** Spendable bank balance — earnings you haven't spent on the good life yet. */
   bankBalance?: number;
   /** Lifestyle purchases the avatar owns (status symbols, homes, giving). */

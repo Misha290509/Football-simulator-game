@@ -6,6 +6,7 @@ import { AGENT_ROSTER } from '../../game/playerOffPitch';
 import { lateKindOf, lateLabel } from '../../game/playerEndgame';
 import { LIFESTYLE_ITEMS } from '../../game/lifestyle';
 import { CLAUSES, negotiatingPower, canRunDown, type ClauseId } from '../../game/contractPressure';
+import { POST_OPTIONS, availableProjects } from '../../game/mediaFame';
 import { formatMoney } from '../format';
 import type { SquadStatus } from '../../types/playerCareer';
 
@@ -37,6 +38,8 @@ export function OffPitch() {
   const declareRunDown = useGameStore((s) => s.declareContractRunDown);
   const season = useGameStore((s) => s.currentSeason());
   const [wanted, setWanted] = useState<ClauseId[]>([]);
+  const postToSocial = useGameStore((s) => s.postToSocial);
+  const takeMediaProject = useGameStore((s) => s.takeMediaProject);
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -71,6 +74,54 @@ export function OffPitch() {
       </div>
       {image.controversy > 0 && (
         <Meter label="Controversy" value={image.controversy} tone={image.controversy >= 50 ? 'bad' : 'neutral'} />
+      )}
+
+      {/* Social media */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-semibold text-slate-400">📱 Your channels</h2>
+          <span className="text-[11px] text-slate-500">{compact(career.following ?? 0)} following{career.hasChant ? ' · 🎵 they sing your name' : ''}</span>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">Post after a match. Reach scales with the audience you've built — and the internet keeps everything forever.</p>
+        <div className="grid sm:grid-cols-2 gap-2">
+          {POST_OPTIONS.map((o) => (
+            <button key={o.tone} onClick={async () => setToast(await postToSocial(o.tone))}
+              className={`text-left p-2.5 rounded-lg border ${o.controversy >= 15 ? 'border-rose-500/30 hover:bg-rose-500/5' : 'border-surface-600 hover:border-accent hover:bg-accent/5'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-white">{o.label}</span>
+                <span className="text-[10px] text-slate-500">+{compact(o.following)}{o.controversy >= 15 ? ' · risky' : ''}</span>
+              </div>
+              <span className="text-[11px] text-slate-500">{o.blurb}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Long-form media projects */}
+      {availableProjects(career).length > 0 && (
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold text-slate-400 mb-1">📺 Media projects</h2>
+          <p className="text-xs text-slate-500 mb-3">Big money, and they fix how the public sees you for years.</p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {availableProjects(career).map((proj) => (
+              <button key={proj.id} onClick={async () => setToast(await takeMediaProject(proj.id))}
+                className="text-left p-2.5 rounded-lg border border-surface-600 hover:border-accent hover:bg-accent/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-white">{proj.label}</span>
+                  <span className="text-xs font-mono text-emerald-300">{formatMoney(proj.fee)}</span>
+                </div>
+                <span className="text-[11px] text-slate-500">{proj.blurb}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* The pundit who won't let go */}
+      {career.pundit && career.pundit.jabs > 0 && (
+        <div className="card p-3 border border-slate-600 text-xs text-slate-400">
+          🎙️ <span className="text-slate-200">{career.pundit.name}</span> has made you his subject — {career.pundit.jabs} week{career.pundit.jabs === 1 ? '' : 's'} running. Shut him up on the pitch.
+        </div>
       )}
 
       {/* Exile — frozen out */}

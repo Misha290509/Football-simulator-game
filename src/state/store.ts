@@ -90,6 +90,7 @@ import { investAttribute, INTENSITY, intensityOf } from '../game/playerDevelopme
 import { updateShirt, checkBoyhoodMove, maybeAllegianceChoice, commitAllegiance, canRequestNumber, takenNumbers, isMarqueeNumber } from '../game/playerIdentity';
 import { deriveLeadership, leadershipNews, updateLanguage, detectMarqueeSignal, deliverTeamTalk } from '../game/squadLife';
 import { maybeExile, exileDrip, endExile, runDownDrip, negotiateClauses, declareRunDown, canRunDown, type ClauseId } from '../game/contractPressure';
+import { punditJab, makePost, maybeOldPostResurfaces, maybeChant, takeProject, type PostTone } from '../game/mediaFame';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -265,6 +266,8 @@ interface GameState {
   deliverCaptainTalk: (optionId: string) => Promise<string>;
   negotiateContractClauses: (wanted: string[]) => Promise<string>;
   declareContractRunDown: () => Promise<string>;
+  postToSocial: (tone: string) => Promise<string>;
+  takeMediaProject: (id: string) => Promise<string>;
   // --- Legacy & endgame (Tier 5) ---
   setDreamClub: (clubId: string | null) => Promise<void>;
   addCustomAmbition: (text: string) => Promise<void>;
@@ -906,6 +909,35 @@ export const useGameStore = create<GameState>((set, get) => ({
     await putPlayers(meta.id, [np]);
     await persistMeta(newMeta);
     return `You've committed to ${nation}.`;
+  },
+
+  postToSocial: async (tone) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar) return 'No player.';
+    const res = makePost(pc, avatar, tone as PostTone, meta.currentDay);
+    const np: Player = { ...avatar, morale: clamp(avatar.morale + res.moraleDelta) as number };
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta, players: { ...players, [pc.playerId]: np } });
+    await putPlayers(meta.id, [np]);
+    await persistMeta(newMeta);
+    return res.news[0]?.title ?? 'Posted.';
+  },
+
+  takeMediaProject: async (id) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar) return 'No player.';
+    const res = takeProject(pc, avatar, id, meta.currentDay);
+    if (!res.ok) return res.message;
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return res.message;
   },
 
   negotiateContractClauses: async (wanted) => {
@@ -4342,6 +4374,22 @@ async function playDays(
           }
           const rd = runDownDrip(pc, to);
           pc = rd.career; newsItems.push(...rd.news);
+        }
+
+        // 2g) Media & fame: a pundit who won't let go, old posts resurfacing,
+        //     and the day the terraces make up a song about you.
+        {
+          const rr = pc.recentRatings ?? [];
+          const avg = rr.length ? rr.reduce((a, b) => a + b, 0) / rr.length : 6.7;
+          const jab = punditJab(pc, avatar, avg, to, meta.seed);
+          pc = jab.career; newsItems.push(...jab.news);
+          if (jab.conversation && (pc.pendingConversations ?? []).length === 0) {
+            pc = { ...pc, pendingConversations: [...(pc.pendingConversations ?? []), jab.conversation] };
+          }
+          const old = maybeOldPostResurfaces(pc, avatar, to, meta.seed);
+          pc = old.career; newsItems.push(...old.news); moraleDelta += old.moraleDelta;
+          const chant = maybeChant(pc, avatar, to, meta.seed);
+          pc = chant.career; newsItems.push(...chant.news); moraleDelta += chant.moraleDelta;
         }
 
         // 3) A demotion this advance triggers a manager sit-down; a first-time
