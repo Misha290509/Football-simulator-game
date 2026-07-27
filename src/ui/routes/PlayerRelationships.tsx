@@ -3,6 +3,7 @@ import { useGameStore } from '../../state/store';
 import { playerCareerOf } from '../../game/playerCareer';
 import { MANAGER_STYLE_LABEL } from '../../game/playerProgression';
 import { fullName } from '../format';
+import { LEADERSHIP_LABEL, detectCliques } from '../../game/squadLife';
 
 /**
  * The Relationships hub — the whole human web of a career in one place: the
@@ -27,6 +28,7 @@ export function PlayerRelationships() {
   }
 
   const rival = career.rival ? players[career.rival.playerId] : undefined;
+  const squadCliques = detectCliques(p, Object.values(players).filter((x) => x.contract.clubId === p.contract.clubId), meta.startYear ?? 2025);
   const mentor = career.mentor;
   const agent = career.agent;
   const intl = career.international;
@@ -77,7 +79,12 @@ export function PlayerRelationships() {
 
       {/* Dressing room */}
       <div className="card p-4 space-y-2">
-        <h2 className="text-sm font-semibold text-slate-300">👥 The dressing room</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-300">👥 The dressing room</h2>
+          {career.leadership && career.leadership !== 'NONE' && (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/25">🎖️ {LEADERSHIP_LABEL[career.leadership]}</span>
+          )}
+        </div>
         <Meter label="Standing" value={career.dressingRoom?.standing ?? 50} tone="sky" />
         {(career.dressingRoom?.bonds ?? []).length > 0 ? (
           <div className="flex flex-wrap gap-1.5 pt-1">
@@ -89,6 +96,24 @@ export function PlayerRelationships() {
           </div>
         ) : (
           <p className="text-[11px] text-slate-500">Still settling in — friendships form with time and minutes.</p>
+        )}
+        {career.language && career.language.fluency < 100 && (
+          <div>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 mb-0.5">
+              <span>🗣️ Learning the language</span><span className="tabular-nums">{Math.round(career.language.fluency)}%</span>
+            </div>
+            <div className="h-1.5 rounded bg-surface-700 overflow-hidden"><div className="h-full bg-sky-400" style={{ width: `${career.language.fluency}%` }} /></div>
+            <p className="text-[10px] text-slate-600 mt-0.5">Until you can speak to the room, relationships here grow at half speed.</p>
+          </div>
+        )}
+        {squadCliques.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {squadCliques.map((c) => (
+              <span key={c.kind} title={c.members.join(', ')} className={`text-[10px] px-2 py-0.5 rounded-full border ${c.belongs ? 'bg-sky-500/10 text-sky-300 border-sky-500/25' : 'bg-surface-700 text-slate-500 border-surface-600'}`}>
+                {c.belongs ? '✓ ' : '· '}{c.label}
+              </span>
+            ))}
+          </div>
         )}
         <p className="text-[11px] text-slate-500">
           {(career.dressingRoom?.standing ?? 50) >= 78 ? 'One of the leaders in there — your voice carries.'

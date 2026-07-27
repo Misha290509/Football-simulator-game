@@ -88,6 +88,7 @@ import { advanceMentor } from '../game/playerMentor';
 import { advanceDressingRoom } from '../game/dressingRoom';
 import { investAttribute, INTENSITY, intensityOf } from '../game/playerDevelopment';
 import { updateShirt, checkBoyhoodMove, maybeAllegianceChoice, commitAllegiance, canRequestNumber, takenNumbers, isMarqueeNumber } from '../game/playerIdentity';
+import { deriveLeadership, leadershipNews, updateLanguage, detectMarqueeSignal, deliverTeamTalk } from '../game/squadLife';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -260,6 +261,7 @@ interface GameState {
   buyLifestyleItem: (itemId: string) => Promise<string>;
   commitAllegianceAction: (nation: string) => Promise<string>;
   requestShirtNumber: (n: number) => Promise<string>;
+  deliverCaptainTalk: (optionId: string) => Promise<string>;
   // --- Legacy & endgame (Tier 5) ---
   setDreamClub: (clubId: string | null) => Promise<void>;
   addCustomAmbition: (text: string) => Promise<void>;
@@ -901,6 +903,27 @@ export const useGameStore = create<GameState>((set, get) => ({
     await putPlayers(meta.id, [np]);
     await persistMeta(newMeta);
     return `You've committed to ${nation}.`;
+  },
+
+  deliverCaptainTalk: async (optionId) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar || pc.status !== 'CAPTAIN') return 'Only the captain addresses the room.';
+    const ip = get().interactivePlay;
+    const losing = !!ip && (ip.pending?.context.score?.[0] ?? 0) < (ip.pending?.context.score?.[1] ?? 0);
+    const res = deliverTeamTalk(pc, avatar, optionId, losing, meta.currentDay);
+    // Lift (or dent) the whole squad's morale — the captain's job.
+    const squad = Object.values(players).filter((p) => p.contract.clubId === avatar.contract.clubId);
+    const patched: Player[] = squad.map((p) => ({ ...p, morale: clamp(p.morale + res.squadMorale) as number }));
+    const nextPlayers = { ...players };
+    for (const p of patched) nextPlayers[p.id] = p;
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta, players: nextPlayers });
+    await putPlayers(meta.id, patched);
+    await persistMeta(newMeta);
+    return res.squadMorale > 0 ? 'The room responded.' : 'That did not land.';
   },
 
   requestShirtNumber: async (n) => {
@@ -4249,6 +4272,22 @@ async function playDays(
         pc = boy.career; newsItems.push(...boy.news); moraleDelta += boy.moraleDelta;
         const alleg = maybeAllegianceChoice(pc, avatar, to);
         if (alleg) { pc = alleg.career; newsItems.push(...alleg.news); }
+
+        // 2e) Squad life: the leadership ladder, settling in abroad, and a
+        //     marquee arrival in his position shifting the ground under him.
+        {
+          const rung = deriveLeadership(pc, avatar, pc.dressingRoom?.standing ?? 50);
+          if (rung !== (pc.leadership ?? 'NONE')) {
+            const n = leadershipNews(rung, avatar, to);
+            if (n) newsItems.push(n);
+            pc = { ...pc, leadership: rung };
+          }
+          const lang = updateLanguage(pc, avatar, cid ? clubsAfter[cid] : undefined, to);
+          pc = lang.career; newsItems.push(...lang.news);
+          const marquee = detectMarqueeSignal(pc, avatar, squad, pc.knownSquadIds ?? squad.map((p) => p.id), to);
+          newsItems.push(...marquee.news); moraleDelta += marquee.moraleDelta;
+          pc = { ...marquee.career, knownSquadIds: squad.map((p) => p.id) };
+        }
 
         // 3) A demotion this advance triggers a manager sit-down; a first-time
         //    promotion to captain surfaces the armband offer; otherwise a state-

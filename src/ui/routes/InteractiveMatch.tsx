@@ -5,6 +5,7 @@ import type { GamePlan, KeyMoment, InteractiveMatchRecord, PositioningIntent } f
 import { FLOW_HOT, FLOW_COLD, type InteractiveInput } from '../../engine/interactiveMatch';
 import { ROLE_POSITIONING } from '../../game/momentLibrary';
 import { isExplosiveChoice, fatigueLevel, FATIGUE_GATE, fuzzyDescriptor } from '../../game/matchConditions';
+import { captainTeamTalkOptions } from '../../game/squadLife';
 import type { Match } from '../../types/match';
 
 const PLAN_INFO: Record<GamePlan, { label: string; blurb: string }> = {
@@ -30,6 +31,8 @@ export function InteractiveMatch() {
   const ackHalfTime = useGameStore((s) => s.acknowledgeHalfTime);
   const finish = useGameStore((s) => s.finishPlayerMatch);
   const cancel = useGameStore((s) => s.cancelInteractive);
+  const captainTalk = useGameStore((s) => s.deliverCaptainTalk);
+  const [talkToast, setTalkToast] = useState<string | null>(null);
   const settings = meta?.careerSettings;
 
   useEffect(() => { if (!ip) navigate('/my-player', { replace: true }); }, [ip, navigate]);
@@ -111,6 +114,19 @@ export function InteractiveMatch() {
               </button>
             ))}
           </div>
+          {ip.input.status === 'CAPTAIN' && (
+            <div className="rounded border border-amber-500/30 bg-amber-500/5 p-2.5">
+              <div className="text-[11px] uppercase tracking-wide text-amber-300 mb-1.5">🎖️ You wear the armband — a word before they go out?</div>
+              <div className="flex flex-col gap-1.5">
+                {captainTeamTalkOptions(false).map((o) => (
+                  <button key={o.id} className="btn-ghost text-left text-xs" onClick={async () => setTalkToast(await captainTalk(o.id))}>
+                    “{o.text}” <span className="text-slate-500">— {o.blurb}</span>
+                  </button>
+                ))}
+              </div>
+              {talkToast && <div className="text-[11px] text-amber-200 mt-1.5">{talkToast}</div>}
+            </div>
+          )}
           <div className="flex gap-2 pt-1">
             <button className="btn-primary flex-1" onClick={() => kickOff()}>Kick off ▸</button>
             <button className="btn-ghost" onClick={() => { autoRest(); }}>Sim it</button>

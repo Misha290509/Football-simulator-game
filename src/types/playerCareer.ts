@@ -295,6 +295,12 @@ export interface PlayerCareer {
   pendingAllegiance?: { nations: string[]; day: number } | null;
   /** Sides that have worked him out — a bogey team until he breaks the pattern. */
   bogeyTeams?: Record<string, import('../game/opposition').BogeyRecord>;
+  /** Where he sits in the club's leadership (a rung below the armband). */
+  leadership?: import('../game/squadLife').LeadershipRung;
+  /** Learning the local language after a move abroad (halves relationship growth). */
+  language?: import('../game/squadLife').LanguageState | null;
+  /** Teammate ids seen at the last advance — detects new marquee arrivals. */
+  knownSquadIds?: string[];
   /** Spendable bank balance — earnings you haven't spent on the good life yet. */
   bankBalance?: number;
   /** Lifestyle purchases the avatar owns (status symbols, homes, giving). */
