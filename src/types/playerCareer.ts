@@ -253,6 +253,10 @@ export interface PlayerCareer {
   lifestyle?: import('./playerOffPitch').Lifestyle;
   /** Lifetime career earnings (wages + bonuses + sponsorships). */
   careerEarnings?: number;
+  /** Spendable bank balance — earnings you haven't spent on the good life yet. */
+  bankBalance?: number;
+  /** Lifestyle purchases the avatar owns (status symbols, homes, giving). */
+  possessions?: string[];
 
   // --- Legacy & endgame (Tier 5) ---------------------------------------------
   /** Personal ambitions checklist, evaluated from real career data. */

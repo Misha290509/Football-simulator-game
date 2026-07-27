@@ -4,6 +4,7 @@ import { useGameStore } from '../../state/store';
 import { playerCareerOf } from '../../game/playerCareer';
 import { AGENT_ROSTER } from '../../game/playerOffPitch';
 import { lateKindOf, lateLabel } from '../../game/playerEndgame';
+import { LIFESTYLE_ITEMS } from '../../game/lifestyle';
 import { formatMoney } from '../format';
 import type { SquadStatus } from '../../types/playerCareer';
 
@@ -30,6 +31,7 @@ export function OffPitch() {
   const requestTransfer = useGameStore((s) => s.requestTransfer);
   const cancelTransferRequest = useGameStore((s) => s.cancelTransferRequest);
   const setLifestyle = useGameStore((s) => s.setLifestyle);
+  const buyItem = useGameStore((s) => s.buyLifestyleItem);
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -57,7 +59,7 @@ export function OffPitch() {
 
       {/* Wealth + public image */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Stat label="Career earnings" value={formatMoney(career.careerEarnings ?? 0)} />
+        <Stat label="Bank balance" value={formatMoney(career.bankBalance ?? 0)} tone="good" />
         <Stat label="Following" value={compact(career.following ?? 0)} />
         <Stat label="Persona" value={image.persona} />
         <Stat label="Fan rating" value={`${Math.round(career.fanRating ?? 50)}`} tone={(career.fanRating ?? 50) >= 66 ? 'good' : (career.fanRating ?? 50) < 40 ? 'bad' : 'neutral'} />
@@ -65,6 +67,40 @@ export function OffPitch() {
       {image.controversy > 0 && (
         <Meter label="Controversy" value={image.controversy} tone={image.controversy >= 50 ? 'bad' : 'neutral'} />
       )}
+
+      {/* The good life — spend your money on status, homes & giving */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-semibold text-slate-400">The good life</h2>
+          <span className="text-[11px] text-slate-500">Lifetime earnings {formatMoney(career.careerEarnings ?? 0)}</span>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">Your wages are piling up — spend them. Each buy shapes your following, image and morale; giving back wins the public over.</p>
+        <div className="grid sm:grid-cols-2 gap-2">
+          {LIFESTYLE_ITEMS.map((it) => {
+            const owned = (career.possessions ?? []).includes(it.id);
+            const afford = (career.bankBalance ?? 0) >= it.price;
+            const e = it.effects;
+            const fx = [
+              e.following ? `+${compact(e.following)} followers` : null,
+              e.fanRating ? `+${e.fanRating} fans` : null,
+              e.controversy ? `${e.controversy > 0 ? '+' : ''}${e.controversy} controversy` : null,
+              e.morale ? `+${e.morale} morale` : null,
+            ].filter(Boolean).join(' · ');
+            return (
+              <button key={it.id} disabled={owned || !afford}
+                onClick={async () => setToast(await buyItem(it.id))}
+                className={`text-left p-2.5 rounded-lg border flex flex-col gap-0.5 ${owned ? 'border-emerald-500/30 bg-emerald-500/5' : afford ? 'border-surface-600 hover:border-accent hover:bg-accent/5' : 'border-surface-700 opacity-55 cursor-not-allowed'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-white">{it.emoji} {it.name}</span>
+                  <span className={`text-xs font-mono ${owned ? 'text-emerald-300' : afford ? 'text-slate-300' : 'text-slate-500'}`}>{owned ? 'Owned ✓' : formatMoney(it.price)}</span>
+                </div>
+                <span className="text-[11px] text-slate-500">{it.blurb}</span>
+                {fx && <span className="text-[10px] text-slate-400">{fx}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Decisions on the table */}
       {(offers.length > 0 || loanOffers.length > 0 || sponsorOffers.length > 0) && (

@@ -69,6 +69,7 @@ import { progressPlayerCareer, statusRank, resolveCallUp, applyNewManager } from
 import {
   advanceOffPitch, executeContractOffer, executeLoanOffer, hireAgent, agentById, derivePersona,
 } from '../game/playerOffPitch';
+import { buyLifestyleItem } from '../game/lifestyle';
 import type { SquadStatus } from '../types/playerCareer';
 import {
   updateAmbitions, updateDecline, earnedVeteranTraits, roleEvolutionOf, VETERAN_TRAITS,
@@ -255,6 +256,7 @@ interface GameState {
   requestTransfer: () => Promise<void>;
   cancelTransferRequest: () => Promise<void>;
   setLifestyle: (routine: Record<string, number>, autoManage: boolean) => Promise<void>;
+  buyLifestyleItem: (itemId: string) => Promise<string>;
   // --- Legacy & endgame (Tier 5) ---
   setDreamClub: (clubId: string | null) => Promise<void>;
   addCustomAmbition: (text: string) => Promise<void>;
@@ -880,6 +882,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, lifestyle: { routine: r, autoManage } } };
     set({ meta: newMeta });
     await persistMeta(newMeta);
+  },
+
+  buyLifestyleItem: async (itemId) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar) return 'No player.';
+    const res = buyLifestyleItem(pc, avatar, itemId, meta.currentDay);
+    if (!res.ok) return res.message;
+    let newPlayers = players;
+    if (res.moraleDelta !== 0) {
+      const np: Player = { ...avatar, morale: clamp(avatar.morale + res.moraleDelta) as number };
+      newPlayers = { ...players, [pc.playerId]: np };
+      await putPlayers(meta.id, [np]);
+    }
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta, players: newPlayers });
+    await persistMeta(newMeta);
+    return res.message;
   },
 
   // --- Legacy & endgame (Tier 5) -----------------------------------------

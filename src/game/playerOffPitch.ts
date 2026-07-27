@@ -658,9 +658,9 @@ export function advanceOffPitch(input: {
     }
   }
 
-  // 4) Wealth accrual.
+  // 4) Wealth accrual — lifetime total + a spendable balance for the good life.
   const earningsDelta = accrueEarnings(career, avatar, daysElapsed / 7);
-  career = { ...career, careerEarnings: (career.careerEarnings ?? 0) + earningsDelta };
+  career = { ...career, careerEarnings: (career.careerEarnings ?? 0) + earningsDelta, bankBalance: (career.bankBalance ?? 0) + earningsDelta };
 
   return {
     career, news, moraleDelta, earningsDelta,
