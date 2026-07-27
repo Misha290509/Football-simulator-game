@@ -20,6 +20,18 @@ import { generatePlayer } from '../engine/generator';
 import { overallAt } from '../engine/ratings';
 import { applyMentality } from './skillPoints';
 import { dpEarned, intensityOf } from './playerDevelopment';
+import { assignShirtNumber, takenNumbers, isMarqueeNumber } from './playerIdentity';
+
+/** A plausible second country for a dual-national: another nationality present
+ *  in the world, so the courting story references a real footballing nation. */
+function pickSecondNationality(snapshot: WorldSnapshot, avatar: Player, rng: Rng): string | null {
+  const seen = new Set<string>();
+  for (const p of Object.values(snapshot.players)) {
+    if (p.nationality && p.nationality !== avatar.nationality) seen.add(p.nationality);
+  }
+  const options = [...seen].sort();
+  return options.length ? options[rng.int(0, options.length - 1)] : null;
+}
 import { createNewGame } from './newGame';
 import {
   generateSeasonObjectives, generateMatchObjectives, evaluateMatchObjectives, updateSeasonObjectives,
@@ -104,6 +116,11 @@ export interface NewPlayerCareerConfig {
   customAttributes?: import('../types/attributes').Attributes;
   /** CREATED — the human's mentality-pool allocation (hidden temperament). */
   mentality?: import('./skillPoints').MentalityAlloc;
+  /** CREATED — backstory: hometown, boyhood club, celebration, rituals. */
+  hometown?: string;
+  boyhoodClub?: string | null;
+  celebration?: string;
+  rituals?: string[];
 }
 
 /** Build just the world for a Player career (no avatar yet), so a picker UI can
@@ -296,6 +313,28 @@ export function createPlayerCareerGame(config: NewPlayerCareerConfig): WorldSnap
   // in the world, whose career the avatar races (trophies, Ballon d'Or, legacy).
   const peer = pickEraRival(snapshot.players, avatar, config.startYear);
   if (peer) career = { ...career, eraRival: { playerId: peer.id, name: `${peer.name.first} ${peer.name.last}` } };
+
+  // Identity & backstory: hometown, the club he grew up supporting, his
+  // celebration and superstitions — and, for a minority of players, a second
+  // nationality that will one day force a choice between two countries.
+  const idRng = new Rng((snapshot.meta.seed ^ hashSeed(`identity_${avatar.id}`)) >>> 0);
+  const secondNationality = idRng.chance(0.22) ? pickSecondNationality(snapshot, avatar, idRng) : null;
+  const identity: import('../types/playerCareer').CareerIdentity = {
+    hometown: config.hometown?.trim() || club?.name || 'somewhere small',
+    boyhoodClub: config.boyhoodClub ?? club?.name ?? null,
+    secondNationality,
+    celebration: config.celebration ?? 'knee_slide',
+    rituals: config.rituals ?? [],
+    betrayal: null,
+    homecoming: null,
+  };
+  career = { ...career, identity };
+  // The shirt he'll wear: a squad number to start, marquee ones to be earned.
+  {
+    const squad = Object.values(snapshot.players).filter((p) => p.contract.clubId === config.clubId);
+    const shirtNumber = assignShirtNumber(avatar, career.status, takenNumbers(career, squad));
+    career = { ...career, shirt: { number: shirtNumber, marquee: isMarqueeNumber(shirtNumber) } };
+  }
   snapshot.meta.playerCareer = career;
   snapshot.meta.news = [
     {

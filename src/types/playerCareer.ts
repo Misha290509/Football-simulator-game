@@ -172,6 +172,40 @@ export interface CareerRival {
   edge?: number; // net starts won over the rival (+ = avatar ahead)
 }
 
+/**
+ * Who the avatar *is* beyond his attributes — the backstory that follows him for
+ * a whole career. Set at creation, then permanently colours the world's reaction
+ * to him: the club he grew up supporting (and the betrayal of joining their
+ * rivals), the two countries that court him until he picks one, the shirt number
+ * he wears and its weight, his celebration, and the rituals he swears by.
+ */
+export interface CareerIdentity {
+  hometown: string;
+  /** The club he grew up supporting (by name — clubs can leave the world). */
+  boyhoodClub?: string | null;
+  /** A second nationality he's eligible for (dual-national). */
+  secondNationality?: string | null;
+  /** The nation he committed to — closes the other door for good. */
+  allegiance?: string | null;
+  /** A signature celebration (part of the persona, shown in match beats). */
+  celebration?: string;
+  /** Superstitions he keeps; breaking the routine costs a little flow. */
+  rituals?: string[];
+  /** He signed for his boyhood club's great rival — a wound that never heals. */
+  betrayal?: { clubName: string; day: number } | null;
+  /** He came home to the club he grew up supporting. */
+  homecoming?: { clubName: string; day: number } | null;
+}
+
+/** The shirt on his back — a status object, won, inherited and lost. */
+export interface ShirtNumber {
+  number: number;
+  /** The departed player whose number he took (extra weight of expectation). */
+  inheritedFrom?: string | null;
+  /** True while he holds a marquee number (1/7/9/10) at his club. */
+  marquee?: boolean;
+}
+
 /** A tournament the avatar was named in a national squad for. */
 export interface TournamentSquad {
   competition: string;
@@ -253,6 +287,12 @@ export interface PlayerCareer {
   lifestyle?: import('./playerOffPitch').Lifestyle;
   /** Lifetime career earnings (wages + bonuses + sponsorships). */
   careerEarnings?: number;
+  /** Who he is beyond the numbers — backstory that follows the whole career. */
+  identity?: CareerIdentity;
+  /** The shirt on his back (status object: won, inherited, lost). */
+  shirt?: ShirtNumber | null;
+  /** A live dual-nationality decision awaiting his answer. */
+  pendingAllegiance?: { nations: string[]; day: number } | null;
   /** Spendable bank balance — earnings you haven't spent on the good life yet. */
   bankBalance?: number;
   /** Lifestyle purchases the avatar owns (status symbols, homes, giving). */

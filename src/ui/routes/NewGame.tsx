@@ -12,6 +12,7 @@ import { YOUTH_POSITIONS } from '../../engine/academy';
 import { POSITION_LABEL } from '../../engine/lineup';
 import { SkillPointsEditor, type SkillState } from './SkillPointsEditor';
 import { recommendedBuild, floorMentality, targetOvrFor, attrCapFor } from '../../game/skillPoints';
+import { CELEBRATIONS, RITUALS, MAX_RITUALS } from '../../game/playerIdentity';
 
 const START_YEAR = 2025;
 const SEASON_LABEL = `${START_YEAR}/${((START_YEAR + 1) % 100).toString().padStart(2, '0')}`;
@@ -44,6 +45,12 @@ export function NewGame() {
   const [foot, setFoot] = useState<Foot>('R');
   const [archetype, setArchetype] = useState<string>(PLAYER_ARCHETYPES[0].id);
   const [skill, setSkill] = useState<SkillState | null>(null);
+  // Backstory
+  const [hometown, setHometown] = useState('');
+  const [nationality, setNationality] = useState('');
+  const [boyhoodClub, setBoyhoodClub] = useState('');
+  const [celebration, setCelebration] = useState('knee_slide');
+  const [rituals, setRituals] = useState<string[]>([]);
 
   useEffect(() => {
     void getActiveDataset().then((d) => {
@@ -114,6 +121,11 @@ export function NewGame() {
           archetype,
           customAttributes: skill?.attributes,
           mentality: skill?.mentality,
+          nationality: nationality || undefined,
+          hometown: hometown.trim() || undefined,
+          boyhoodClub: boyhoodClub || undefined,
+          celebration,
+          rituals,
         });
         navigate('/my-player');
       } else {
@@ -325,6 +337,61 @@ export function NewGame() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Backstory — who he is beyond the numbers */}
+      {isPlayer && effAbbrev && (
+        <div className="card p-4 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-400 mb-1">Your story</h2>
+          <p className="text-xs text-slate-500">Where you're from and who you grew up supporting follow you for a whole career — come home one day, or sign for their rivals and never be forgiven.</p>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <label className="block text-sm">
+              <span className="text-xs text-slate-400">Hometown</span>
+              <input className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm" placeholder="e.g. Salford" value={hometown} onChange={(e) => setHometown(e.target.value)} />
+            </label>
+            <label className="block text-sm">
+              <span className="text-xs text-slate-400">Nationality</span>
+              <select className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm" value={nationality} onChange={(e) => setNationality(e.target.value)}>
+                <option value="">{country.name} (default)</option>
+                {dataset.countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="text-xs text-slate-400">Boyhood club</span>
+              <select className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm" value={boyhoodClub} onChange={(e) => setBoyhoodClub(e.target.value)}>
+                <option value="">Your new club</option>
+                {country.leagues.flatMap((lg) => lg.clubs).map((c) => <option key={c.abbrev} value={c.name}>{c.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <div>
+            <div className="text-xs text-slate-400 mb-1.5">Signature celebration</div>
+            <div className="grid sm:grid-cols-3 gap-2">
+              {CELEBRATIONS.map((c) => (
+                <button key={c.id} type="button" onClick={() => setCelebration(c.id)}
+                  className={`text-left p-2 rounded-lg border ${celebration === c.id ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}>
+                  <div className="text-sm text-white">{c.emoji} {c.name}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">{c.blurb}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-400 mb-1.5">Superstitions <span className="text-slate-600">(up to {MAX_RITUALS} — break the routine and you start a match off-rhythm)</span></div>
+            <div className="flex flex-wrap gap-2">
+              {RITUALS.map((r) => {
+                const on = rituals.includes(r.id);
+                return (
+                  <button key={r.id} type="button" title={r.blurb}
+                    onClick={() => setRituals((rs) => on ? rs.filter((x) => x !== r.id) : rs.length < MAX_RITUALS ? [...rs, r.id] : rs)}
+                    className={`text-xs px-2.5 py-1.5 rounded-full border ${on ? 'border-fuchsia-500/50 bg-fuchsia-500/10 text-fuchsia-200' : 'border-surface-600 text-slate-400 hover:bg-surface-700'}`}>
+                    {on ? '🧿 ' : ''}{r.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 

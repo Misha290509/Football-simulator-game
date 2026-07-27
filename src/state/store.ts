@@ -87,6 +87,7 @@ import {
 import { advanceMentor } from '../game/playerMentor';
 import { advanceDressingRoom } from '../game/dressingRoom';
 import { investAttribute, INTENSITY, intensityOf } from '../game/playerDevelopment';
+import { updateShirt, checkBoyhoodMove, maybeAllegianceChoice, commitAllegiance, canRequestNumber, takenNumbers, isMarqueeNumber } from '../game/playerIdentity';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -257,6 +258,8 @@ interface GameState {
   cancelTransferRequest: () => Promise<void>;
   setLifestyle: (routine: Record<string, number>, autoManage: boolean) => Promise<void>;
   buyLifestyleItem: (itemId: string) => Promise<string>;
+  commitAllegianceAction: (nation: string) => Promise<string>;
+  requestShirtNumber: (n: number) => Promise<string>;
   // --- Legacy & endgame (Tier 5) ---
   setDreamClub: (clubId: string | null) => Promise<void>;
   addCustomAmbition: (text: string) => Promise<void>;
@@ -882,6 +885,41 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, lifestyle: { routine: r, autoManage } } };
     set({ meta: newMeta });
     await persistMeta(newMeta);
+  },
+
+  commitAllegianceAction: async (nation) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar || !pc.pendingAllegiance) return 'No decision pending.';
+    const res = commitAllegiance(pc, avatar, nation, meta.currentDay);
+    // The chosen nation becomes his international identity from here on.
+    const np: Player = { ...avatar, nationality: nation };
+    const newMeta: SaveMeta = { ...meta, playerCareer: res.career, news: [...meta.news, ...res.news] };
+    set({ meta: newMeta, players: { ...players, [pc.playerId]: np } });
+    await putPlayers(meta.id, [np]);
+    await persistMeta(newMeta);
+    return `You've committed to ${nation}.`;
+  },
+
+  requestShirtNumber: async (n) => {
+    const { meta, players } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No active player career.';
+    const avatar = players[pc.playerId];
+    if (!avatar) return 'No player.';
+    const squad = Object.values(players).filter((p) => p.contract.clubId === avatar.contract.clubId);
+    const check = canRequestNumber(pc.status, n, takenNumbers(pc, squad));
+    if (!check.ok) return check.why;
+    const newMeta: SaveMeta = {
+      ...meta,
+      playerCareer: { ...pc, shirt: { number: n, marquee: isMarqueeNumber(n) } },
+      news: [...meta.news, { id: `news_pc_shirt_${n}_${meta.currentDay}`, day: meta.currentDay, category: 'GENERAL' as const, title: `The number ${n}`, body: `${avatar.name.first} ${avatar.name.last} will wear the ${n} shirt.`, read: false }],
+    };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return `You'll wear the number ${n}.`;
   },
 
   buyLifestyleItem: async (itemId) => {
@@ -4202,6 +4240,15 @@ async function playDays(
         //     occasional bit of politics to navigate.
         const dr = advanceDressingRoom(pc, avatar, squad, toYear, to, meta.seed);
         pc = dr.career; newsItems.push(...dr.news); moraleDelta += dr.moraleDelta;
+
+        // 2d) Identity: the shirt tracks his standing, the boyhood club reacts to
+        //     where he plays, and a dual-national is eventually forced to choose.
+        const sh = updateShirt(pc, avatar, squad, to, meta.seed);
+        pc = sh.career; newsItems.push(...sh.news);
+        const boy = checkBoyhoodMove(pc, avatar, cid ? clubsAfter[cid] : undefined, to);
+        pc = boy.career; newsItems.push(...boy.news); moraleDelta += boy.moraleDelta;
+        const alleg = maybeAllegianceChoice(pc, avatar, to);
+        if (alleg) { pc = alleg.career; newsItems.push(...alleg.news); }
 
         // 3) A demotion this advance triggers a manager sit-down; a first-time
         //    promotion to captain surfaces the armband offer; otherwise a state-

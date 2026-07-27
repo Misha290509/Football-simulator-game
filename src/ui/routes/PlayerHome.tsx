@@ -21,6 +21,7 @@ export function PlayerHome() {
   const requestMeeting = useGameStore((s) => s.requestMeeting);
   const answerPlayerPress = useGameStore((s) => s.answerPlayerPress);
   const respondCallUp = useGameStore((s) => s.respondCallUp);
+  const commitAllegiance = useGameStore((s) => s.commitAllegianceAction);
   const career = playerCareerOf(meta);
   const currentYear = season?.year ?? meta?.startYear ?? new Date().getFullYear();
 
@@ -63,10 +64,22 @@ export function PlayerHome() {
       {/* Identity */}
       <div className="card p-5 flex items-center gap-4">
         {club && <CrestBadge abbrev={club.abbrev} color={club.primaryColor ?? '#3ba776'} size={44} />}
+        {career.shirt && (
+          <div className={`shrink-0 w-11 h-12 rounded flex items-center justify-center font-bold text-lg ${career.shirt.marquee ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40' : 'bg-surface-700 text-slate-300 border border-surface-600'}`} title={career.shirt.marquee ? 'A marquee shirt — earned.' : 'Your squad number.'}>
+            {career.shirt.number}
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <div className="text-xl font-semibold text-white truncate">{fullName(p)}</div>
           <div className="text-sm text-slate-400">{p.position} · {ageOf(p, currentYear)} yrs · {club?.name ?? 'No club'}</div>
           <div className="text-xs text-slate-500 mt-0.5">{career.status} · {career.archetype}{career.managerStyle ? ` · Gaffer: ${MANAGER_STYLE_LABEL[career.managerStyle]}` : ''}</div>
+          {career.identity && (
+            <div className="text-[11px] text-slate-600 mt-0.5 truncate">
+              {career.identity.hometown ? `${career.identity.hometown} lad` : ''}
+              {career.identity.boyhoodClub ? ` · grew up a ${career.identity.boyhoodClub} fan` : ''}
+              {career.identity.betrayal ? ' · 💔 branded a traitor' : career.identity.homecoming ? ' · 🏠 came home' : ''}
+            </div>
+          )}
         </div>
         <div className="text-right space-y-1">
           <div className="flex items-center gap-2 justify-end"><span className="text-[11px] uppercase tracking-wide text-slate-500">OVR</span><Rating value={p.overall} /></div>
@@ -135,6 +148,19 @@ export function PlayerHome() {
           </div>
         );
       })()}
+
+      {/* Dual nationality — the choice that closes a door for good */}
+      {career.pendingAllegiance && (
+        <div className="card p-4 border border-fuchsia-500/40 bg-fuchsia-500/5">
+          <div className="text-xs uppercase tracking-wide text-fuchsia-300 mb-1">🌍 Two countries want you</div>
+          <p className="text-sm text-slate-200 mb-3">Commit to one and the other door closes forever. Choose carefully — this is for the rest of your career.</p>
+          <div className="flex flex-wrap gap-2">
+            {career.pendingAllegiance.nations.map((n) => (
+              <button key={n} className="btn-primary text-sm" onClick={() => void commitAllegiance(n)}>Play for {n}</button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* International call-up (accept / withdraw) */}
       {career.pendingCallUp && (

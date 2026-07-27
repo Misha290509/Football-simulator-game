@@ -21,6 +21,7 @@ import { Rng, clamp } from './rng';
 import { traitsOf } from './traits';
 import { MOMENT_DEFS, ROLE_MOMENTS, gamePlanAlignedChoices, isDefensiveRole, intentWeight, INTENT_INVOLVEMENT, type MomentRole } from '../game/momentLibrary';
 import { playStylesOf, playStyleFactor } from '../game/playStyles';
+import { celebrationById } from '../game/playerIdentity';
 import type { PositioningIntent, MarkerInfo } from '../types/interactiveMatch';
 
 export interface InteractiveInput {
@@ -52,6 +53,10 @@ export interface InteractiveInput {
   occasion?: { kind: 'DERBY' | 'FORMER_CLUB' | 'BIG_MATCH'; label: string };
   /** The specific opponent the avatar is locked in a personal duel with. */
   marker?: MarkerInfo;
+  /** His pre-match routine was disrupted — superstition bites, flow starts low. */
+  ritualBroken?: { line: string };
+  /** His signature celebration id (shown when he scores). */
+  celebration?: string;
 }
 
 // --- Small deterministic helpers -------------------------------------------
@@ -221,6 +226,9 @@ function applyOutcome(input: InteractiveInput, moment: KeyMoment, choice: Moment
         const spectacular = moment.type === 'LONG_SHOT' || moment.type === 'FREE_KICK' || !!choice.signature;
         if (spectacular) { run.worldie = true; bump(choice.signature ? 0.4 : 0.3); run.ticks.push({ minute: moment.minute, text: `🚀 WHAT A GOAL! ${choice.signature ? 'Audacious brilliance' : 'An unstoppable strike'} from ${input.avatar.name.last}!`, kind: 'GOAL' }); }
         else run.ticks.push({ minute: moment.minute, text: `⚽ You score! (${input.avatar.name.last})`, kind: 'GOAL' });
+        // His signature celebration, then the bench going up.
+        const cel = celebrationById(input.celebration);
+        if (cel) run.ticks.push({ minute: moment.minute, text: `${cel.emoji} ${cel.name} — his signature.`, kind: 'INFO' });
         run.ticks.push({ minute: moment.minute, text: teammateReaction(input, moment.minute, 'GOAL'), kind: 'INFO' });
       }
       else { bump(-0.15); lost(); run.ticks.push({ minute: moment.minute, text: `Chance spurned — ${outcomeText(choice, false)}`, kind: 'CHANCE' }); }
@@ -355,9 +363,11 @@ export function runInteractiveMatch(input: InteractiveInput, decisions: MomentDe
     avatarGoals: 0, avatarAssists: 0, avatarShots: 0, avatarSaves: 0, tacklesWon: 0, duelsWon: 0, clearances: 0, keyPasses: 0,
     teamGoals: plan.teammateGoals, oppGoals: plan.oppBaseGoals, oppPrevented: 0, oppGoalsBaseline: plan.oppBaseGoals,
     defensiveDanger: isDefensiveRole(input.role) ? plan.oppBaseGoals : 0, momentum: 0,
-    flow: FLOW_START, duelWon: 0, duelLost: 0,
+    // A broken pre-match ritual starts him a touch off his rhythm.
+    flow: input.ritualBroken ? FLOW_START - 12 : FLOW_START, duelWon: 0, duelLost: 0,
     bigWon: 0, bigLost: 0, decisive: 0, ratingBonus: 0, penScored: 0, penMissed: 0, penSaved: 0, yellow: false, red: false, worldie: false, ticks: [],
   };
+  if (input.ritualBroken) run.ticks.push({ minute: 0, text: `🧿 ${input.ritualBroken.line} You're not quite in your rhythm.`, kind: 'INFO' });
   const decisionLog: MomentDecision[] = [];
 
   for (let i = 0; i < plan.moments.length; i++) {

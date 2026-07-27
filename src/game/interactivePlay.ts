@@ -16,6 +16,7 @@ import { avatarSelectionBias } from './playerCareer';
 import { areRivals } from './rivalries';
 import { POSITION_GROUP } from '../types/attributes';
 import type { MarkerInfo } from '../types/interactiveMatch';
+import { ritualIntact, ritualBreakLine } from './playerIdentity';
 
 /** The specific opponent the avatar will duel all match: an attacker draws the
  *  best opposing defender, a defender the best striker, a midfielder his
@@ -109,6 +110,9 @@ export function buildInteractiveInput(
     intent: defaultPositioning(role),
     occasion,
     marker: pickMarker(avatar, oppSquad),
+    // Superstition: when the pre-match routine is disrupted, he starts off-rhythm.
+    ritualBroken: ritualIntact(career.identity, match.id, meta.seed) ? undefined : { line: ritualBreakLine(match.id) },
+    celebration: career.identity?.celebration,
   };
   return { input, willStart, willComeOn: onBench };
 }
