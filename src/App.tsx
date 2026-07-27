@@ -14,6 +14,7 @@ const PlayerCareerScreen = lazy(() => import('./ui/routes/PlayerCareerScreen').t
 const PlayerRelationships = lazy(() => import('./ui/routes/PlayerRelationships').then((m) => ({ default: m.PlayerRelationships })));
 const CareerStats = lazy(() => import('./ui/routes/CareerStats').then((m) => ({ default: m.CareerStats })));
 const PlayerCalendar = lazy(() => import('./ui/routes/PlayerCalendar').then((m) => ({ default: m.PlayerCalendar })));
+const AfterCareer = lazy(() => import('./ui/routes/AfterCareer').then((m) => ({ default: m.AfterCareer })));
 const OffPitch = lazy(() => import('./ui/routes/OffPitch').then((m) => ({ default: m.OffPitch })));
 const Legacy = lazy(() => import('./ui/routes/Legacy').then((m) => ({ default: m.Legacy })));
 const Retrospective = lazy(() => import('./ui/routes/Retrospective').then((m) => ({ default: m.Retrospective })));
@@ -99,6 +100,7 @@ export default function App() {
       <Route path="/relationships" element={<Protected><PlayerRelationships /></Protected>} />
       <Route path="/career-stats" element={<Protected><CareerStats /></Protected>} />
       <Route path="/calendar" element={<Protected><PlayerCalendar /></Protected>} />
+      <Route path="/after" element={<Protected><AfterCareer /></Protected>} />
       <Route path="/off-pitch" element={<Protected><OffPitch /></Protected>} />
       <Route path="/legacy" element={<Protected><Legacy /></Protected>} />
       <Route path="/retrospective" element={<Protected><Retrospective /></Protected>} />

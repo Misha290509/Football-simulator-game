@@ -427,6 +427,16 @@ export interface PlayerCareer {
   /** Season the run-in beat has already fired for (so it fires once). */
   runInYear?: number;
 
+  // --- The endgame & after (Tier 5) -------------------------------------------
+  /** The life after football, once he's chosen one. */
+  epilogue?: import('../game/afterCareer').EpilogueState | null;
+  /** A bronze version of himself outside a ground. */
+  statue?: { clubId: string; clubName: string; year: number } | null;
+  /** Induction, and who read the citation. */
+  hallOfFame?: { year: number; inductedBy: string | null; kind: 'MENTOR' | 'RIVAL' | 'NOBODY' } | null;
+  /** His son, and the surname he has to carry. */
+  child?: import('../game/afterCareer').ChildCareer | null;
+
   // --- The gaffer & the training ground (Tier 2 depth) ----------------------
   /** The current manager's man-management style (derived from the club). */
   managerStyle?: ManagerStyle;

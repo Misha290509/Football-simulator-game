@@ -164,7 +164,16 @@ export function Retrospective() {
               <div className="text-xs text-slate-400 mt-1">Close the book on a career for the ages.</div>
             </button>
           </div>
+          <button
+            className="mt-3 text-xs text-accent-300 hover:underline"
+            onClick={() => navigate('/after')}
+          >
+            Or live the years after football, one at a time →
+          </button>
         </div>
+      )}
+      {retired && (
+        <button className="btn-ghost w-full" onClick={() => navigate('/after')}>After football</button>
       )}
       {career.continuation && (
         <div className="card p-4 text-sm text-slate-300">

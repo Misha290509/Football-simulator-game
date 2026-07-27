@@ -105,6 +105,9 @@ import {
 import {
   seasonPhase, phaseFatigueFactor, raceContext, runInNews, preSeasonTour, applyTour,
 } from '../game/seasonStructure';
+import {
+  availablePaths, PATH_BY_ID, epilogueYear, maybeStatue, hallOfFame, maybeChild, advanceChild,
+} from '../game/afterCareer';
 import { simulateMatches } from '../engine/simClient';
 import type { MatchContext } from '../game/clubTraits';
 import { processMatchday } from '../engine/progression';
@@ -298,6 +301,10 @@ interface GameState {
   announceRetirement: (endOfSeason: boolean) => Promise<void>;
   announceInternationalRetirement: () => Promise<void>;
   chooseContinuation: (choice: 'END' | 'MANAGER' | 'AMBASSADOR') => Promise<string>;
+  /** Pick the life after football, once the boots are hung up. */
+  chooseEpilogue: (path: import('../game/afterCareer').EpiloguePath) => Promise<string>;
+  /** Step the epilogue on a year — beats, the statue, the Hall, and the kid. */
+  advanceEpilogue: () => Promise<string>;
   load: (saveId: string) => Promise<boolean>;
   remove: (saveId: string) => Promise<void>;
   persist: () => Promise<void>;
@@ -1263,6 +1270,57 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newMeta: SaveMeta = { ...meta, playerCareer: { ...pc, retirement, intlManagerTrust: undefined }, news: [...meta.news, ...news] };
     set({ meta: newMeta });
     await persistMeta(newMeta);
+  },
+
+  // --- The life after football ------------------------------------------------
+  // The epilogue is stepped a year at a time from its own screen rather than by
+  // the world sim, so it plays whether or not the save keeps simulating.
+
+  chooseEpilogue: async (path) => {
+    const { meta } = get();
+    const pc = playerCareerOf(meta) ?? meta?.playerCareer;
+    if (!meta || !pc) return 'No career.';
+    if (!pc.retirement?.retiredDay) return 'You are still playing.';
+    if (pc.epilogue) return 'You have already chosen how this goes.';
+    if (!availablePaths(pc).includes(path)) return 'That path is not open to you.';
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const info = PATH_BY_ID[path];
+    const newMeta: SaveMeta = {
+      ...meta,
+      playerCareer: { ...pc, epilogue: { path, since: year, years: 0, earned: 0, seen: [] } },
+    };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return info.blurb;
+  },
+
+  advanceEpilogue: async () => {
+    const { meta, players, clubs } = get();
+    const pc = playerCareerOf(meta) ?? meta?.playerCareer;
+    if (!meta || !pc?.epilogue) return 'Nothing to advance.';
+    const avatar = players[pc.playerId];
+    if (!avatar) return 'No player.';
+    const year = pc.epilogue.since + pc.epilogue.years + 1;
+    const news: NewsItem[] = [];
+
+    const step = epilogueYear(pc.epilogue, avatar, year, meta.seed);
+    news.push(...step.news);
+    let next: PlayerCareer = { ...pc, epilogue: step.state };
+
+    const yearsRetired = step.state.years;
+    const st = maybeStatue(next, avatar, clubs, yearsRetired, year);
+    if (st) { next = st.career; news.push(...st.news); }
+    const rivalP = next.rival ? players[next.rival.playerId] : undefined;
+    const hof = hallOfFame(next, avatar, yearsRetired, year,
+      rivalP ? `${rivalP.name.first} ${rivalP.name.last}` : undefined);
+    if (hof) { next = hof.career; news.push(...hof.news); }
+    const kid = advanceChild(next, avatar, next.child?.clubName, year);
+    next = kid.career; news.push(...kid.news);
+
+    const newMeta: SaveMeta = { ...meta, playerCareer: next, news: [...meta.news, ...news] };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return `${year}. ${news.length ? `${news.length} thing${news.length === 1 ? '' : 's'} happened.` : 'A quiet year.'}`;
   },
 
   chooseContinuation: async (choice) => {
@@ -3399,6 +3457,21 @@ export const useGameStore = create<GameState>((set, get) => ({
           const tk = maybeTakeover(newMeta.playerCareer, avatar, myClub, result.newSeason.year, 0, meta.seed);
           newMeta.playerCareer = tk.career;
           newMeta.news = [...newMeta.news, ...tk.news];
+        }
+
+        // A life outside the game keeps moving too: a son arrives somewhere in
+        // the middle of the career, and grows up carrying the surname.
+        if (avatar) {
+          const born = maybeChild(newMeta.playerCareer, avatar, result.newSeason.year, meta.seed);
+          if (born) {
+            newMeta.playerCareer = born.career;
+            newMeta.news = [...newMeta.news, ...born.news];
+          }
+          const cid5 = result.players[pc.playerId]?.contract.clubId;
+          const kid = advanceChild(newMeta.playerCareer, avatar, cid5 ? result.clubs[cid5]?.name : undefined,
+            result.newSeason.year);
+          newMeta.playerCareer = kid.career;
+          newMeta.news = [...newMeta.news, ...kid.news];
         }
 
         // July: the club goes somewhere. The big names chase the money on the
