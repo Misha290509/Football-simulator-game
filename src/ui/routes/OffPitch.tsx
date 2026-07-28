@@ -10,6 +10,17 @@ import { POST_OPTIONS, availableProjects } from '../../game/mediaFame';
 import { INVESTMENTS, portfolioValue, wagePacket } from '../../game/moneyLife';
 import { formatMoney } from '../format';
 import type { SquadStatus } from '../../types/playerCareer';
+import { MOTIVES, ASKS, motiveOf, type SuitorMotive } from '../../game/transferMarket';
+
+/** A colour per motive, so an offer's *kind* reads before its numbers do. */
+const MOTIVE_TONE: Record<SuitorMotive, string> = {
+  STEP_UP: 'bg-sky-500/10 text-sky-300 border-sky-500/30',
+  REGULAR_FOOTBALL: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30',
+  PAYDAY: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+  HOMECOMING: 'bg-violet-500/10 text-violet-300 border-violet-500/30',
+  REBUILD: 'bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/30',
+  PANIC_BUY: 'bg-rose-500/10 text-rose-300 border-rose-500/30',
+};
 
 const ROLE_ORDER: SquadStatus[] = ['YOUTH', 'PROSPECT', 'ROTATION', 'KEY', 'STAR', 'CAPTAIN'];
 const cap = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
@@ -27,6 +38,7 @@ export function OffPitch() {
   const setAutoNegotiate = useGameStore((s) => s.setAutoNegotiate);
   const acceptContractOffer = useGameStore((s) => s.acceptContractOffer);
   const rejectContractOffer = useGameStore((s) => s.rejectContractOffer);
+  const counterContractOffer = useGameStore((s) => s.counterContractOffer);
   const acceptLoanOffer = useGameStore((s) => s.acceptLoanOffer);
   const rejectLoanOffer = useGameStore((s) => s.rejectLoanOffer);
   const acceptSponsorOffer = useGameStore((s) => s.acceptSponsorOffer);
@@ -275,6 +287,16 @@ export function OffPitch() {
                   <div className="text-sm text-white font-medium">{late ? `${lateLabel(late)}: ${club?.shortName ?? 'a club'}` : o.kind === 'RENEWAL' ? 'Contract renewal' : `Move to ${club?.name ?? 'a new club'}`}</div>
                   {o.kind === 'TRANSFER' && o.fee != null && o.fee > 0 && <span className="text-xs text-slate-400">Fee €{(o.fee / 1_000_000).toFixed(1)}M</span>}
                 </div>
+                {(() => {
+                  const m = motiveOf(o);
+                  if (late || !m) return null;
+                  return (
+                    <div className="mt-1">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${MOTIVE_TONE[m]}`}>{MOTIVES[m].label}</span>
+                      <div className="text-[11px] text-slate-400 mt-1">{MOTIVES[m].pitch}</div>
+                    </div>
+                  );
+                })()}
                 {late && <div className="text-[11px] text-accent-300/80 mb-1">{(o.note ?? '').replace(/^\[[A-Z_]+\]\s*/, '')}</div>}
                 <div className="text-xs text-slate-400 mt-1">
                   {formatMoney(o.wage)}/wk · {o.length}yr · {cap(o.rolePromise)} role · sign-on {formatMoney(o.signingBonus)}
@@ -284,6 +306,28 @@ export function OffPitch() {
                   <button className="btn-primary text-xs" onClick={async () => setToast(await acceptContractOffer(o.id))}>Accept</button>
                   <button className="btn-ghost text-xs" onClick={() => void rejectContractOffer(o.id)}>Reject</button>
                 </div>
+                {/* Push back. Every ask makes the next one harder, and a third
+                    attempt takes the offer off the table entirely. */}
+                {(() => {
+                  const used = career.counterAttempts?.[o.id] ?? 0;
+                  if (used >= 3) return null;
+                  return (
+                    <div className="mt-2 pt-2 border-t border-surface-700/60">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1.5">
+                        Negotiate {used > 0 && <span className="text-amber-400/80">· pushed {used}×, they're losing patience</span>}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ASKS.map((a) => (
+                          <button key={a.id} title={a.blurb}
+                            className="text-[11px] px-2 py-1 rounded-full border border-surface-600 text-slate-300 hover:border-accent hover:bg-accent/5"
+                            onClick={async () => setToast(await counterContractOffer(o.id, a.id))}>
+                            {a.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -376,12 +420,17 @@ export function OffPitch() {
         </div>
         {career.transferRequestPending && <p className="text-xs text-amber-400 mb-2">You’ve asked to leave — suitors are circling, but the club’s unimpressed.</p>}
         {interest.length === 0 ? (
-          <p className="text-xs text-slate-500">No concrete interest yet. Keep performing — clubs are always watching.</p>
+          <p className="text-xs text-slate-500">No concrete interest yet. Keep performing — and remember that clubs below you want players who will actually play.</p>
         ) : (
           <ul className="space-y-1.5">
             {interest.map((i) => (
-              <li key={i.clubId} className="flex items-center gap-3">
-                <span className="text-sm text-slate-300 w-40 truncate">{clubs[i.clubId]?.name}</span>
+              <li key={i.clubId} className="flex items-center gap-2 sm:gap-3">
+                <span className="text-sm text-slate-300 w-32 sm:w-40 truncate">{clubs[i.clubId]?.name}</span>
+                {i.motive && (
+                  <span className={`hidden sm:inline text-[10px] px-1.5 py-0.5 rounded-full border whitespace-nowrap ${MOTIVE_TONE[i.motive]}`}>
+                    {MOTIVES[i.motive].label}
+                  </span>
+                )}
                 <div className="flex-1 h-1.5 rounded bg-surface-700 overflow-hidden"><div className="h-full bg-accent-500/70" style={{ width: `${i.level}%` }} /></div>
                 <span className="text-xs text-slate-500 w-16 text-right">{i.level >= 68 ? 'Keen' : i.level >= 40 ? 'Watching' : 'Casual'}</span>
               </li>

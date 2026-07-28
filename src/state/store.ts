@@ -67,7 +67,7 @@ import type {
 } from '../types/interactiveMatch';
 import { progressPlayerCareer, statusRank, resolveCallUp, applyNewManager } from '../game/playerProgression';
 import {
-  advanceOffPitch, executeContractOffer, executeLoanOffer, hireAgent, agentById, derivePersona,
+  advanceOffPitch, executeContractOffer, executeLoanOffer, hireAgent, agentById, derivePersona, marketHeat,
 } from '../game/playerOffPitch';
 import { buyLifestyleItem } from '../game/lifestyle';
 import type { SquadStatus, Conversation, PlayerCareer } from '../types/playerCareer';
@@ -99,6 +99,7 @@ import {
 import { updateBurnout, burnoutFormPenalty, resolveBurnout, maybeChronic, maybeIncident, updateSpiral } from '../game/adversity';
 import { invest, advanceInvestments, hireAdviser, advanceAdviser, maybeFamilyAsk, FAMILY_HELP_COST, type InvestmentId } from '../game/moneyLife';
 import { maybeTakeover, maybeCrisis, crisisDrip, shirtSales, divisionMove } from '../game/clubLife';
+import { counterOffer } from '../game/transferMarket';
 import {
   nationOf, runQualifying, tournamentSelection, maybeIntlRival, maybePretender,
   pretenderPressure, shootoutBeat, intlRivalDrift,
@@ -117,7 +118,7 @@ import { resolveAndRollover, aggregateSeasonStats } from '../game/season';
 import { galaNews } from '../game/gala';
 import { runAiToAiTransfers } from '../game/aiTransfers';
 import { recordStyleResult } from '../game/aiManagers';
-import { isWindowOpen, windowKey, windowOnDate, currentDate } from '../game/gameCalendar';
+import { isWindowOpen, windowKey, windowOnDate, currentDate, daysToWindowClose } from '../game/gameCalendar';
 import type { PendingArrival } from '../types/league';
 import {
   evaluateBid,
@@ -269,6 +270,8 @@ interface GameState {
   fireAgentAction: () => Promise<void>;
   setAutoNegotiate: (patch: Partial<{ enabled: boolean; minWage: number; minRole: SquadStatus }>) => Promise<void>;
   acceptContractOffer: (offerId: string) => Promise<string>;
+  /** Push back on an offer. They improve it, refuse, or take it off the table. */
+  counterContractOffer: (offerId: string, ask: import('../game/transferMarket').Ask) => Promise<string>;
   rejectContractOffer: (offerId: string) => Promise<void>;
   acceptLoanOffer: (offerId: string) => Promise<string>;
   rejectLoanOffer: (offerId: string) => Promise<void>;
@@ -801,6 +804,49 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (Object.keys(ex.clubPatches).length) await putClubs(meta.id, Object.values(ex.clubPatches));
     await persistMeta(newMeta);
     return ex.news[0]?.title ?? 'Signed.';
+  },
+
+  counterContractOffer: async (offerId, ask) => {
+    const { meta, players, clubs } = get();
+    const pc = playerCareerOf(meta);
+    if (!meta || !pc) return 'No career.';
+    const offer = (pc.contractOffers ?? []).find((o) => o.id === offerId);
+    const avatar = players[pc.playerId];
+    if (!offer || !avatar) return 'That offer is no longer on the table.';
+    const club = clubs[offer.clubId];
+    if (!club) return 'That club is no longer in the picture.';
+
+    const year = get().currentSeason()?.year ?? meta.startYear;
+    const heat = marketHeat(pc, avatar, year);
+    const attempts = pc.counterAttempts?.[offerId] ?? 0;
+    const res = counterOffer(offer, ask, pc, avatar, club, heat, attempts, meta.currentDay, meta.seed);
+
+    const news: NewsItem[] = [{
+      id: `news_pc_counter_${offerId}_${attempts}`, day: meta.currentDay, category: 'TRANSFER',
+      title: res.outcome === 'WITHDRAWN' ? `${club.shortName} walk away`
+        : res.outcome === 'IMPROVED' ? `${club.shortName} improve their terms` : `${club.shortName} hold firm`,
+      body: res.message, read: false,
+    }];
+
+    const offers = res.offer
+      ? (pc.contractOffers ?? []).map((o) => (o.id === offerId ? res.offer! : o))
+      : (pc.contractOffers ?? []).filter((o) => o.id !== offerId);
+    // A club that walks kills its saga with it.
+    const activeSagas = res.outcome === 'WITHDRAWN'
+      ? (pc.activeSagas ?? []).map((s) => s.clubId === offer.clubId ? { ...s, stage: 'COLLAPSED' as const, deadline: meta.currentDay } : s)
+      : pc.activeSagas;
+
+    const newMeta: SaveMeta = {
+      ...meta,
+      playerCareer: {
+        ...pc, contractOffers: offers, activeSagas,
+        counterAttempts: { ...(pc.counterAttempts ?? {}), [offerId]: attempts + 1 },
+      },
+      news: [...meta.news, ...news],
+    };
+    set({ meta: newMeta });
+    await persistMeta(newMeta);
+    return res.message;
   },
 
   rejectContractOffer: async (offerId) => {
@@ -4878,6 +4924,8 @@ async function playDays(
         const off = advanceOffPitch({
           career: pc, avatar, clubs: clubsAfter, year: toYear, day: to,
           daysElapsed: Math.max(1, to - from), seed: meta.seed, newSummary: pc.lastMatch,
+          // Deadline day makes desperate clubs look at players they'd ignore.
+          daysToDeadline: daysToWindowClose(currentDate(meta, get().seasonRefMaxDay())) ?? undefined,
         });
         pc = off.career; newsItems.push(...off.news); moraleDelta += off.moraleDelta;
         if (off.clubPatches) {

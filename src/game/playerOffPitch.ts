@@ -27,6 +27,9 @@ import type {
 import { DEFAULT_LIFESTYLE, DEFAULT_PUBLIC_IMAGE } from '../types/playerOffPitch';
 import { Rng, clamp, hashSeed } from '../engine/rng';
 import { marketWage } from '../engine/finances';
+import {
+  findSuitors, panicBuyer, buildOffer, feeFor, competingBump, clubBlocks, MOTIVES,
+} from './transferMarket';
 
 const nameOf = (p: Player) => `${p.name.first} ${p.name.last}`;
 const STATUS_ORDER: SquadStatus[] = ['YOUTH', 'PROSPECT', 'ROTATION', 'KEY', 'STAR', 'CAPTAIN'];
@@ -86,47 +89,42 @@ export function marketHeat(career: PlayerCareer, avatar: Player, year: number): 
   return clamp(Math.round(heat), 0, 100) as number;
 }
 
-/** Refresh AI clubs' standing interest from the avatar's heat. Clubs a notch
- *  above the avatar's current level (and richer than his club) warm to him when
- *  he's hot and cool when he's not. Deterministic; a handful of clubs at most. */
+/**
+ * Refresh clubs' standing interest in the avatar. Suitors are found by *motive*
+ * (see game/transferMarket) rather than by a reputation band, so a player going
+ * nowhere at a big club is courted by smaller clubs offering him a shirt, an
+ * ageing one by clubs offering money, and a homesick one by clubs back home.
+ */
 export function updateInterest(
   career: PlayerCareer, avatar: Player, clubs: Record<string, Club>, year: number, day: number, seed: number,
+  daysToDeadline?: number,
 ): ClubInterest[] {
   // The market-interest dial (§ meta) scales how readily clubs come calling.
   const heat = marketHeat(career, avatar, year) * (career.dials?.marketInterest ?? 1);
-  const parent = clubs[avatar.contract.clubId ?? ''];
-  const parentRep = parent?.reputation ?? 55;
-  const network = career.agent?.network ?? 45; // self-rep reaches fewer clubs
+  const network = career.agent?.network ?? 45; // self-representation reaches fewer clubs
   const existing = new Map((career.transferInterest ?? []).map((i) => [i.clubId, i]));
 
-  // Candidate suitors: clubs richer/bigger than the parent, within reach of the
-  // avatar's level, excluding his own club. Ranked, then a network-sized slice.
-  // Suitors: bigger than the parent, at the avatar's level and no more than a
-  // notch above it — a giant won't chase a fringe journeyman just because he's
-  // cheap. The upper band widens for hot youth (heat), so wonderkids draw giants.
-  const ceiling = avatar.overall + 12 + Math.round(heat / 8);
-  const suitors = Object.values(clubs)
-    .filter((c) => c.id !== avatar.contract.clubId && c.reputation >= parentRep - 2
-      && c.reputation >= avatar.overall - 8 && c.reputation <= ceiling)
-    .sort((a, b) => b.reputation - a.reputation)
-    .slice(0, 6 + Math.round(network / 12));
+  const suitors = findSuitors(clubs, avatar, career, heat, year, 6 + Math.round(network / 15));
+  // A club that has just lost somebody with the window shutting will look at
+  // players it would normally ignore.
+  const panic = daysToDeadline != null ? panicBuyer(clubs, avatar, daysToDeadline, day, seed) : null;
+  const all = panic && !suitors.some((x) => x.clubId === panic.clubId) ? [panic, ...suitors] : suitors;
 
   const rng = rngFor(seed, day, 'interest');
   const out: ClubInterest[] = [];
-  for (const c of suitors) {
-    const prev = existing.get(c.id)?.level ?? 0;
-    // A club chases harder the hotter you are and the more it out-classes your
-    // current side; it drifts back down when you go cold.
-    const pull = heat * 0.5 + clamp((c.reputation - parentRep) * 1.5, -10, 20) + rng.int(-6, 8);
-    const target = clamp(pull, 0, 100);
+  for (const s of all) {
+    const prev = existing.get(s.clubId)?.level ?? 0;
+    // Interest eases toward the motive's pull rather than jumping to it, so a
+    // pursuit builds over weeks.
+    const target = clamp(s.pull + rng.int(-6, 8), 0, 100);
     const level = clamp(Math.round(prev + (target - prev) * 0.4), 0, 100) as number;
-    if (level >= 8) out.push({ clubId: c.id, level, lastSeen: day });
+    if (level >= 8) out.push({ clubId: s.clubId, level, lastSeen: day, motive: s.motive });
   }
-  // Preserve any interest from clubs no longer in the suitor slice, decayed.
+  // Preserve any interest from clubs that have dropped out of the list, decayed.
   for (const [id, i] of existing) {
     if (out.some((o) => o.clubId === id)) continue;
     const level = clamp(Math.round(i.level * 0.7), 0, 100) as number;
-    if (level >= 12) out.push({ clubId: id, level, lastSeen: i.lastSeen });
+    if (level >= 12) out.push({ clubId: id, level, lastSeen: i.lastSeen, motive: i.motive });
   }
   return out.sort((a, b) => b.level - a.level).slice(0, 8);
 }
@@ -138,27 +136,6 @@ export function askingPrice(avatar: Player, career: PlayerCareer): number {
   const base = Math.max(250_000, avatar.value || 1_000_000);
   const premium = 1.2 + statusRank(career.status) * 0.08 + (career.transferRequestPending ? -0.25 : 0);
   return Math.round((base * premium) / 250_000) * 250_000;
-}
-
-/** Personal terms a suitor offers, sweetened by the agent's negotiation. */
-function personalTerms(avatar: Player, career: PlayerCareer, suitor: Club, fee: number, day: number): ContractOffer {
-  const neg = career.agent?.negotiation ?? 45;
-  const baseWage = Math.max(marketWage(avatar.overall), avatar.contract.wage);
-  const wage = Math.round((baseWage * (1.15 + neg / 400)) / 100) * 100;
-  const bigger = suitor.reputation >= (avatar.overall + 4);
-  return {
-    id: `off_${suitor.id}_${day}`,
-    clubId: suitor.id,
-    kind: 'TRANSFER',
-    wage,
-    length: 4,
-    signingBonus: Math.round(wage * (4 + neg / 20)),
-    goalBonus: Math.round(wage * 0.05),
-    releaseClause: bigger ? null : Math.round(fee * 1.8),
-    rolePromise: bigger ? 'ROTATION' : 'KEY',
-    deadline: day + 14,
-    fee,
-  };
 }
 
 // --- Transfer sagas (rumour → bid → personal terms → move / collapse) -------
@@ -200,8 +177,9 @@ function advanceSagas(
 
     if (saga.stage === 'RUMOUR') {
       const level = interest.get(saga.clubId) ?? 0;
-      if (level >= 55 || wants) {
-        const fee = askingPrice(avatar, career);
+      if (level >= 50 || wants) {
+        // What they'll pay depends on why they want him.
+        const fee = feeFor(saga.motive ?? 'STEP_UP', askingPrice(avatar, career));
         news.push(feed(day, 'TRANSFER', `${club.shortName} table a bid`, `${club.name} have made a €${fmtM(fee)} offer to ${clubs[avatar.contract.clubId ?? '']?.shortName ?? 'your club'} for ${nameOf(avatar)}.`));
         next.push({ ...saga, stage: 'BID', fee, deadline: day + rng.int(7, 14), note: 'Bid lodged.' });
       } else {
@@ -211,9 +189,16 @@ function advanceSagas(
     } else if (saga.stage === 'BID') {
       const parent = clubs[avatar.contract.clubId ?? ''];
       const asking = askingPrice(avatar, career);
+      // Some clubs simply will not sell a man they rely on, whatever is offered.
+      const block = clubBlocks(career, avatar, parent, saga.motive ?? 'STEP_UP', day, seed);
+      if (block.blocked) {
+        next.push({ ...saga, stage: 'COLLAPSED', deadline: day, note: 'Not for sale.' });
+        news.push(feed(day, 'TRANSFER', `${parent?.shortName ?? 'The club'} refuse to sell`, block.reason));
+        continue;
+      }
       const accept = wants || saga.fee >= asking || (parent && parent.reputation < club.reputation - 6 && saga.fee >= asking * 0.85);
       if (accept) {
-        const offer = personalTerms(avatar, career, club, saga.fee, day);
+        const offer = buildOffer(avatar, career, club, saga.motive ?? 'STEP_UP', saga.fee, day);
         offers = [...offers.filter((o) => o.clubId !== club.id), offer];
         next.push({ ...saga, stage: 'PERSONAL_TERMS', deadline: offer.deadline, note: 'Clubs agree a fee.' });
         news.push(feed(day, 'TRANSFER', `${club.shortName} agree a fee`, `The clubs have agreed a €${fmtM(saga.fee)} fee. ${club.name} have opened personal terms — the decision is yours. (Check your offers.)`));
@@ -253,17 +238,22 @@ function spawnRumours(
 ): { career: PlayerCareer; news: NewsItem[] } {
   const news: NewsItem[] = [];
   const live = new Set((career.activeSagas ?? []).filter((s) => s.stage !== 'COLLAPSED' && s.stage !== 'DONE').map((s) => s.clubId));
-  if (live.size >= 2) return { career, news }; // never a circus
+  if (live.size >= 3) return { career, news }; // busy, but never a circus
   const rng = rngFor(seed, day, 'rumours');
-  const hot = (career.transferInterest ?? []).filter((i) => i.level >= 68 && !live.has(i.clubId));
+  const hot = (career.transferInterest ?? []).filter((i) => i.level >= 60 && !live.has(i.clubId));
   const sagas = [...(career.activeSagas ?? [])];
-  for (const i of hot.slice(0, 1)) {
-    // Even a hot club only comes calling now and then.
-    if (!career.transferRequestPending && !rng.chance(0.5)) continue;
+  // A player who is desperate to leave, or who never plays, gets moves. Everyone
+  // else hears from a club now and then.
+  const pushing = career.transferRequestPending || career.seasonApps <= 4;
+  for (const i of hot.slice(0, 2)) {
+    if (!pushing && !rng.chance(0.55)) continue;
     const club = clubs[i.clubId];
     if (!club) continue;
-    sagas.push({ id: `saga_${club.id}_${day}`, clubId: club.id, stage: 'RUMOUR', fee: 0, deadline: day + rng.int(10, 20), note: 'Linked with a move.' });
-    news.push(feed(day, 'TRANSFER', `${club.shortName} keen on ${avatar.name.last}`, `Reports link ${nameOf(avatar)} with a move to ${club.name}. Nothing concrete yet — but they're watching.`));
+    const m = MOTIVES[i.motive ?? 'STEP_UP'];
+    sagas.push({ id: `saga_${club.id}_${day}`, clubId: club.id, stage: 'RUMOUR', fee: 0, deadline: day + rng.int(8, 18), note: m.label, motive: i.motive });
+    news.push(feed(day, 'TRANSFER', `${club.shortName} keen on ${avatar.name.last}`,
+      `Reports link ${nameOf(avatar)} with a move to ${club.name}. ${m.pitch}`));
+    if (sagas.filter((x) => x.stage !== 'COLLAPSED' && x.stage !== 'DONE').length >= 3) break;
   }
   return { career: { ...career, activeSagas: sagas }, news };
 }
@@ -607,8 +597,11 @@ export function advanceOffPitch(input: {
   daysElapsed: number;
   seed: number;
   newSummary?: AvatarMatchSummary | null;
+  /** Days until the transfer window shuts, when one is open. Drives deadline-day
+   *  panic buys; omitted outside a window. */
+  daysToDeadline?: number;
 }): OffPitchResult {
-  const { avatar, clubs, year, day, daysElapsed, seed } = input;
+  const { avatar, clubs, year, day, daysElapsed, seed, daysToDeadline } = input;
   let career = input.career;
   const news: NewsItem[] = [];
   let moraleDelta = 0;
@@ -626,10 +619,23 @@ export function advanceOffPitch(input: {
 
   // 2) Market interest + sagas + contracts + loans + sponsors (not while loaned).
   if (!onLoan) {
-    career = { ...career, transferInterest: updateInterest(career, avatar, clubs, year, day, seed) };
+    career = { ...career, transferInterest: updateInterest(career, avatar, clubs, year, day, seed, daysToDeadline) };
 
     const sg = advanceSagas(career, avatar, clubs, day, seed); career = sg.career; news.push(...sg.news);
     const sp = spawnRumours(career, avatar, clubs, day, seed); career = sp.career; news.push(...sp.news);
+
+    // Two clubs at the same table is the one time a club bids against itself.
+    {
+      const bump = competingBump(career.contractOffers ?? [], day);
+      if (bump.bumped.length > 0) {
+        career = { ...career, contractOffers: bump.offers };
+        for (const id of bump.bumped) {
+          const c = clubs[id];
+          if (c) news.push(feed(day, 'TRANSFER', `${c.shortName} improve their offer`,
+            `${c.name} know they are not the only club at the table, and have come back with more for ${nameOf(avatar)}.`));
+        }
+      }
+    }
     const ct = advanceContracts(career, avatar, clubs, year, day, seed); career = ct.career; news.push(...ct.news);
     const ln = advanceLoans(career, avatar, clubs, year, day, seed); career = ln.career; news.push(...ln.news);
     const so = advanceSponsors(career, avatar, day, seed); career = so.career; news.push(...so.news);

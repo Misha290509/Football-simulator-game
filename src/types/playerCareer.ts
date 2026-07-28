@@ -449,6 +449,10 @@ export interface PlayerCareer {
   /** Achievement ids earned so far. */
   achievements?: string[];
 
+  // --- Negotiation (Tier 4) ----------------------------------------------------
+  /** How many times he has pushed back on each live offer. Clubs lose patience. */
+  counterAttempts?: Record<string, number>;
+
   // --- The gaffer & the training ground (Tier 2 depth) ----------------------
   /** The current manager's man-management style (derived from the club). */
   managerStyle?: ManagerStyle;

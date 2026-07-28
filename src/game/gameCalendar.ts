@@ -253,6 +253,18 @@ export function isWindowOpen(meta: Pick<SaveGame, 'currentDay' | 'startYear' | '
   return windowOnDate(currentDate(meta, maxDay)) !== null;
 }
 
+/** Days until the open window shuts, or null when no window is open. Deadline
+ *  day is the last thing a transfer saga is afraid of, so the market needs it. */
+export function daysToWindowClose(d: Date): number | null {
+  const w = windowOnDate(d);
+  if (!w) return null;
+  // Winter shuts 1 Feb; summer shuts 1 Sep.
+  const close = w === 'WINTER'
+    ? Date.UTC(d.getUTCFullYear(), 1, 1)
+    : Date.UTC(d.getUTCFullYear(), 8, 1);
+  return Math.max(0, Math.round((close - d.getTime()) / 86_400_000));
+}
+
 /** A stable key for the current window (e.g. "SUMMER-2025"), or null when shut. */
 export function windowKey(meta: Pick<SaveGame, 'currentDay' | 'startYear' | 'seasons'>, maxDay: number): string | null {
   const d = currentDate(meta, maxDay);

@@ -24,6 +24,8 @@ export interface ClubInterest {
   clubId: string;
   level: number; // 0–100
   lastSeen: number; // day last refreshed
+  /** Why they want him — decides the shape of any offer that follows. */
+  motive?: import('../game/transferMarket').SuitorMotive;
 }
 
 export type SagaStage = 'RUMOUR' | 'BID' | 'PERSONAL_TERMS' | 'DONE' | 'COLLAPSED';
@@ -36,6 +38,8 @@ export interface TransferSaga {
   fee: number;
   deadline: number; // day the saga expires if not advanced
   note: string;
+  /** Why this club came calling. Carried from the interest into the offer. */
+  motive?: import('../game/transferMarket').SuitorMotive;
 }
 
 /** A concrete contract offer (renewal or a new club's personal terms). */
