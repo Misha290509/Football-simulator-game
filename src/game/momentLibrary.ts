@@ -232,6 +232,39 @@ export const MOMENT_DEFS: Record<MomentType, { prompt: string; choices: MomentCh
     C('cross', 'Whip it into the box', 'BALANCED', 0.40, 'ASSIST', ['crossing', 'fkAccuracy']),
     { ...C('knuckle', '⚡ Knuckleball it over the wall', 'AMBITIOUS', 0.14, 'GOAL', ['fkAccuracy', 'shotPower', 'curve']), signature: true },
   ] },
+
+  // --- Situational moments (§ game/momentChains) -----------------------------
+  // These are never drawn from a role's pool. They exist only when the state of
+  // the match creates them, so each one asks a question the scoreline is asking.
+
+  LATE_CORNER: { prompt: 'The last corner of the match, and you’re a goal down.', choices: [
+    C('goup', 'Go up for it', 'AMBITIOUS', 0.13, 'GOAL', ['headingAccuracy', 'jumping', 'strength']),
+    C('stay', 'Stay out and take the second ball', 'BALANCED', 0.34, 'SHOT_ON', ['positioning', 'longShots']),
+    C('shape', 'Hold your position — somebody has to', 'SAFE', 0.70, 'RETAIN', ['positioning']),
+  ] },
+
+  GAME_MANAGEMENT: { prompt: 'One goal in it, and the game needs seeing out.', choices: [
+    C('keep', 'Keep the ball in the corner', 'SAFE', 0.78, 'RETAIN', ['ballControl', 'strength', 'composure']),
+    C('kill', 'Go and kill the game off', 'AMBITIOUS', 0.26, 'GOAL', ['finishing', 'composure']),
+    C('drop', 'Drop in and defend the lead', 'SAFE', 0.72, 'DUEL_WON', ['positioning', 'marking']),
+  ] },
+
+  HAT_TRICK_BALL: { prompt: 'You’re on two. He’s in more space than you are.', choices: [
+    C('greedy', 'Shoot. This is your night', 'AMBITIOUS', 0.24, 'GOAL', ['finishing', 'composure']),
+    C('square', 'Square it. The team comes first', 'SAFE', 0.62, 'ASSIST', ['vision', 'shortPassing']),
+  ] },
+
+  REF_DECISION: { prompt: 'The referee has just booked you, and you don’t agree.', choices: [
+    C('walk', 'Walk away and say nothing', 'SAFE', 0.88, 'RETAIN', ['composure']),
+    C('word', 'Have a quiet word with him', 'BALANCED', 0.52, 'RETAIN', ['composure', 'aggression']),
+    C('surround', 'Let him know exactly what you think', 'AMBITIOUS', 0.22, 'NOTHING', ['aggression']),
+  ] },
+
+  DEMAND_THE_BALL: { prompt: 'An hour gone and you have barely touched it.', choices: [
+    C('demand', 'Go and get on it. Show for everything', 'BALANCED', 0.48, 'KEY_PASS', ['composure', 'shortPassing', 'vision']),
+    C('drift', 'Drift wide and find the space', 'BALANCED', 0.44, 'SHOT_ON', ['positioning', 'agility']),
+    C('hide', 'Stay in position and wait for it to come', 'SAFE', 0.66, 'RETAIN', ['positioning']),
+  ] },
 };
 
 /** The manager's preferred risk + rewards per game plan, for adherence. */

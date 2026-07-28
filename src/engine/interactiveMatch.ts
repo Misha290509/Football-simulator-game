@@ -28,6 +28,7 @@ import {
   type MatchConditions, type ScoutNote,
 } from '../game/matchConditions';
 import { targetingFactor, tacticalFoulAt, tacticalFoulTick, foulFlowPenalty, type OppositionPlan } from '../game/opposition';
+import { chainAfter, situationMoment } from '../game/momentChains';
 import type { PositioningIntent, MarkerInfo } from '../types/interactiveMatch';
 
 export interface InteractiveInput {
@@ -372,14 +373,16 @@ function ctxFor(input: InteractiveInput, run: Running, minute: number): MomentCo
   };
 }
 
-function buildMoment(input: InteractiveInput, spec: { type: MomentType; minute: number }, index: number, run: Running): KeyMoment {
+function buildMoment(
+  input: InteractiveInput, spec: { type: MomentType; minute: number }, index: number, run: Running, because?: string,
+): KeyMoment {
   const def = MOMENT_DEFS[spec.type];
   const duel = input.marker && isDuelMoment(spec.type);
   const prompt = duel ? `${def.prompt} You're up against ${input.marker!.name}.` : def.prompt;
   return {
     id: `${input.matchId}_m${index}`,
     matchId: input.matchId, index, minute: spec.minute, type: spec.type, position: input.avatar.position,
-    prompt, choices: def.choices, gamePlanAligned: gamePlanAlignedChoices(spec.type, input.gamePlan),
+    prompt, because, choices: def.choices, gamePlanAligned: gamePlanAlignedChoices(spec.type, input.gamePlan),
     context: ctxFor(input, run, spec.minute),
     // Instinct vs information: under real pressure the picture gets fuzzy unless
     // he has the temperament to keep his head.
@@ -414,13 +417,40 @@ export function runInteractiveMatch(input: InteractiveInput, decisions: MomentDe
   if (input.ritualBroken) run.ticks.push({ minute: 0, text: `🧿 ${input.ritualBroken.line} You're not quite in your rhythm.`, kind: 'INFO' });
   const decisionLog: MomentDecision[] = [];
 
-  for (let i = 0; i < plan.moments.length; i++) {
-    // Cynical fouls break his rhythm before he can build it.
-    if (tacticalFoulAt(input.oppPlan, input.matchId, i)) {
-      run.ticks.push(tacticalFoulTick(input.avatar, plan.moments[i].minute, input.matchId, i));
+  // The scheduled moments are a backbone, not the whole match. Chains and
+  // situations splice in as they are earned, so the queue grows during the run.
+  // Every insertion is derived from state already determined at that point (the
+  // decisions so far plus a hash of stable ids) and never draws from `rng`, so
+  // the match remains a pure function of (seed, decisionLog).
+  const queue: { type: MomentType; minute: number; because?: string; depth: number }[] =
+    plan.moments.map((m) => ({ ...m, depth: 0 }));
+  let usedSituation = false;
+
+  for (let i = 0; i < queue.length; i++) {
+    const spec = queue[i];
+    // Cynical fouls break his rhythm before he can build it. Only the scheduled
+    // moments are targeted, so a chain can't be fouled out of existence.
+    if (spec.depth === 0 && tacticalFoulAt(input.oppPlan, input.matchId, i)) {
+      run.ticks.push(tacticalFoulTick(input.avatar, spec.minute, input.matchId, i));
       run.flow = clamp(run.flow - foulFlowPenalty(), 0, 100);
     }
-    const moment = buildMoment(input, plan.moments[i], i, run);
+
+    // Does the state of the game create a moment of its own right now? One per
+    // match at most, so it keeps its weight.
+    if (!usedSituation && spec.depth === 0) {
+      const sit = situationMoment({
+        minute: spec.minute, teamGoals: run.teamGoals, oppGoals: Math.max(0, run.oppGoals - run.oppPrevented),
+        avatarGoals: run.avatarGoals, won: run.bigWon, lost: run.bigLost, booked: run.yellow,
+      }, input.role, input.matchId, i);
+      if (sit) {
+        usedSituation = true;
+        queue.splice(i, 0, { ...sit, depth: 1 });
+        // Fall through and handle the situation itself on this iteration.
+      }
+    }
+
+    const current = queue[i];
+    const moment = buildMoment(input, current, i, run, current.because);
     const decided = decisions[i];
     if (!decided) {
       return { kind: 'DECISION', moment, ticker: [...run.ticks], flow: Math.round(run.flow), marker: input.marker, duel: { won: run.duelWon, lost: run.duelLost } };
@@ -431,6 +461,10 @@ export function runInteractiveMatch(input: InteractiveInput, decisions: MomentDe
       momentId: moment.id, choiceId: choice.id, autoResolved: decided.autoResolved,
       followedGamePlan: moment.gamePlanAligned.includes(choice.id), success, effect,
     });
+
+    // Did that decision lead somewhere? Beat your man and the cross is on now.
+    const chained = chainAfter(current.type, choice.id, success, current.minute, input.matchId, i, current.depth);
+    if (chained) queue.splice(i + 1, 0, { ...chained, depth: current.depth + 1 });
   }
 
   // All moments decided → finalize.

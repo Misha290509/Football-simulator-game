@@ -4,6 +4,7 @@ import { buildLineupProfile } from '../lineup';
 import { generatePlayer } from '../generator';
 import { Rng } from '../rng';
 import { momentRole } from '../../game/momentLibrary';
+import { isSituation } from '../../game/momentChains';
 import type { Player } from '../../types/player';
 import type { Match } from '../../types/match';
 import type { MomentDecision } from '../../types/interactiveMatch';
@@ -226,6 +227,75 @@ describe('interactive match — half-time positioning switch', () => {
     expect(firstHalf(b)).toEqual(firstHalf(a));
     // Deterministic: the switched run reproduces exactly.
     expect(playMoments(switched)).toEqual(b);
+  });
+});
+
+describe('interactive match — chains & situations', () => {
+  /** Every moment the engine offered across a full match, in order. */
+  const momentsOf = (inp: InteractiveInput, choiceIndex = 0) => {
+    const decisions: MomentDecision[] = [];
+    const out: { type: string; because?: string; index: number }[] = [];
+    let step = runInteractiveMatch(inp, decisions);
+    let guard = 0;
+    while (step.kind === 'DECISION' && guard++ < 60) {
+      out.push({ type: step.moment.type, because: step.moment.because, index: step.moment.index });
+      const ch = step.moment.choices[Math.min(choiceIndex, step.moment.choices.length - 1)];
+      decisions.push({ momentId: step.moment.id, choiceId: ch.id, autoResolved: false, followedGamePlan: false, success: false, effect: '' });
+      step = runInteractiveMatch(inp, decisions);
+    }
+    return { moments: out, decisions, done: step };
+  };
+
+  it('produces follow-up moments that explain why they exist', () => {
+    // Sweep seeds and roles until a chain or situation lands; over a season's
+    // worth of matches it has to happen, or the feature is inert.
+    let withReason = 0, seen = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const pos of ['ST', 'RW', 'CM', 'RCB', 'GK'] as const) {
+        for (const ci of [0, 1]) {
+          const { moments } = momentsOf(input(pos, seed), ci);
+          seen += moments.length;
+          withReason += moments.filter((m) => m.because).length;
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(500);
+    expect(withReason).toBeGreaterThan(0);
+  });
+
+  it('keeps the replay exact even when the match grew extra moments', () => {
+    // Find a match that actually chained, then prove it still reproduces.
+    for (let seed = 1; seed <= 60; seed++) {
+      const inp = input('RW', seed);
+      const { moments, decisions, done } = momentsOf(inp, 0);
+      if (!moments.some((m) => m.because)) continue;
+      expect(done.kind).toBe('DONE');
+      const replay = runInteractiveMatch(inp, decisions);
+      expect(replay.kind).toBe('DONE');
+      if (replay.kind === 'DONE' && done.kind === 'DONE') {
+        expect(fingerprint(replay.match)).toBe(fingerprint(done.match));
+        expect(replay.record.decisionLog.length).toBe(decisions.length);
+      }
+      return;
+    }
+    throw new Error('no chained match found in 60 seeds — chains are not firing');
+  });
+
+  it('indexes every moment contiguously, so the decision log stays aligned', () => {
+    for (let seed = 1; seed <= 15; seed++) {
+      const { moments } = momentsOf(input('ST', seed));
+      expect(moments.map((m) => m.index)).toEqual(moments.map((_, i) => i));
+    }
+  });
+
+  it('never offers more than one scoreline-driven situation in a match', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const pos of ['ST', 'CM', 'GK'] as const) {
+        const { moments } = momentsOf(input(pos, seed));
+        const sits = moments.filter((m) => isSituation(m.type as never));
+        expect(sits.length).toBeLessThanOrEqual(1);
+      }
+    }
   });
 });
 

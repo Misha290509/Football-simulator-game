@@ -249,6 +249,11 @@ function MomentCard({ moment, gamePlanLabel, flow, fatigue, scout, timed, second
         </span>
         {timed && <span className={`text-sm font-mono ${left <= 3 ? 'text-rose-400' : 'text-slate-400'}`}>{left}s</span>}
       </div>
+      {m.because && (
+        <div className="text-[12px] text-amber-300/90 border-l-2 border-amber-500/40 pl-2 -mb-1">
+          {m.because}
+        </div>
+      )}
       <p className="text-base text-white font-medium">{m.prompt}</p>
       {(scout ?? []).length > 0 && (
         <div className="text-[11px] text-sky-300/80">📋 {(scout ?? []).map((n) => n.hint).join(' · ')}</div>

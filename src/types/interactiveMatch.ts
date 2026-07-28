@@ -15,7 +15,10 @@ export type MomentType =
   | 'RETENTION_PASS' | 'DRIVE_FORWARD' | 'MIDFIELD_TACKLE' | 'SWITCH_PLAY'
   | 'SLIDE_TACKLE' | 'AERIAL_DUEL' | 'CLEAR_OR_PLAY_OUT' | 'BLOCK_SHOT' | 'OFFSIDE_TRAP'
   | 'SHOT_STOP' | 'GK_ONE_ON_ONE' | 'CLAIM_CROSS' | 'SWEEPER' | 'GK_DISTRIBUTION' | 'PENALTY_SAVE'
-  | 'FREE_KICK';
+  | 'FREE_KICK'
+  // Situational — these only ever exist when the state of the game creates them
+  // (see game/momentChains), which is why they carry weight when they appear.
+  | 'LATE_CORNER' | 'GAME_MANAGEMENT' | 'HAT_TRICK_BALL' | 'REF_DECISION' | 'DEMAND_THE_BALL';
 
 export type MomentRisk = 'SAFE' | 'BALANCED' | 'AMBITIOUS';
 
@@ -55,6 +58,9 @@ export interface KeyMoment {
   index: number; // 0-based order within the match (aligns with decisionLog)
   minute: number;
   type: MomentType;
+  /** Why this moment exists at all, when it wasn't simply scheduled — a chain
+   *  off the last decision, or a situation the scoreline created. */
+  because?: string;
   position: Position;
   prompt: string;
   choices: MomentChoice[];
