@@ -109,6 +109,17 @@ export function TransferMarket() {
   const shortlist = meta.shortlist ?? [];
   const shortlistSet = useMemo(() => new Set(shortlist), [shortlist]);
   const toggleShortlist = useGameStore((s) => s.toggleShortlist);
+  const setTransferListed = useGameStore((s) => s.setTransferListed);
+  const setLoanListed = useGameStore((s) => s.setLoanListed);
+
+  // Your own players you've put up for sale or loan, so you can see the whole
+  // list in one place instead of opening every profile to check.
+  const myListed = useMemo(
+    () => Object.values(players)
+      .filter((p) => p.contract.clubId === meta.managerClubId && (p.transferListed || p.loanListed))
+      .sort((a, b) => Number(!!b.transferListed) - Number(!!a.transferListed) || b.value - a.value),
+    [players, meta.managerClubId],
+  );
 
   // Alerts on your shortlisted players — a lightweight watch-list feed so a
   // tracked target's contract running down or a purple patch doesn't slip by.
@@ -324,6 +335,49 @@ export function TransferMarket() {
           </div>
         </div>
       )}
+
+      {/* Your transfer list — always shown, so there's one place to check. */}
+      <div className="card p-4">
+        <h2 className="text-sm font-semibold text-slate-400 mb-2">
+          Your transfer list{myListed.length > 0 ? ` (${myListed.length})` : ''}
+        </h2>
+        {myListed.length === 0 ? (
+          <p className="text-xs text-slate-500">Nobody is listed. Open a player's profile and use Transfer list or Loan list to put him up.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {myListed.map((p) => {
+              const bids = offers.filter((o) => o.playerId === p.id).length;
+              return (
+                <div key={p.id} className="flex items-center justify-between gap-2 text-sm bg-surface-700 rounded px-3 py-1.5">
+                  <button type="button" className="flex items-center gap-2 min-w-0 text-left hover:text-white" onClick={() => navigate(`/player/${p.id}`)}>
+                    <Rating value={p.overall} />
+                    <span className="min-w-0">
+                      <span className="block font-medium truncate">{fullName(p)}</span>
+                      <span className="block text-xs text-slate-500">{p.position} · {ageOf(p, year)} · {formatMoney(p.value)}</span>
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {p.transferListed && <span className="text-[10px] rounded px-1.5 py-0.5 bg-emerald-500/15 text-emerald-300">For sale</span>}
+                    {p.loanListed && <span className="text-[10px] rounded px-1.5 py-0.5 bg-sky-500/15 text-sky-300">For loan</span>}
+                    {bids > 0 && <span className="text-[10px] text-amber-300">{bids} offer{bids > 1 ? 's' : ''}</span>}
+                    <button
+                      type="button"
+                      className="btn-ghost text-xs py-0.5 px-2"
+                      onClick={async () => {
+                        if (p.transferListed) await setTransferListed(p.id, false);
+                        if (p.loanListed) await setLoanListed(p.id, false);
+                        flash(`${fullName(p)} taken off the list.`);
+                      }}
+                    >
+                      Unlist
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {offers.length > 0 && (
         <div className="card p-4">
