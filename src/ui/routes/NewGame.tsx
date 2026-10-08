@@ -31,7 +31,6 @@ export function NewGame() {
   const [countryId, setCountryId] = useState<string>('');
   const [managerName, setManagerName] = useState('');
   const [selectedClub, setSelectedClub] = useState<string | null>(null);
-  const [seedText, setSeedText] = useState('');
   const [difficulty, setDifficulty] = useState<'RELAXED' | 'NORMAL' | 'HARD'>('NORMAL');
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [customOn, setCustomOn] = useState(false);
@@ -109,7 +108,6 @@ export function NewGame() {
     if (!canStart || !effAbbrev) return;
     setBusy(true);
     try {
-      const seed = seedText.trim() ? Number(seedText) || hashStr(seedText) : undefined;
       const clubId = `club_${effCountryId}_${effAbbrev}`;
       if (isPlayer) {
         await newPlayerCareer({
@@ -117,7 +115,6 @@ export function NewGame() {
           dataset,
           clubId,
           startYear: START_YEAR,
-          seed,
           origin: 'CREATED',
           playerName: { first: firstName.trim(), last: lastName.trim() },
           position,
@@ -141,7 +138,6 @@ export function NewGame() {
           dataset,
           managerClubId: clubId,
           startYear: START_YEAR,
-          seed,
           difficulty: challenge ? challenge.difficulty : difficulty,
           challengeId: challenge?.id,
           customClub: customOn ? { name: customName, shortName: customName, abbrev: customAbbrev, primaryColor: customColor } : undefined,
@@ -282,10 +278,6 @@ export function NewGame() {
             </p>
           </div>
         )}
-        <label className="block text-sm">
-          <span className="text-slate-400">Seed (optional, for reproducible worlds)</span>
-          <input className="mt-1 w-full bg-surface-700 border border-surface-600 rounded-md px-3 py-2 text-sm font-mono" value={seedText} onChange={(e) => setSeedText(e.target.value)} placeholder="leave blank for random" />
-        </label>
         {!challenge && (
           <div className="text-sm">
             <label className="flex items-center gap-2"><input type="checkbox" checked={customOn} onChange={(e) => setCustomOn(e.target.checked)} /><span className="text-slate-400">Rebrand my club (custom name &amp; colours)</span></label>
@@ -438,13 +430,4 @@ export function NewGame() {
       </button>
     </div>
   );
-}
-
-function hashStr(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
 }
