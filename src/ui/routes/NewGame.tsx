@@ -6,6 +6,7 @@ import type { Dataset } from '../../types/dataset';
 import type { Position } from '../../types/attributes';
 import type { Foot } from '../../types/player';
 import { CrestBadge } from '../components/Rating';
+import { ChallengeCarousel } from '../components/ChallengeCarousel';
 import { CHALLENGES, challengeById, pickChallengeClub } from '../../game/challenges';
 import { PLAYER_ARCHETYPES } from '../../game/playerCareer';
 import { YOUTH_POSITIONS } from '../../engine/academy';
@@ -188,22 +189,7 @@ export function NewGame() {
         <div className="card p-4">
           <h2 className="section-title mb-1">Challenges</h2>
           <p className="text-xs text-slate-500 mb-3">Pre determined challanges to make it more exciting.</p>
-          <div className="grid sm:grid-cols-2 gap-2">
-            {CHALLENGES.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setChallengeId(challengeId === c.id ? null : c.id)}
-                className={`text-left p-3 rounded-lg border transition-colors ${challengeId === c.id ? 'border-accent bg-accent/10' : 'border-surface-600 hover:bg-surface-700'}`}
-              >
-                <div className="font-display font-semibold uppercase tracking-wide text-white">{c.name}</div>
-                <div className="text-xs text-accent-400 mb-1">{c.tagline}</div>
-                <div className="text-xs text-slate-400">{c.brief}</div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-500 mt-1.5">
-                  {c.difficulty.toLowerCase()} · {c.seasons} season{c.seasons > 1 ? 's' : ''}{c.rule === 'NO_SIGNINGS' ? ' · no signings' : ''}
-                </div>
-              </button>
-            ))}
-          </div>
+          <ChallengeCarousel challenges={CHALLENGES} selectedId={challengeId} onSelect={setChallengeId} />
         </div>
       )}
 
