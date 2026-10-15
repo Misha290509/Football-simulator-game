@@ -393,6 +393,11 @@ export function TransferMarket() {
                       <span className="font-medium">{fullName(p)}</span><span className="text-slate-500"> — {from?.shortName} </span>
                       {o.type === 'BUY' ? <span className="text-emerald-400">bid {formatMoney(o.fee)}</span>
                         : <span className="text-sky-400">loan until {o.loanUntilYear}</span>}
+                      {o.topsClubId && (
+                        <span className="ml-1.5 text-[10px] rounded px-1.5 py-0.5 bg-rose-500/15 text-rose-300">
+                          ⚔️ tops {clubs[o.topsClubId]?.shortName ?? 'a rival'}'s bid
+                        </span>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <button className="btn-primary text-xs py-1" onClick={() => acceptOffer(o.id)}>Accept</button>
@@ -614,6 +619,8 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
   // Live relationship + any in-progress ask, kept in the save so talks resume.
   const tension = useGameStore((s) => (seller ? s.meta?.clubRelations?.[seller.id]?.tension ?? 0 : 0));
   const clubAsk = useGameStore((s) => (seller ? s.meta?.transferTalks?.[player.id]?.ask : undefined));
+  const rival = useGameStore((s) => (seller ? s.meta?.transferTalks?.[player.id]?.rival : undefined));
+  const rivalClub = useGameStore((s) => (rival ? s.clubs[rival.clubId] : undefined));
 
   // Phase 1 — fee (default to the value the manager can see).
   const startFee = view.value ?? clubValuation(player, seller, buyer, year);
@@ -622,6 +629,8 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
     setMsg(r.message);
     if (r.outcome === 'ACCEPT') { setAgreedFee(r.agreedFee ?? fallbackFee); setDealGrade(r.grade ?? null); setPhase('TERMS'); }
     else if (r.outcome === 'REFUSE') { flash(r.message); onBreakOff(); onClose(); }
+    // A rival's bid was taken instead: he's gone, nothing left to negotiate.
+    else if (r.outcome === 'LOST') { flash(r.message); onClose(); }
     // COUNTER: their new (lower) ask is shown below; nudge your bid and try again.
   };
   const submitFee = async () => handleFeeResult(await submitTransferOffer(player.id, offer), offer.fee);
@@ -693,6 +702,13 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
                 <div className={`h-1.5 rounded ${tension >= 80 ? 'bg-rose-500' : tension >= 50 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${tension}%` }} />
               </div>
               <span className="font-mono text-slate-400">{tension >= 80 ? 'strained' : tension >= 50 ? 'tense' : 'cordial'}</span>
+            </div>
+          )}
+          {rival && (
+            <div className="col-span-2 rounded border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              ⚔️ <span className="font-semibold">Bidding war</span> — {rivalClub?.shortName ?? 'Another club'} have bid{' '}
+              <span className="font-semibold">{formatMoney(rival.bid)}</span>. Beat it to win him. They may raise again, and the
+              longer you haggle the likelier {seller?.shortName ?? 'the club'} just take their money.
             </div>
           )}
           {clubAsk != null && (

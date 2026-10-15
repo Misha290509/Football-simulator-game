@@ -59,9 +59,58 @@ export function weeklyWageBill(players: Player[]): number {
   return players.reduce((s, p) => s + p.contract.wage * (p.loan ? 1 - p.loan.wageSplitParent : 1), 0);
 }
 
+const round100k = (n: number) => Math.round(n / 100_000) * 100_000;
+
+/** A weighted random pick. Items with a weight of zero or less are skipped. */
+function weightedPick<T>(items: readonly T[], weight: (t: T) => number, rng: Rng): T | null {
+  let total = 0;
+  const weights = items.map((t) => {
+    const w = Math.max(0, weight(t));
+    total += w;
+    return w;
+  });
+  if (total <= 0) return null;
+  let r = rng.next() * total;
+  for (let i = 0; i < items.length; i++) {
+    r -= weights[i];
+    if (r < 0) return items[i];
+  }
+  return items[items.length - 1];
+}
+
+/**
+ * A club plausibly in the market for this player: around his level, able to
+ * pay `minBudget`, and not in `exclude`. Picked at random across every club
+ * that fits, weighted toward the closest fit, so interest comes from all over
+ * the world. Taking the first club in the list that fitted meant the same club
+ * (whichever the dataset happened to load first) made every offer.
+ */
+export function pickInterestedClub(
+  player: Player,
+  clubs: readonly Club[],
+  rng: Rng,
+  opts: { minBudget: number; exclude: ReadonlySet<string>; below?: number; above?: number },
+): Club | null {
+  const below = opts.below ?? 12;
+  const above = opts.above ?? 12;
+  const affordable = clubs.filter(
+    (c) => !opts.exclude.has(c.id) && c.id !== player.contract.clubId && c.finances.transferBudget >= opts.minBudget,
+  );
+  const near = affordable.filter((c) => c.reputation >= player.overall - below && c.reputation <= player.overall + above);
+  // Closer to his level is likelier, but anyone in range can come in.
+  const fit = (c: Club) => 1 / (1 + Math.abs(c.reputation - player.overall) / 5);
+  return weightedPick(near, fit, rng) ?? weightedPick(affordable, fit, rng);
+}
+
+/** Most clubs that will bid for one of your players at the same time. */
+export const MAX_COMPETING_BIDS = 3;
+
 /**
  * Generate AI offers for the manager's transfer-/loan-listed players. Returns
  * new offers to surface in the inbox/Transfers screen (manager accepts/rejects).
+ *
+ * A listed player who already has a bid can attract a second club that tops it,
+ * so a good player put up for sale can start a bidding war.
  */
 export function generateOffers(
   managerClubId: string,
@@ -73,34 +122,51 @@ export function generateOffers(
   year: number,
 ): TransferOffer[] {
   const offers: TransferOffer[] = [];
-  const haveOfferFor = new Set(existing.map((o) => `${o.playerId}_${o.type}`));
   const aiClubs = Object.values(clubs).filter((c) => c.id !== managerClubId);
+  const offersFor = (playerId: string, type: TransferOffer['type']) =>
+    [...existing, ...offers].filter((o) => o.playerId === playerId && o.type === type);
 
   for (const p of Object.values(players)) {
     if (p.contract.clubId !== managerClubId) continue;
     if (p.loan) continue; // can't sell/loan a loaned-in player
 
-    if (p.transferListed && !haveOfferFor.has(`${p.id}_BUY`) && rng.chance(0.3)) {
-      // A buyer near the player's level who can afford the asking price.
-      const ask = askingPrice(p);
-      const buyer = aiClubs.find(
-        (c) => Math.abs(c.reputation - p.overall) <= 12 && c.finances.transferBudget >= ask,
-      ) ?? aiClubs.find((c) => c.finances.transferBudget >= ask);
-      if (buyer) {
-        offers.push({
-          id: `offer_${p.id}_buy_${day}`,
-          type: 'BUY', playerId: p.id, fromClubId: buyer.id,
-          fee: Math.round(ask * rng.float(0.85, 1.15) / 100_000) * 100_000,
-          wage: wageDemand(p), day,
+    if (p.transferListed) {
+      const bids = offersFor(p.id, 'BUY');
+      if (bids.length === 0 && rng.chance(0.3)) {
+        // A buyer near the player's level who can afford the asking price.
+        const ask = askingPrice(p);
+        const buyer = pickInterestedClub(p, aiClubs, rng, { minBudget: ask, exclude: new Set() });
+        if (buyer) {
+          offers.push({
+            id: `offer_${p.id}_buy_${buyer.id}_${day}`,
+            type: 'BUY', playerId: p.id, fromClubId: buyer.id,
+            fee: round100k(ask * rng.float(0.85, 1.15)),
+            wage: wageDemand(p), day,
+          });
+        }
+      } else if (bids.length > 0 && bids.length < MAX_COMPETING_BIDS && rng.chance(0.22)) {
+        // Another club gets wind of the bid and tops it.
+        const top = bids.reduce((a, b) => (b.fee > a.fee ? b : a));
+        const fee = round100k(top.fee * rng.float(1.05, 1.15));
+        const rival = pickInterestedClub(p, aiClubs, rng, {
+          minBudget: fee,
+          exclude: new Set(bids.map((o) => o.fromClubId)),
         });
+        if (rival && fee > top.fee) {
+          offers.push({
+            id: `offer_${p.id}_buy_${rival.id}_${day}`,
+            type: 'BUY', playerId: p.id, fromClubId: rival.id,
+            fee, wage: wageDemand(p), day, topsClubId: top.fromClubId,
+          });
+        }
       }
     }
 
-    if (p.loanListed && !haveOfferFor.has(`${p.id}_LOAN`) && rng.chance(0.35)) {
-      const taker = aiClubs.find((c) => c.reputation >= p.overall - 14 && c.reputation <= p.overall + 4);
+    if (p.loanListed && offersFor(p.id, 'LOAN').length === 0 && rng.chance(0.35)) {
+      const taker = pickInterestedClub(p, aiClubs, rng, { minBudget: 0, exclude: new Set(), below: 14, above: 4 });
       if (taker) {
         offers.push({
-          id: `offer_${p.id}_loan_${day}`,
+          id: `offer_${p.id}_loan_${taker.id}_${day}`,
           type: 'LOAN', playerId: p.id, fromClubId: taker.id,
           fee: 0, wage: wageDemand(p),
           loanUntilYear: year + rng.int(1, 2), wageSplitParent: rng.pick([0.5, 0.5, 0.6]), day,
@@ -109,6 +175,87 @@ export function generateOffers(
     }
   }
   return offers;
+}
+
+// --- Bidding wars when you buy ----------------------------------------------
+// When you open talks for a player, another club may already be in for him.
+// The seller won't take less than the rival's bid, the rival raises as you
+// haggle, and if you take too long the seller may simply take their money.
+
+export interface RivalBid {
+  clubId: string;
+  /** The rival's current bid. You must beat it, not just match it. */
+  bid: number;
+  /** The most the rival will go to. Hidden from the player. */
+  ceiling: number;
+  /** Rounds of haggling since the rival appeared. */
+  rounds: number;
+}
+
+/** How much you have to beat a rival's bid by for the seller to choose you. */
+export function outbidMargin(bid: number): number {
+  return Math.max(100_000, round100k(bid * 0.03));
+}
+
+/** The least the seller will take with a rival in the race. */
+export function floorWithRival(floor: number, rival?: RivalBid): number {
+  return rival ? Math.max(floor, rival.bid + outbidMargin(rival.bid)) : floor;
+}
+
+/**
+ * Is another club already in for this player? Better players draw more
+ * competition: about one in six for an ordinary player, nearly one in two for
+ * a star.
+ */
+export function rollRivalBid(
+  player: Player,
+  sellerId: string,
+  buyerId: string,
+  floor: number,
+  clubs: readonly Club[],
+  rng: Rng,
+): RivalBid | null {
+  const chance = clamp(0.16 + (player.overall - 65) * 0.012, 0.1, 0.45);
+  if (!rng.chance(chance)) return null;
+  const bid = round100k(floor * rng.float(1.03, 1.15));
+  const club = pickInterestedClub(player, clubs, rng, {
+    minBudget: bid,
+    exclude: new Set([sellerId, buyerId]),
+    below: 10,
+    above: 15,
+  });
+  if (!club) return null;
+  const ceiling = round100k(Math.max(bid, Math.min(club.finances.transferBudget, floor * rng.float(1.2, 1.5))));
+  return { clubId: club.id, bid, ceiling, rounds: 0 };
+}
+
+export type RivalMove =
+  | { kind: 'RAISED'; rival: RivalBid }
+  | { kind: 'HOLDS'; rival: RivalBid }
+  | { kind: 'WITHDREW' }
+  | { kind: 'SOLD'; rival: RivalBid };
+
+/**
+ * The rival's answer to a round of haggling you didn't win.
+ *
+ * If your offer is already above theirs, they try to top it and pull out when
+ * they can't. If they are still ahead, the seller may just take their money,
+ * and the longer you haggle the likelier that gets.
+ */
+export function advanceRival(rival: RivalBid, yourOffer: number, rng: Rng): RivalMove {
+  const rounds = rival.rounds + 1;
+  if (yourOffer >= rival.bid) {
+    const needed = yourOffer + outbidMargin(yourOffer);
+    if (needed > rival.ceiling) return { kind: 'WITHDREW' };
+    const bid = round100k(Math.min(rival.ceiling, needed * rng.float(1, 1.04)));
+    return { kind: 'RAISED', rival: { ...rival, bid: Math.max(bid, needed), rounds } };
+  }
+  if (rng.chance(Math.min(0.5, 0.05 + rounds * 0.07))) return { kind: 'SOLD', rival: { ...rival, rounds } };
+  if (rival.bid < rival.ceiling && rng.chance(0.4)) {
+    const bid = round100k(Math.min(rival.ceiling, rival.bid * rng.float(1.04, 1.1)));
+    if (bid > rival.bid) return { kind: 'RAISED', rival: { ...rival, bid, rounds } };
+  }
+  return { kind: 'HOLDS', rival: { ...rival, rounds } };
 }
 
 export interface BidResult {

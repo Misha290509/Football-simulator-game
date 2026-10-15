@@ -102,6 +102,8 @@ export interface TransferTalk {
   /** The first ask, kept for grading how far you talked them down. */
   initialAsk: number;
   rounds: number;
+  /** Another club bidding for the same player (a bidding war). */
+  rival?: { clubId: string; bid: number; ceiling: number; rounds: number };
 }
 
 /** One year's slice of an installment transfer fee. */
@@ -198,6 +200,8 @@ export interface TransferOffer {
   loanUntilYear?: number;
   wageSplitParent?: number;
   day: number;
+  /** Set when this bid tops another club's bid for the same player. */
+  topsClubId?: string;
 }
 
 // --- Press conferences (§ Boardroom & media) -------------------------------

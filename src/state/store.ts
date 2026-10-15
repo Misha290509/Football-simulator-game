@@ -132,6 +132,10 @@ import {
   generateOffers,
   canAgreePreContract,
   evaluateSwap,
+  rollRivalBid,
+  floorWithRival,
+  advanceRival,
+  wageDemand,
   type BidResult,
 } from '../game/transfers';
 import { advanceRumours } from '../game/rumours';
@@ -139,14 +143,15 @@ import { buildDeadlineFeed } from '../game/deadlineDay';
 import { generateSponsorOffers, generateStadiumOffers } from '../game/sponsorship';
 import { accrueHonours } from '../game/dynasty';
 import { agentDemands, evaluateContractOffer, applyContractOffer, leaveWillingness, type ContractOffer, type NegotiationResult } from '../game/contracts';
-import { transferFloor, overpricedAsk, respondToTransferOffer, type FeeOffer } from '../game/feeNegotiation';
+import { transferFloor, overpricedAsk, respondToTransferOffer, effectiveValue, type FeeOffer } from '../game/feeNegotiation';
 import type { TransferTalk, InstalmentPayment } from '../types/league';
 
 /** The club's answer to one fee offer, plus the manager's standing with them. */
 export interface FeeTalkResult {
   ok: boolean;
   message: string;
-  outcome?: 'ACCEPT' | 'COUNTER' | 'REFUSE';
+  /** LOST: the selling club took a rival's bid instead and he's gone. */
+  outcome?: 'ACCEPT' | 'COUNTER' | 'REFUSE' | 'LOST';
   counterFee?: number; // the club's updated ask (COUNTER)
   agreedFee?: number;  // the fee that was agreed (ACCEPT)
   grade?: string;      // deal grade (ACCEPT)
@@ -1534,36 +1539,84 @@ export const useGameStore = create<GameState>((set, get) => ({
     const floor = transferFloor(player, seller, buyer, year);
     const talks = { ...(meta.transferTalks ?? {}) };
     let talk = talks[playerId] as TransferTalk | undefined;
+    let opening = '';
     if (!talk || talk.clubId !== seller.id) {
       const rng = new Rng((meta.seed ^ hashSeed(`talk_${playerId}`) ^ meta.currentDay) >>> 0);
       const initialAsk = overpricedAsk(floor, 1.25 + rng.int(0, 25) / 100);
-      talk = { playerId, clubId: seller.id, floor, ask: initialAsk, initialAsk, rounds: 0 };
+      // Another club may already be in for him: a bidding war.
+      const rival = rollRivalBid(player, seller.id, buyer.id, floor, Object.values(clubs), rng) ?? undefined;
+      talk = { playerId, clubId: seller.id, floor, ask: Math.max(initialAsk, floorWithRival(floor, rival)), initialAsk, rounds: 0, rival };
+      if (rival) {
+        opening = `⚔️ ${clubs[rival.clubId]?.shortName ?? 'Another club'} are also in for ${player.name.last} and have bid ${rival.bid.toLocaleString()}. You'll have to beat it. `;
+      }
     }
 
+    // With a rival in the race the seller won't take less than their bid.
+    const effFloor = floorWithRival(talk.floor, talk.rival);
     const resp = respondToTransferOffer({
       offer, player, sellerName: seller.shortName,
-      floor: talk.floor, ask: talk.ask, initialAsk: talk.initialAsk, tension: rel.tension,
+      floor: effFloor, ask: Math.max(talk.ask, effFloor), initialAsk: talk.initialAsk, tension: rel.tension,
     });
     const relations = { ...(meta.clubRelations ?? {}), [seller.id]: { ...rel, tension: resp.tension } };
+    const rivalName = talk.rival ? clubs[talk.rival.clubId]?.shortName ?? 'the other club' : '';
 
     if (resp.outcome === 'ACCEPT') {
       delete talks[playerId];
       const newMeta: SaveMeta = { ...meta, clubRelations: relations, transferTalks: talks };
       set({ meta: newMeta }); await persistMeta(newMeta);
-      return { ok: true, outcome: 'ACCEPT', message: resp.message, agreedFee: offer.fee, grade: resp.grade, tension: resp.tension };
+      const beaten = talk.rival ? ` You've beaten ${rivalName} to him.` : '';
+      return { ok: true, outcome: 'ACCEPT', message: opening + resp.message + beaten, agreedFee: offer.fee, grade: resp.grade, tension: resp.tension };
     }
     if (resp.outcome === 'REFUSE') {
       relations[seller.id] = { tension: resp.tension, refuseUntil: meta.currentDay + 14 };
       delete talks[playerId];
       const newMeta: SaveMeta = { ...meta, clubRelations: relations, transferTalks: talks };
       set({ meta: newMeta }); await persistMeta(newMeta);
-      return { ok: false, outcome: 'REFUSE', message: resp.message, tension: resp.tension };
+      return { ok: false, outcome: 'REFUSE', message: opening + resp.message, tension: resp.tension };
     }
-    // COUNTER — remember the drifting ask so the next round resumes from here.
-    talks[playerId] = { ...talk, ask: resp.ask, rounds: talk.rounds + 1 };
+
+    // COUNTER — the rival answers too, then the drifting ask is remembered so
+    // the next round resumes from here.
+    let next: TransferTalk = { ...talk, ask: resp.ask, rounds: talk.rounds + 1 };
+    let message = opening + resp.message;
+    if (talk.rival) {
+      const rrng = new Rng((meta.seed ^ hashSeed(`rival_${playerId}_${talk.rounds}`) ^ meta.currentDay) >>> 0);
+      // Outside a window the seller can't complete a sale, so the rival can only bid.
+      const move = advanceRival(talk.rival, effectiveValue(offer, player), rrng);
+      const windowOpen = get().transferWindow().open;
+      if (move.kind === 'SOLD' && windowOpen) {
+        const rivalClub = clubs[move.rival.clubId];
+        if (rivalClub) {
+          const upd = applyTransfer(rivalClub, seller, player, move.rival.bid, wageDemand(player), year);
+          const newClubs = { ...clubs, [rivalClub.id]: upd.buyer, ...(upd.seller ? { [seller.id]: upd.seller } : {}) };
+          const newPlayers = { ...players, [player.id]: upd.player };
+          delete talks[playerId];
+          const lostMsg = `${seller.shortName} have accepted ${rivalClub.shortName}'s ${move.rival.bid.toLocaleString()} bid. ${player.name.first} ${player.name.last} has joined ${rivalClub.shortName}.`;
+          const news = { id: `news_rival_${playerId}_${meta.currentDay}`, day: meta.currentDay, category: 'TRANSFER' as const, title: `Beaten to ${player.name.last}`, body: lostMsg, read: false };
+          const newMeta: SaveMeta = { ...meta, clubRelations: relations, transferTalks: talks, news: [...meta.news, news] };
+          set({ clubs: newClubs, players: newPlayers, meta: newMeta });
+          await putClubs(meta.id, [upd.buyer, ...(upd.seller ? [upd.seller] : [])]);
+          await putPlayers(meta.id, [upd.player]);
+          await persistMeta(newMeta);
+          return { ok: false, outcome: 'LOST', message: lostMsg, tension: resp.tension };
+        }
+      }
+      if (move.kind === 'WITHDREW') {
+        next = { ...next, rival: undefined, ask: Math.max(next.floor, resp.ask) };
+        message += ` ${rivalName} can't go any higher and have pulled out. It's just you now.`;
+      } else if (move.kind === 'RAISED') {
+        next = { ...next, rival: move.rival, ask: Math.max(resp.ask, floorWithRival(next.floor, move.rival)) };
+        message += ` ${rivalName} have raised their bid to ${move.rival.bid.toLocaleString()}.`;
+      } else {
+        const held = move.kind === 'HOLDS' || move.kind === 'SOLD' ? move.rival : talk.rival;
+        next = { ...next, rival: held };
+        message += ` ${rivalName}'s bid of ${held.bid.toLocaleString()} still stands.`;
+      }
+    }
+    talks[playerId] = next;
     const newMeta: SaveMeta = { ...meta, clubRelations: relations, transferTalks: talks };
     set({ meta: newMeta }); await persistMeta(newMeta);
-    return { ok: false, outcome: 'COUNTER', message: resp.message, counterFee: resp.ask, tension: resp.tension };
+    return { ok: false, outcome: 'COUNTER', message, counterFee: next.ask, tension: resp.tension };
   },
 
   abandonTransferTalk: async (playerId) => {
@@ -2117,7 +2170,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       ? (player.squadRole === 'KEY' ? 7 : player.squadRole === 'FIRST' ? 4 : 0) + Math.max(0, (player.overall - 80) * 0.6)
       : 0;
     const board = fanDrop > 0 ? bumpFan(meta.board, -fanDrop) : meta.board;
-    const newMeta: SaveMeta = { ...meta, board, academies, pendingOffers: (meta.pendingOffers ?? []).filter((o) => o.id !== offerId), news: [...meta.news, newsItem, ...extraNews] };
+    // He's gone, so every other club's offer for him lapses with it.
+    const newMeta: SaveMeta = { ...meta, board, academies, pendingOffers: (meta.pendingOffers ?? []).filter((o) => o.id !== offerId && o.playerId !== offer.playerId), news: [...meta.news, newsItem, ...extraNews] };
     set({ clubs: newClubs, players: newPlayers, meta: newMeta });
     await putClubs(meta.id, Object.values(newClubs).filter((c) => c.id === aiClub.id || c.id === managerClub.id));
     await putPlayers(meta.id, [newPlayers[player.id]]);

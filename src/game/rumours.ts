@@ -10,7 +10,7 @@ import type { Club } from '../types/club';
 import type { Player } from '../types/player';
 import type { NewsItem, Rumour, TransferOffer } from '../types/league';
 import { Rng, hashSeed } from '../engine/rng';
-import { askingPrice, wageDemand } from './transfers';
+import { askingPrice, pickInterestedClub, wageDemand } from './transfers';
 
 export interface RumourResult {
   rumours: Rumour[];
@@ -26,15 +26,15 @@ const money = (n: number) => `£${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 
 /** A plausible suitor for a player: a club of similar-or-higher standing that can
  *  afford them and isn't their current club. Deterministic pick from the RNG. */
 function pickSuitor(p: Player, clubs: Club[], rng: Rng): Club | null {
-  const ask = askingPrice(p);
-  const candidates = clubs.filter(
-    (c) => c.id !== p.contract.clubId && c.reputation >= p.overall - 6 && c.finances.transferBudget >= ask * 0.6,
-  );
-  if (candidates.length === 0) return null;
-  // Prefer the bigger clubs — weight the pick toward higher reputation.
-  candidates.sort((a, b) => b.reputation - a.reputation);
-  const top = candidates.slice(0, Math.min(8, candidates.length));
-  return top[rng.int(0, top.length - 1)];
+  // Any club a little below him or bigger, that could plausibly raise the fee.
+  // It used to take one of the eight biggest clubs in the world, so the same
+  // handful of names were linked with every player you had.
+  return pickInterestedClub(p, clubs, rng, {
+    minBudget: askingPrice(p) * 0.6,
+    exclude: new Set(),
+    below: 6,
+    above: 20,
+  });
 }
 
 /**
