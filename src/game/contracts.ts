@@ -79,6 +79,67 @@ export function leaveWillingness(player: Player, currentClub: Club, appearances:
 /** Optional context when prising a player from another club. */
 export interface LeaveContext { currentClub?: Club | null; appearances?: number; clubGames?: number }
 
+/** Below this willingness he won't leave his club for any money. */
+export const SETTLED_BLOCK = 8;
+/** Below this he wants paying more than his usual demands to move. */
+const SETTLED_PREMIUM_FROM = 45;
+
+/**
+ * The pay rise a settled player needs to uproot himself, as a multiple of his
+ * normal wage demands: none for a player happy to go, up to about +55% for one
+ * who is very settled.
+ */
+export function settledWagePremium(willingness: number): number {
+  return willingness >= SETTLED_PREMIUM_FROM ? 1 : 1 + (SETTLED_PREMIUM_FROM - willingness) * 0.015;
+}
+
+/** How a player at another club feels about joining you, known before any talks. */
+export interface TransferStance {
+  /** Why he won't come at all, or null if money can do it. */
+  blocked: string | null;
+  /** Multiple on his usual wage demands (1 = no premium). */
+  premium: number;
+  /** 0–100, null when there's no current club to leave. */
+  willingness: number | null;
+}
+
+function isTransfer(club: Club, context?: LeaveContext): context is LeaveContext & { currentClub: Club } {
+  return !!context?.currentClub && context.currentClub.id !== club.id;
+}
+
+/**
+ * Decide up front whether a player would move to `club`, and at what price.
+ *
+ * This used to be found out only when you sent personal terms, after the fee
+ * had already been agreed with his club: "settled and isn't looking to move".
+ * Now a player who won't come is known before talks start, and one who's
+ * merely settled names a higher wage instead of refusing.
+ */
+export function transferStance(player: Player, club: Club, context?: LeaveContext): TransferStance {
+  if (!isTransfer(club, context)) return { blocked: null, premium: 1, willingness: null };
+  const name = player.name.last;
+  // Clearly too good for you, ambitious, and unhappy: he wants a bigger stage, not yours.
+  if (player.overall - club.reputation >= 12 && player.hidden.ambition > 66 && player.morale < 60) {
+    return { blocked: `${name} won't drop down to a club of ${club.shortName}'s level.`, premium: 1, willingness: null };
+  }
+  const w = leaveWillingness(player, context.currentClub, context.appearances ?? 0, context.clubGames ?? 0);
+  if (w < SETTLED_BLOCK) {
+    return {
+      blocked: `${name} is completely settled at ${context.currentClub.shortName} and won't consider a move, whatever the money.`,
+      premium: 1,
+      willingness: w,
+    };
+  }
+  return { blocked: null, premium: settledWagePremium(w), willingness: w };
+}
+
+/** His demands for joining you from another club: his usual demands, plus any settled premium. */
+export function transferDemands(player: Player, club: Club, year: number, context?: LeaveContext): ContractOffer {
+  const demand = agentDemands(player, club, year);
+  const { premium } = transferStance(player, club, context);
+  return premium > 1 ? { ...demand, wage: round100(demand.wage * premium) } : demand;
+}
+
 /**
  * Evaluate the manager's offer. Scores each term against the agent's demands;
  * a strong offer is accepted, a near-miss is countered (agent meets you part-way),
@@ -90,30 +151,35 @@ export function evaluateContractOffer(
 ): NegotiationResult {
   const name = player.name.last;
   const gap = player.overall - club.reputation;
+  const transfer = isTransfer(club, context);
 
   // A player who has clearly outgrown a modest club won't re-commit at all.
-  if (gap >= 12 && player.hidden.ambition > 66 && player.morale < 60) {
+  // (Signing him from elsewhere, the same thing is checked up front instead.)
+  if (!transfer && gap >= 12 && player.hidden.ambition > 66 && player.morale < 60) {
     return { outcome: 'REJECT', message: `${name} feels he has outgrown the club and wants to move on.` };
   }
   if (offer.years < 1 || offer.years > 6) {
     return { outcome: 'REJECT', message: 'Contract length must be between 1 and 6 years.' };
   }
 
-  // Prising him from another club: a settled starter at a strong side digs in,
-  // while an out-of-favour player at a weaker club is easy to tempt.
+  // Prising him from another club. Whether he'd come at all is settled before
+  // talks (transferStance); here a settled player simply wants more money,
+  // which is built into his demands, and a keen one is easier to please.
   let willingnessAdj = 0;
-  if (context?.currentClub && context.currentClub.id !== club.id) {
-    const w = leaveWillingness(player, context.currentClub, context.appearances ?? 0, context.clubGames ?? 0);
-    if (w < 22) return { outcome: 'REJECT', message: `${name} is settled at ${context.currentClub.shortName} and isn't looking to move.` };
-    willingnessAdj = (w - 55) * 0.35; // keen → easier; reluctant → harder
+  if (transfer) {
+    const stance = transferStance(player, club, context);
+    if (stance.blocked) return { outcome: 'REJECT', message: stance.blocked };
+    willingnessAdj = Math.max(0, ((stance.willingness ?? 55) - 55) * 0.35);
   }
 
-  const demand = agentDemands(player, club, year);
+  const demand = transfer ? transferDemands(player, club, year, context) : agentDemands(player, club, year);
   let score = 0;
 
   // Wage is the big lever.
   const wageRatio = offer.wage / Math.max(1, demand.wage);
   score += wageRatio >= 1 ? 40 : wageRatio >= 0.9 ? 20 : wageRatio >= 0.8 ? -10 : -60;
+  // Money talks: paying well over the odds can win him round on the rest.
+  if (wageRatio >= 1.2) score += 8;
 
   // Length: within one year of what he wants is fine.
   score += Math.abs(offer.years - demand.years) <= 1 ? 10 : -8;
@@ -140,6 +206,17 @@ export function evaluateContractOffer(
   score += (player.morale - 60) / 8;
   // How keen he is to leave his current club sways the whole negotiation.
   score += willingnessAdj;
+
+  // A settled player names his price to move, and won't sign for less. Short
+  // of it, his agent comes back with that wage rather than a no.
+  if (transfer && demand.wage > agentDemands(player, club, year).wage && wageRatio < 0.97) {
+    const settledAt = context?.currentClub?.shortName ?? 'his club';
+    return {
+      outcome: 'COUNTER',
+      message: `${name} is settled at ${settledAt}. He'll move for ${demand.wage.toLocaleString()} a week, not less.`,
+      counter: { ...offer, wage: demand.wage },
+    };
+  }
 
   if (score >= 22) return { outcome: 'ACCEPT', message: `${name} is happy to put pen to paper!` };
   if (score >= -18) {

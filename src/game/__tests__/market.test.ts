@@ -5,7 +5,7 @@ import { buildScoutReport, scoutStars, marketView, eliteKnownIds } from '../../e
 import { estimateValue } from '../../engine/development';
 import { clubValuation, negotiateFee, transferFloor, overpricedAsk, respondToTransferOffer, dealGrade, type FeeOffer } from '../feeNegotiation';
 import { evaluateLoanTerms } from '../transfers';
-import { leaveWillingness, evaluateContractOffer, agentDemands } from '../contracts';
+import { leaveWillingness, evaluateContractOffer, agentDemands, transferStance, transferDemands, settledWagePremium, SETTLED_BLOCK } from '../contracts';
 import type { Staff } from '../../types/staff';
 import type { Player } from '../../types/player';
 
@@ -200,5 +200,44 @@ describe('Willingness to leave', () => {
     const settled: Player = { ...star, overall: strong.reputation - 6, morale: 82 };
     const r = evaluateContractOffer(settled, weak, agentDemands(settled, weak, 2024), 2024, { currentClub: strong, appearances: 20, clubGames: 20 });
     expect(r.outcome).toBe('REJECT');
+  });
+
+  it('a player who will never come is known before any talks', () => {
+    const settled: Player = { ...star, overall: strong.reputation - 6, morale: 82 };
+    const ctx = { currentClub: strong, appearances: 20, clubGames: 20 };
+    const stance = transferStance(settled, weak, ctx);
+    expect(stance.blocked).toMatch(/won't consider a move/);
+    // And the terms stage gives the same answer, never a different surprise.
+    expect(evaluateContractOffer(settled, weak, transferDemands(settled, weak, 2024, ctx), 2024, ctx).message).toBe(stance.blocked);
+  });
+
+  it('a settled player who can be persuaded wants more money, and takes it', () => {
+    // Find a level of game time that leaves him settled but not immovable.
+    const mid = [...clubs].sort((a, b) => b.reputation - a.reputation)[Math.floor(clubs.length / 3)];
+    const p: Player = { ...star, overall: mid.reputation, morale: 65, hidden: { ...star.hidden, ambition: 55, professionalism: 60 } };
+    let ctx = { currentClub: mid, appearances: 0, clubGames: 20 };
+    for (let apps = 0; apps <= 20; apps++) {
+      const c = { currentClub: mid, appearances: apps, clubGames: 20 };
+      const w = leaveWillingness(p, mid, apps, 20);
+      if (w >= SETTLED_BLOCK && w < 30) { ctx = c; break; }
+    }
+    const stance = transferStance(p, mid === weak ? strong : weak, ctx);
+    const buyer = mid === weak ? strong : weak;
+    expect(stance.blocked).toBeNull();
+    expect(stance.premium).toBeGreaterThan(1.2);
+
+    const usual = agentDemands(p, buyer, 2024);
+    const asks = transferDemands(p, buyer, 2024, ctx);
+    expect(asks.wage).toBeGreaterThan(usual.wage);
+    // His normal demands no longer get it done…
+    expect(evaluateContractOffer(p, buyer, usual, 2024, ctx).outcome).not.toBe('ACCEPT');
+    // …but paying what he asks does.
+    expect(evaluateContractOffer(p, buyer, asks, 2024, ctx).outcome).toBe('ACCEPT');
+  });
+
+  it('a player keen to leave wants no premium', () => {
+    expect(settledWagePremium(80)).toBe(1);
+    expect(settledWagePremium(45)).toBe(1);
+    expect(settledWagePremium(20)).toBeGreaterThan(1.3);
   });
 });

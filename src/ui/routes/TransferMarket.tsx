@@ -9,7 +9,7 @@ import { marketView, eliteKnownIds, scoutStars, clubScoutRating, departmentStars
 import { clubValuation, type FeeOffer } from '../../game/feeNegotiation';
 import { loanFee, canAgreePreContract, evaluateSwap, weeklyWageBill } from '../../game/transfers';
 import { rumourLine } from '../../game/rumours';
-import { agentDemands, evaluateContractOffer, type ContractOffer } from '../../game/contracts';
+import { agentDemands, evaluateContractOffer, transferDemands, transferStance, type ContractOffer } from '../../game/contracts';
 import type { Player, SquadRole } from '../../types/player';
 import type { Staff } from '../../types/staff';
 import { ALL_POSITIONS, POSITION_GROUP } from '../../types/attributes';
@@ -456,9 +456,15 @@ export function TransferMarket() {
                 : jobs.length > 0
                   ? <span className="text-emerald-400"> · {jobs.length}/{SCOUT_CAPACITY} players, next report {next}d</span>
                   : <span className="text-emerald-400"> · available (0/{SCOUT_CAPACITY})</span>}
+              {jobs.length > 0 && (
+                <span className="text-slate-500"> — watching {jobs.map((j) => players[j.playerId]?.name.last ?? '?').join(', ')}</span>
+              )}
             </span>
           );
         })}
+        {scouts.length > 0 && (
+          <button type="button" className="ml-auto text-accent-400 hover:text-accent-300" onClick={() => navigate('/scouting')}>All scouting →</button>
+        )}
       </div>
 
       {/* Filters */}
@@ -658,13 +664,8 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
     handleFeeResult(await submitTransferOffer(player.id, { fee: clubAsk, instalmentYears: 1, sellOnPct: 0, addOns: 0 }), clubAsk);
   };
 
-  // Phase 2 — personal terms.
-  const demands = useMemo(() => agentDemands(player, buyer, year), [player, buyer, year]);
-  const [terms, setTerms] = useState<ContractOffer | null>(null);
-  const activeTerms = terms ?? demands;
-  const setT = <K extends keyof ContractOffer>(k: K, v: ContractOffer[K]) => setTerms({ ...activeTerms, [k]: v });
-  // How settled he is at his current club (team strength + game time) sways whether
-  // he'll agree to join — a nailed-on starter at a strong side takes some convincing.
+  // How settled he is at his current club (team strength + game time) decides,
+  // before any talks, whether he'd come at all and how much more he'd want to.
   const allMatches = useGameStore((s) => s.matches);
   const seasonId = useGameStore((s) => s.currentSeason()?.id);
   const leaveCtx = useMemo(() => {
@@ -673,6 +674,14 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
     const appearances = player.stats.filter((st) => st.seasonId === seasonId).reduce((n, st) => n + st.appearances, 0);
     return { currentClub: seller, appearances, clubGames };
   }, [allMatches, seasonId, seller, player]);
+  const stance = useMemo(() => transferStance(player, buyer, leaveCtx), [player, buyer, leaveCtx]);
+  const usualWage = useMemo(() => agentDemands(player, buyer, year).wage, [player, buyer, year]);
+
+  // Phase 2 — personal terms, starting from what he'd actually want to move.
+  const demands = useMemo(() => transferDemands(player, buyer, year, leaveCtx), [player, buyer, year, leaveCtx]);
+  const [terms, setTerms] = useState<ContractOffer | null>(null);
+  const activeTerms = terms ?? demands;
+  const setT = <K extends keyof ContractOffer>(k: K, v: ContractOffer[K]) => setTerms({ ...activeTerms, [k]: v });
   const submitTerms = async () => {
     const r = evaluateContractOffer(player, buyer, activeTerms, year, leaveCtx);
     setMsg(r.message);
@@ -693,6 +702,18 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
       <p className="text-sm text-slate-400 mb-3">
         {player.position} · {seller ? seller.name : 'Free agent'} · {view.exact ? `OVR ${view.ovr}` : `estimated OVR ${view.ovr} (${view.stars}★)`}
       </p>
+
+      {stance.blocked ? (
+        <div className="rounded border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200 mb-3">
+          🚫 {stance.blocked} There's no point opening talks with {seller?.shortName ?? 'his club'}.
+        </div>
+      ) : stance.premium > 1 && (
+        <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 mb-3">
+          {player.name.last} is settled at {seller?.shortName ?? 'his club'}. To move he wants around{' '}
+          <span className="font-semibold">{formatWage(demands.wage)}</span>, about{' '}
+          {Math.round((demands.wage / Math.max(1, usualWage) - 1) * 100)}% more than he'd normally ask. Pay it and he'll come.
+        </div>
+      )}
 
       {buyBack ? (
         <div className="rounded bg-sky-500/10 border border-sky-500/30 px-3 py-2 text-xs text-sky-200 mb-3">
@@ -730,7 +751,7 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
           {clubAsk != null && (
             <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 rounded bg-surface-700 px-3 py-2">
               <span className="text-xs text-amber-300/90">{seller?.shortName ?? 'The club'} want <span className="font-semibold">{formatMoney(clubAsk)}</span> — haggle them down, or…</span>
-              <button className="btn-primary text-xs py-1 px-3" onClick={acceptAsk}>Accept {formatMoney(clubAsk)}</button>
+              <button className="btn-primary text-xs py-1 px-3 disabled:opacity-40" disabled={!!stance.blocked} onClick={acceptAsk}>Accept {formatMoney(clubAsk)}</button>
             </div>
           )}
           <label className="col-span-2"><span className="text-slate-400">Transfer fee (guaranteed)</span><MoneyInput value={offer.fee} onChange={(v) => setOffer({ ...offer, fee: v })} /></label>
@@ -763,8 +784,8 @@ function SigningModal({ player, buyer, seller, view, year, onClose, flash, onBre
         <div className="flex gap-2">
           <button className="btn-ghost" onClick={onClose}>Close</button>
           {phase === 'FEE'
-            ? <button className="btn-primary" onClick={submitFee}>Submit bid</button>
-            : <button className="btn-primary" onClick={submitTerms}>Offer terms</button>}
+            ? <button className="btn-primary disabled:opacity-40" disabled={!!stance.blocked} onClick={submitFee}>Submit bid</button>
+            : <button className="btn-primary disabled:opacity-40" disabled={!!stance.blocked} onClick={submitTerms}>Offer terms</button>}
         </div>
       </div>
     </Modal>
