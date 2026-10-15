@@ -105,14 +105,16 @@ export function Squad() {
 
       {view === 'table' ? (
         <>
-          <DataTable
-            columns={columns}
-            rows={players}
-            rowKey={(p) => p.id}
-            onRowClick={(p) => navigate(`/player/${p.id}`)}
-            initialSort={{ key: 'ovr', dir: 'desc' }}
-            renderExpanded={(p) => (p.lastSeasonChange ? <StatChangePanel player={p} /> : null)}
-          />
+          <div data-tour="squad-table">
+            <DataTable
+              columns={columns}
+              rows={players}
+              rowKey={(p) => p.id}
+              onRowClick={(p) => navigate(`/player/${p.id}`)}
+              initialSort={{ key: 'ovr', dir: 'desc' }}
+              renderExpanded={(p) => (p.lastSeasonChange ? <StatChangePanel player={p} /> : null)}
+            />
+          </div>
           <p className="text-xs text-slate-600">Click a row to open the player profile. The ▲/▼ next to OVR is last season's change — expand a row with ▸ to see which attributes moved.</p>
         </>
       ) : (

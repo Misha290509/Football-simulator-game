@@ -12,7 +12,7 @@ import { ATTR_HELP } from '../attrHelp';
 import { moodLabel, INTERACT_LABEL, INTERACT_DESC, egoOf, type InteractKind } from '../../engine/morale';
 import { traitsOf, TRAIT_LABEL } from '../../engine/traits';
 import { awardMeta, isTeamTrophy } from '../../game/awardMeta';
-import { marketView, eliteKnownIds, clubScoutRating } from '../../engine/marketScout';
+import { marketView, eliteKnownIds, clubScoutRating, SCOUT_CAPACITY, scoutLoad } from '../../engine/marketScout';
 import type { ContractOffer } from '../../game/contracts';
 import { ALL_POSITIONS, POSITION_GROUP } from '../../types/attributes';
 import type { Attributes, Position } from '../../types/attributes';
@@ -173,7 +173,10 @@ export function PlayerProfile() {
           <div className="flex gap-2">
             {mv.level !== 'ELITE' && (() => {
               const outOnHim = (meta.playerScoutAssignments ?? []).some((a) => a.playerId === player.id);
-              const freeScout = (managerClub?.staff ?? []).find((s) => s.role === 'SCOUT' && !(meta.playerScoutAssignments ?? []).some((a) => a.scoutId === s.id));
+              // The least busy scout with room for another player.
+              const freeScout = (managerClub?.staff ?? [])
+                .filter((s) => s.role === 'SCOUT' && scoutLoad(meta.playerScoutAssignments ?? [], s.id) < SCOUT_CAPACITY)
+                .sort((a, b) => scoutLoad(meta.playerScoutAssignments ?? [], a.id) - scoutLoad(meta.playerScoutAssignments ?? [], b.id))[0];
               return (
                 <button
                   className="btn-ghost"

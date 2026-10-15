@@ -158,7 +158,7 @@ export interface FeeTalkResult {
   tension?: number;    // 0–100 relationship tension after this round
 }
 import { ACHIEVEMENTS } from '../game/achievements';
-import { buildScoutReport } from '../engine/marketScout';
+import { buildScoutReport, SCOUT_CAPACITY, scoutLoad } from '../engine/marketScout';
 import { physioFactor, scoutingRate, FACILITY_UPGRADE_COST, generateStaffPool, evaluateStaffTerms } from '../engine/staff';
 import type { Staff, TrainingFocus } from '../types/staff';
 import { bestOverall, overallAt } from '../engine/ratings';
@@ -1785,7 +1785,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const scout = (clubs[meta.managerClubId]?.staff ?? []).find((s) => s.id === scoutId && s.role === 'SCOUT');
     if (!scout) return { ok: false, message: 'That scout is not on your books.' };
     const assignments = meta.playerScoutAssignments ?? [];
-    if (assignments.some((a) => a.scoutId === scoutId)) return { ok: false, message: `${scout.name.last} is already out on assignment.` };
+    if (scoutLoad(assignments, scoutId) >= SCOUT_CAPACITY) {
+      return { ok: false, message: `${scout.name.last} is already assessing ${SCOUT_CAPACITY} players. Wait for a report, or send another scout.` };
+    }
     if (assignments.some((a) => a.playerId === playerId)) return { ok: false, message: 'A scout is already assessing this player.' };
     if (!players[playerId]) return { ok: false, message: 'Player not found.' };
     // Faster turnaround for experienced scouts (day indices are strided ×3).

@@ -159,7 +159,7 @@ export function Dashboard() {
       })()}
 
       {board && !meta.sacked && (
-        <div className="card p-4 flex items-center justify-between">
+        <div className="card p-4 flex items-center justify-between" data-tour="board">
           <div>
             <div className="text-xs text-slate-500">Board objective</div>
             <div className="text-sm">{board.objectiveText} <span className="text-slate-500">(target: {board.targetPosition}{ordinal(board.targetPosition)})</span></div>

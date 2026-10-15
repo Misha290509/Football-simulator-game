@@ -200,7 +200,7 @@ export function Tactics() {
       <h1 className="page-title">Tactics &amp; Formation</h1>
 
       {/* Controls */}
-      <div className="card p-4 flex flex-wrap items-end gap-4">
+      <div className="card p-4 flex flex-wrap items-end gap-4" data-tour="tactics">
         <label className="text-sm">
           <span className="block text-xs text-slate-400 mb-1">Formation</span>
           <select className="bg-surface-700 border border-surface-600 rounded px-2 py-1.5" value={formation} onChange={(e) => setFormation(e.target.value)}>

@@ -5,7 +5,7 @@ import { DataTable, type Column } from '../components/DataTable';
 import { Rating } from '../components/Rating';
 import { MoneyInput } from '../components/MoneyInput';
 import { ageOf, fullName, formatMoney, formatWage } from '../format';
-import { marketView, eliteKnownIds, scoutStars, clubScoutRating, departmentStars, type MarketView } from '../../engine/marketScout';
+import { marketView, eliteKnownIds, scoutStars, clubScoutRating, departmentStars, SCOUT_CAPACITY, scoutLoad, type MarketView } from '../../engine/marketScout';
 import { clubValuation, type FeeOffer } from '../../game/feeNegotiation';
 import { loanFee, canAgreePreContract, evaluateSwap, weeklyWageBill } from '../../game/transfers';
 import { rumourLine } from '../../game/rumours';
@@ -13,6 +13,7 @@ import { agentDemands, evaluateContractOffer, type ContractOffer } from '../../g
 import type { Player, SquadRole } from '../../types/player';
 import type { Staff } from '../../types/staff';
 import { ALL_POSITIONS, POSITION_GROUP } from '../../types/attributes';
+import { NumberInput } from '../components/NumberInput';
 
 const stars = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n);
 
@@ -337,7 +338,7 @@ export function TransferMarket() {
       )}
 
       {/* Your transfer list — always shown, so there's one place to check. */}
-      <div className="card p-4">
+      <div className="card p-4" data-tour="transfer-list">
         <h2 className="text-sm font-semibold text-slate-400 mb-2">
           Your transfer list{myListed.length > 0 ? ` (${myListed.length})` : ''}
         </h2>
@@ -413,7 +414,7 @@ export function TransferMarket() {
                   {counterFor === o.id && (
                     <div className="flex items-center gap-2 mt-2 pt-2 border-t border-surface-600">
                       <span className="text-xs text-slate-400">Ask for</span>
-                      <input type="number" step={100000} className="bg-surface-800 border border-surface-600 rounded px-2 py-1 w-32 text-sm" value={counterVal} onChange={(e) => setCounterVal(Math.max(0, Number(e.target.value)))} />
+                      <NumberInput aria-label="Counter fee" className="bg-surface-800 border border-surface-600 rounded px-2 py-1 w-32 text-sm font-mono" value={counterVal} onChange={setCounterVal} />
                       <button className="btn-primary text-xs py-1" onClick={async () => { const r = await counterOffer(o.id, counterVal); flash(r); setCounterFor(null); }}>Send counter</button>
                       <span className="text-xs text-slate-500">they bid {formatMoney(o.fee)}</span>
                     </div>
@@ -421,7 +422,7 @@ export function TransferMarket() {
                   {bbFor === o.id && (
                     <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-surface-600">
                       <span className="text-xs text-slate-400">Sell with a buy-back of</span>
-                      <input type="number" step={100000} className="bg-surface-800 border border-surface-600 rounded px-2 py-1 w-32 text-sm" value={bbVal} onChange={(e) => setBbVal(Math.max(0, Number(e.target.value)))} />
+                      <NumberInput aria-label="Buy-back price" className="bg-surface-800 border border-surface-600 rounded px-2 py-1 w-32 text-sm font-mono" value={bbVal} onChange={setBbVal} />
                       <span className="text-xs text-slate-400">for</span>
                       <select className="bg-surface-800 border border-surface-600 rounded px-2 py-1 text-sm" defaultValue={3} id={`bbyears_${o.id}`}>
                         {[1, 2, 3, 4, 5].map((y) => <option key={y} value={y}>{y} yr{y > 1 ? 's' : ''}</option>)}
@@ -441,17 +442,27 @@ export function TransferMarket() {
       )}
 
       {/* Scout summary */}
-      <div className="card p-3 text-xs text-slate-400 flex flex-wrap items-center gap-x-4 gap-y-1">
+      <div className="card p-3 text-xs text-slate-400 flex flex-wrap items-center gap-x-4 gap-y-1" data-tour="scouts">
         <span className="text-slate-300 font-semibold">Scouts</span>
         {scouts.length === 0 && <span>No scouts on your books — hire one on the Club screen.</span>}
         {scouts.map((s) => {
-          const a = assignments.find((x) => x.scoutId === s.id);
-          return <span key={s.id}>{s.name.last} <span className="text-amber-400/70">{stars(scoutStars(s))}</span>{a ? <span className="text-sky-400"> · out ({a.dueDay - meta.currentDay}d)</span> : <span className="text-emerald-400"> · available</span>}</span>;
+          const jobs = assignments.filter((x) => x.scoutId === s.id);
+          const next = jobs.length ? Math.min(...jobs.map((x) => x.dueDay)) - meta.currentDay : 0;
+          return (
+            <span key={s.id}>
+              {s.name.last} <span className="text-amber-400/70">{stars(scoutStars(s))}</span>
+              {jobs.length >= SCOUT_CAPACITY
+                ? <span className="text-sky-400"> · full ({jobs.length}/{SCOUT_CAPACITY}, next report {next}d)</span>
+                : jobs.length > 0
+                  ? <span className="text-emerald-400"> · {jobs.length}/{SCOUT_CAPACITY} players, next report {next}d</span>
+                  : <span className="text-emerald-400"> · available (0/{SCOUT_CAPACITY})</span>}
+            </span>
+          );
         })}
       </div>
 
       {/* Filters */}
-      <div className="card p-3 flex flex-wrap gap-x-3 gap-y-2 items-center text-sm">
+      <div className="card p-3 flex flex-wrap gap-x-3 gap-y-2 items-center text-sm" data-tour="market-filters">
         <input className="bg-surface-700 border border-surface-600 rounded px-3 py-1.5 w-52" placeholder="Search player…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select className="bg-surface-700 border border-surface-600 rounded px-2 py-1.5" value={posFilter} onChange={(e) => setPosFilter(e.target.value)}>
           <option value="ALL">All positions</option>
@@ -496,11 +507,11 @@ export function TransferMarket() {
           <input type="number" placeholder="0" className="bg-surface-700 border border-surface-600 rounded px-2 py-1 w-16" value={minPot || ''} onChange={(e) => setMinPot(Number(e.target.value) || 0)} />
         </label>
         <label className="flex items-center gap-1"><span className="text-slate-400">Value</span>
-          <input type="number" placeholder="min" className="bg-surface-700 border border-surface-600 rounded px-2 py-1 w-24" value={minVal || ''} onChange={(e) => setMinVal(Number(e.target.value) || 0)} />
-          <input type="number" placeholder="max" className="bg-surface-700 border border-surface-600 rounded px-2 py-1 w-24" value={maxVal || ''} onChange={(e) => setMaxVal(Number(e.target.value) || 0)} />
+          <NumberInput aria-label="Minimum value" blankZero placeholder="min" className="bg-surface-700 border border-surface-600 rounded px-2 py-1 w-28 font-mono" value={minVal} onChange={setMinVal} />
+          <NumberInput aria-label="Maximum value" blankZero placeholder="max" className="bg-surface-700 border border-surface-600 rounded px-2 py-1 w-28 font-mono" value={maxVal} onChange={setMaxVal} />
         </label>
         <label className="flex items-center gap-1"><span className="text-slate-400">Max wage</span>
-          <input type="number" placeholder="/wk" className="bg-surface-700 border border-surface-600 rounded px-2 py-1 w-24" value={maxWage || ''} onChange={(e) => setMaxWage(Number(e.target.value) || 0)} />
+          <NumberInput aria-label="Maximum wage" blankZero placeholder="/wk" className="bg-surface-700 border border-surface-600 rounded px-2 py-1 w-24 font-mono" value={maxWage} onChange={setMaxWage} />
         </label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={knownOnly} onChange={(e) => setKnownOnly(e.target.checked)} /><span className="text-slate-400">Firm reads only</span></label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={hideExpiring} onChange={(e) => setHideExpiring(e.target.checked)} /><span className="text-slate-400">Hide expiring this season</span></label>
@@ -534,7 +545,9 @@ export function TransferMarket() {
         </div>
       )}
 
-      <DataTable columns={columns} rows={rows} rowKey={({ p }) => p.id} onRowClick={({ p }) => navigate(`/player/${p.id}`)} initialSort={{ key: 'val', dir: 'desc' }} />
+      <div data-tour="market-table">
+        <DataTable columns={columns} rows={rows} rowKey={({ p }) => p.id} onRowClick={({ p }) => navigate(`/player/${p.id}`)} initialSort={{ key: 'val', dir: 'desc' }} />
+      </div>
 
       {scoutFor && (
         <ScoutModal player={scoutFor} scouts={scouts} assignments={assignments} onClose={() => setScoutFor(null)}
@@ -580,18 +593,21 @@ export function TransferMarket() {
 function ScoutModal({ player, scouts, assignments, onClose, onAssign }: {
   player: Player; scouts: Staff[]; assignments: { scoutId: string }[]; onClose: () => void; onAssign: (scoutId: string) => void;
 }) {
-  const busy = new Set(assignments.map((a) => a.scoutId));
   return (
     <Modal onClose={onClose} title={`Scout ${fullName(player)}`}>
-      <p className="text-sm text-slate-400 mb-3">Send a scout to assess him. A higher-rated scout files a more accurate report.</p>
+      <p className="text-sm text-slate-400 mb-3">Send a scout to assess him. A higher-rated scout files a more accurate report. Each scout can assess up to {SCOUT_CAPACITY} players at once.</p>
       {scouts.length === 0 && <p className="text-sm text-slate-500">You have no scouts. Hire one on the Club screen.</p>}
       <div className="space-y-2">
         {scouts.map((s) => {
-          const isBusy = busy.has(s.id);
+          const load = scoutLoad(assignments, s.id);
+          const isFull = load >= SCOUT_CAPACITY;
           return (
             <div key={s.id} className="flex items-center justify-between bg-surface-700 rounded px-3 py-2 text-sm">
-              <span>{s.name.first} {s.name.last} <span className="text-amber-400/70 ml-1">{stars(scoutStars(s))}</span></span>
-              <button className="btn-primary text-xs py-1 disabled:opacity-40" disabled={isBusy} onClick={() => onAssign(s.id)}>{isBusy ? 'On assignment' : 'Send'}</button>
+              <span>
+                {s.name.first} {s.name.last} <span className="text-amber-400/70 ml-1">{stars(scoutStars(s))}</span>
+                <span className="text-xs text-slate-500 ml-2">{load}/{SCOUT_CAPACITY} players</span>
+              </span>
+              <button className="btn-primary text-xs py-1 disabled:opacity-40" disabled={isFull} onClick={() => onAssign(s.id)}>{isFull ? 'Fully booked' : 'Send'}</button>
             </div>
           );
         })}

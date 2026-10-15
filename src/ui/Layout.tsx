@@ -5,6 +5,8 @@ import { isPlayerCareer } from '../game/playerCareer';
 import { CrestBadge } from './components/Rating';
 import { PlayMenu } from './components/PlayMenu';
 import { PlayerPlayMenu } from './components/PlayerPlayMenu';
+import { TutorialOverlay } from './tutorial/TutorialOverlay';
+import { useTutorial } from '../state/tutorial';
 
 // Grouped nav: daily club business first, then the market, then the wider
 // world, then the manager's own office. God Mode lives apart, by the exit.
@@ -105,6 +107,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const cancelLive = useGameStore((s) => s.cancelLive);
   const navigate = useNavigate();
   const location = useLocation();
+  const startTutorial = useTutorial((s) => s.start);
 
   // Mobile: the sidebar is an off-canvas drawer. Close it on every navigation.
   const [navOpen, setNavOpen] = useState(false);
@@ -151,6 +154,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-full">
+      {!playerMode && <TutorialOverlay />}
       {showKeys && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={() => setShowKeys(false)}>
           <div className="card p-5 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
@@ -170,6 +174,7 @@ export function Layout({ children }: { children: ReactNode }) {
               ))}
               <div className="flex items-center gap-2"><kbd className="px-1.5 py-0.5 rounded bg-surface-700 border border-surface-600 font-mono text-xs">N</kbd><span className="text-slate-400">Advance matchday</span></div>
               <div className="flex items-center gap-2"><kbd className="px-1.5 py-0.5 rounded bg-surface-700 border border-surface-600 font-mono text-xs">?</kbd><span className="text-slate-400">This help</span></div>
+              {!playerModeKb && <div className="col-span-2 text-xs text-slate-500 mt-1">New to the game? Open Tutorial in the menu (under Office) for a guided tour.</div>}
             </div>
           </div>
         </div>
@@ -223,6 +228,20 @@ export function Layout({ children }: { children: ReactNode }) {
                 {g.items.map((n) => (
                   <NavItem key={n.to} {...n} guard={guardLive} />
                 ))}
+                {g.title === 'Office' && !playerMode && (
+                  <button
+                    type="button"
+                    className="relative block w-full text-left pl-4 pr-3 py-2 rounded-md text-sm font-medium transition-colors text-slate-300 hover:bg-surface-700 hover:text-white"
+                    onClick={(e) => {
+                      guardLive(e);
+                      if (e.defaultPrevented) return;
+                      setNavOpen(false);
+                      startTutorial();
+                    }}
+                  >
+                    Tutorial
+                  </button>
+                )}
               </div>
             </div>
           ))}

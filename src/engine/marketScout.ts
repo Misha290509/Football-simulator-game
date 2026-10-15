@@ -12,6 +12,14 @@ import type { Staff } from '../types/staff';
 import type { ScoutReport } from '../types/league';
 import { estimateValue } from './development';
 
+/** How many players one scout can be assessing at the same time. */
+export const SCOUT_CAPACITY = 3;
+
+/** How many players this scout is currently assessing. */
+export function scoutLoad(assignments: readonly { scoutId: string }[], scoutId: string): number {
+  return assignments.filter((a) => a.scoutId === scoutId).length;
+}
+
 /** A scout's star rating (1–5) from their 0–100 rating. */
 export function scoutStars(scout: Staff): number {
   return Math.max(1, Math.min(5, Math.round(scout.rating / 20)));

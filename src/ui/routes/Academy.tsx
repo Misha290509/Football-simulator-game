@@ -10,6 +10,7 @@ import { recommendsPlayUp, ACADEMY_UPGRADE_COST, generateYouthCoachPool } from '
 import { MAX_SCOUT_POSITIONS, SCOUT_CONTRACT_MONTHS, SCOUT_CONTRACT_COST } from '../../engine/youthScouting';
 import { ALL_POSITIONS } from '../../types/attributes';
 import type { AgeGroup } from '../../types/academy';
+import { NumberInput } from '../components/NumberInput';
 
 const GROUPS: AgeGroup[] = ['U16', 'U18', 'U21'];
 const COUNTRIES = Object.keys(COUNTRY_YOUTH_INDEX);
@@ -180,11 +181,11 @@ export function Academy() {
                         <div className="text-xs text-slate-500">rating {c.rating} · asks {formatWage(c.wage)}</div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <input
-                          type="number" step={100} aria-label="Wage offer"
-                          className="w-24 bg-surface-800 border border-surface-600 rounded px-2 py-1 text-xs"
+                        <NumberInput
+                          aria-label="Wage offer"
+                          className="w-24 bg-surface-800 border border-surface-600 rounded px-2 py-1 text-xs font-mono"
                           value={coachOffer[c.id] ?? c.wage}
-                          onChange={(e) => setCoachOffer({ ...coachOffer, [c.id]: Math.max(0, Number(e.target.value)) })}
+                          onChange={(v) => setCoachOffer({ ...coachOffer, [c.id]: v })}
                         />
                         <button
                           className="btn-primary text-xs"

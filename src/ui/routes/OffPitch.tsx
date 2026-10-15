@@ -11,6 +11,7 @@ import { INVESTMENTS, portfolioValue, wagePacket } from '../../game/moneyLife';
 import { formatMoney } from '../format';
 import type { SquadStatus } from '../../types/playerCareer';
 import { MOTIVES, ASKS, motiveOf, type SuitorMotive } from '../../game/transferMarket';
+import { NumberInput } from '../components/NumberInput';
 
 /** A colour per motive, so an offer's *kind* reads before its numbers do. */
 const MOTIVE_TONE: Record<SuitorMotive, string> = {
@@ -377,8 +378,8 @@ export function OffPitch() {
               {career.agent.autoNegotiate.enabled && (
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                   <label className="text-slate-500">Min wage/wk
-                    <input type="number" className="input-field mt-0.5 w-full" value={career.agent.autoNegotiate.minWage}
-                      onChange={(e) => void setAutoNegotiate({ minWage: Math.max(0, Number(e.target.value) || 0) })} />
+                    <NumberInput className="input-field mt-0.5 w-full font-mono" value={career.agent.autoNegotiate.minWage}
+                      onChange={(v) => void setAutoNegotiate({ minWage: v })} />
                   </label>
                   <label className="text-slate-500">Min role
                     <select className="input-field mt-0.5 w-full" value={career.agent.autoNegotiate.minRole}

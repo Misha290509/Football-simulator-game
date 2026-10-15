@@ -4,6 +4,7 @@ import { formatMoney, formatWage } from '../format';
 import { FACILITY_UPGRADE_COST, evaluateStaffTerms } from '../../engine/staff';
 import { TRAIT_INFO } from '../../game/clubTraits';
 import type { Staff, StaffRole, TrainingFocus } from '../../types/staff';
+import { NumberInput } from '../components/NumberInput';
 
 const FOCI: TrainingFocus[] = ['BALANCED', 'ATTACKING', 'DEFENDING', 'FITNESS', 'YOUTH'];
 const ROLE_LABEL: Record<StaffRole, string> = {
@@ -121,8 +122,8 @@ export function Club() {
             <div className="text-sm">Stadium capacity: <strong>{club.stadium.capacity.toLocaleString()}</strong></div>
             <div className="text-xs text-slate-500 mb-2">Expanding raises match-day income (~£3,500/seat).</div>
             <div className="flex items-center gap-2">
-              <input type="number" min={0} step={1000} value={seats} onChange={(e) => setSeats(Math.max(0, Number(e.target.value)))}
-                className="w-28 bg-surface-700 border border-surface-600 rounded px-2 py-1 text-sm" />
+              <NumberInput aria-label="Seats to add" value={seats} onChange={setSeats}
+                className="w-28 bg-surface-700 border border-surface-600 rounded px-2 py-1 text-sm font-mono" />
               <span className="text-xs text-slate-500">≈ {(seats * 3500).toLocaleString()}</span>
               <button className="btn-primary text-sm" onClick={async () => flash((await expandStadium(seats)).message)}>Expand</button>
             </div>
@@ -322,7 +323,7 @@ function NegotiateModal({ entry, year, onClose, onSubmit }: {
 
         <label className="block text-sm mb-3">
           <span className="text-slate-400">Weekly wage</span>
-          <input type="number" step={100} className="mt-1 w-full bg-surface-700 border border-surface-600 rounded px-2 py-1.5" value={wage} onChange={(e) => setWage(Math.max(0, Number(e.target.value)))} />
+          <NumberInput className="mt-1 w-full bg-surface-700 border border-surface-600 rounded px-2 py-1.5 font-mono" value={wage} onChange={setWage} />
         </label>
         <label className="block text-sm mb-4">
           <span className="text-slate-400">Contract length</span>

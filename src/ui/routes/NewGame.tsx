@@ -7,6 +7,7 @@ import type { Position } from '../../types/attributes';
 import type { Foot } from '../../types/player';
 import { CrestBadge } from '../components/Rating';
 import { ChallengeCarousel } from '../components/ChallengeCarousel';
+import { useTutorial } from '../../state/tutorial';
 import { CHALLENGES, challengeById, pickChallengeClub } from '../../game/challenges';
 import { PLAYER_ARCHETYPES } from '../../game/playerCareer';
 import { YOUTH_POSITIONS } from '../../engine/academy';
@@ -33,6 +34,10 @@ export function NewGame() {
   const [selectedClub, setSelectedClub] = useState<string | null>(null);
   const [difficulty, setDifficulty] = useState<'RELAXED' | 'NORMAL' | 'HARD'>('NORMAL');
   const [challengeId, setChallengeId] = useState<string | null>(null);
+  // First career in this browser? Offer the tour, ticked by default.
+  const tutorialDone = useTutorial((s) => s.done);
+  const startTutorial = useTutorial((s) => s.start);
+  const [wantTutorial, setWantTutorial] = useState(() => !tutorialDone);
   const [customOn, setCustomOn] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customAbbrev, setCustomAbbrev] = useState('');
@@ -143,6 +148,7 @@ export function NewGame() {
           customClub: customOn ? { name: customName, shortName: customName, abbrev: customAbbrev, primaryColor: customColor } : undefined,
         });
         navigate('/dashboard');
+        if (wantTutorial) startTutorial();
       }
     } finally {
       setBusy(false);
@@ -425,6 +431,12 @@ export function NewGame() {
         </div>
       )}
 
+      {!isPlayer && (
+        <label className="flex items-center gap-2 text-sm text-slate-300 px-1">
+          <input type="checkbox" checked={wantTutorial} onChange={(e) => setWantTutorial(e.target.checked)} />
+          Show me how to play (step-by-step tutorial)
+        </label>
+      )}
       <button className="btn-primary w-full py-3" disabled={!canStart} onClick={start}>
         {busy ? 'Building world…' : isPlayer ? 'Start Player Career' : challenge ? `Start Challenge: ${challenge.name}` : 'Start Career'}
       </button>
